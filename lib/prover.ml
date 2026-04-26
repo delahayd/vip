@@ -65,10 +65,12 @@ let infer_status_from_stop_reason = function
 let run_file ?(config = default_config) filename =
   let parsed = load_problem filename in
   let part = partition_input_clauses parsed.inputs in
+
   let limits = {
     Resolution.time_limit_s = config.time_limit_s;
     max_generated_clauses = config.max_generated_clauses;
   } in
+
   let res =
     match part.support with
     | [] ->
@@ -86,11 +88,13 @@ let run_file ?(config = default_config) filename =
           ~support:part.support
           ()
   in
+
   let empty_clause =
     match res.stop_reason with
     | Refutation_found d -> Some d
     | Saturation | Time_limit | Clause_limit -> None
   in
+
   {
     status = infer_status_from_stop_reason res.stop_reason;
     info = {
@@ -109,20 +113,24 @@ let print_szs outcome =
     | Some f -> f
     | None -> "<stdin>"
   in
+
   Printf.printf
     "%% SZS status %s for %s\n"
     (string_of_szs_status outcome.status)
     name;
-  begin
-    match outcome.resolution_stats with
-    | None -> ()
-    | Some s ->
-        Printf.printf "%% clauses input           : %d\n" outcome.info.clause_count;
-        Printf.printf "%% clauses generated       : %d\n" s.generated_clauses;
-        Printf.printf "%% clauses processed       : %d\n" s.processed_clauses;
-        Printf.printf "%% resolution inferences   : %d\n" s.resolution_inferences;
-        Printf.printf "%% factoring inferences    : %d\n" s.factoring_inferences;
-        Printf.printf "%% subsumption tests       : %d\n" s.subsumption_tests;
-        Printf.printf "%% subsumption rejections  : %d\n" s.subsumption_rejections;
-        Printf.printf "%% wall clock seconds      : %.6f\n" s.wall_clock_s
-  end
+
+  match outcome.resolution_stats with
+  | None -> ()
+  | Some s ->
+      Printf.printf "%% clauses input           : %d\n" outcome.info.clause_count;
+      Printf.printf "%% clauses generated       : %d\n" s.generated_clauses;
+      Printf.printf "%% clauses processed       : %d\n" s.processed_clauses;
+      Printf.printf "%% resolution inferences   : %d\n" s.resolution_inferences;
+      Printf.printf "%% factoring inferences    : %d\n" s.factoring_inferences;
+      Printf.printf "%% equality resolution     : %d\n" s.equality_resolution_inferences;
+      Printf.printf "%% equality factoring      : %d\n" s.equality_factoring_inferences;
+      Printf.printf "%% superposition infer.    : %d\n" s.superposition_inferences;
+      Printf.printf "%% demodulation rewrites   : %d\n" s.demodulation_rewrites;
+      Printf.printf "%% subsumption tests       : %d\n" s.subsumption_tests;
+      Printf.printf "%% subsumption rejections  : %d\n" s.subsumption_rejections;
+      Printf.printf "%% wall clock seconds      : %.6f\n" s.wall_clock_s

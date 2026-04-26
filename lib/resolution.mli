@@ -28,6 +28,10 @@ type stats = {
   processed_clauses : int;
   resolution_inferences : int;
   factoring_inferences : int;
+  equality_resolution_inferences : int;
+  equality_factoring_inferences : int;
+  superposition_inferences : int;
+  demodulation_rewrites : int;
   subsumption_tests : int;
   subsumption_rejections : int;
   wall_clock_s : float;

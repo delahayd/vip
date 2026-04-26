@@ -1,4 +1,8 @@
-* un KBO complet avec précédence et au factoring ordonné
+* indexation (discrimination trees / substitution trees)
+* selection function plus fine
+* term ordering tuning (KBO weights + precedence dynamique)
+* Si tu veux, je peux te guider vers une superposition complète type Vampire/E
+
 * subsomption indexée
 * index discrimination tree
 
