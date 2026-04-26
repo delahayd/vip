@@ -1,0 +1,116 @@
+# ============================================================
+# Makefile de confort pour le prouveur TPTP (dune)
+# ============================================================
+
+# Binaire dune
+DUNE ?= dune
+
+# Chemins par défaut
+CLI := prover_cli
+DEFAULT_TEST := tests/integration/unsat_01.p
+DEFAULT_BENCH_DIR := bench/problems
+
+# ------------------------------------------------------------
+# Cible par défaut
+# ------------------------------------------------------------
+
+.PHONY: all
+all: build
+
+# ------------------------------------------------------------
+# Build
+# ------------------------------------------------------------
+
+.PHONY: build
+build:
+	@echo "==> Building project"
+	$(DUNE) build
+
+# ------------------------------------------------------------
+# Tests
+# ------------------------------------------------------------
+
+.PHONY: test
+test:
+	@echo "==> Running all tests"
+	$(DUNE) runtest
+
+.PHONY: test-unit
+test-unit:
+	@echo "==> Running unit tests"
+	$(DUNE) runtest tests/unit
+
+.PHONY: test-integration
+test-integration:
+	@echo "==> Running integration tests"
+	$(DUNE) runtest tests/integration
+
+# ------------------------------------------------------------
+# Run single file
+# ------------------------------------------------------------
+
+.PHONY: run
+run:
+	@if [ -z "$(FILE)" ]; then \
+		echo "⚠️  FILE not provided, using default: $(DEFAULT_TEST)"; \
+		FILE=$(DEFAULT_TEST); \
+	else \
+		FILE=$(FILE); \
+	fi; \
+	echo "==> Running prover on $$FILE"; \
+	$(DUNE) exec $(CLI) -- $$FILE
+
+# ------------------------------------------------------------
+# Bench (répertoire par défaut)
+# ------------------------------------------------------------
+
+.PHONY: bench
+bench:
+	@echo "==> Running benchmark on $(DEFAULT_BENCH_DIR)"
+	$(DUNE) exec bench/run_bench.exe -- $(DEFAULT_BENCH_DIR)
+
+# ------------------------------------------------------------
+# Bench sur un répertoire custom
+# ------------------------------------------------------------
+
+.PHONY: bench-dir
+bench-dir:
+	@if [ -z "$(DIR)" ]; then \
+		echo "❌ Missing DIR. Usage: make bench-dir DIR=path/to/problems"; \
+		exit 1; \
+	fi; \
+	echo "==> Running benchmark on $(DIR)"; \
+	$(DUNE) exec bench/run_bench.exe -- $(DIR)
+
+# ------------------------------------------------------------
+# Nettoyage
+# ------------------------------------------------------------
+
+.PHONY: clean
+clean:
+	@echo "==> Cleaning build"
+	$(DUNE) clean
+	find . -type f -name '*~' -delete
+
+# ------------------------------------------------------------
+# Aide
+# ------------------------------------------------------------
+
+.PHONY: help
+help:
+	@echo ""
+	@echo "Makefile commands:"
+	@echo ""
+	@echo "  make build                Build project"
+	@echo "  make test                 Run all tests"
+	@echo "  make test-unit            Run unit tests only"
+	@echo "  make test-integration     Run integration tests only"
+	@echo ""
+	@echo "  make run FILE=foo.p       Run prover on a file"
+	@echo "  make run                  Run on default test"
+	@echo ""
+	@echo "  make bench                Run benchmark on default dir"
+	@echo "  make bench-dir DIR=...    Run benchmark on custom dir"
+	@echo ""
+	@echo "  make clean                Clean build"
+	@echo ""

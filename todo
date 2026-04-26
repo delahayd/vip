@@ -1,0 +1,9 @@
+* KBO complet avec précédence
+* factoring ordonné
+* subsomption indexée
+* index discrimination tree
+
+* Lancer les benchs :
+make bench-dir DIR=bench/problems/TPTP-v9.2.1/Problems/SYN/ MODE=ordered-fallback TIME_LIMIT=3
+
+* Pour les axiomes, penser à mettre la variable d' environnement TPTP.

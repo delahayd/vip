@@ -1,0 +1,9 @@
+(executable
+ (name run_bench)
+ (libraries prover_lib unix))
+
+(rule
+ (alias runtest)
+ (deps (glob_files_rec %{project_root}/bench/problems/*.p))
+ (action
+   (run ./run_bench.exe problems)))

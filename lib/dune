@@ -1,0 +1,23 @@
+(library
+ (name prover_lib)
+ (modules
+  types
+  pretty
+  subst
+  unif
+  clause
+  fof
+  clausify
+  ordering
+  resolution
+  tptp_parser
+  tptp_lexer
+  tptp_frontend
+  prover)
+ (libraries unix))
+
+(menhir
+ (modules tptp_parser)
+ (infer true))
+
+(ocamllex tptp_lexer)

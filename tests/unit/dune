@@ -1,0 +1,11 @@
+(test
+ (name test_parser)
+ (libraries prover_lib alcotest))
+
+(test
+ (name test_clausify)
+ (libraries prover_lib alcotest))
+
+(test
+ (name test_unify)
+ (libraries prover_lib alcotest))

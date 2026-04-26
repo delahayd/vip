@@ -1,0 +1,7 @@
+(test
+ (name run_problem)
+ (libraries prover_lib alcotest)
+ (deps
+  sat_01.p
+  unsat_01.p
+  fof_unsat_01.p))
