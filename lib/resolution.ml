@@ -806,4 +806,4 @@ let print_derivation deriveds =
         d.rule
         parents
         (string_of_clause d.clause_d))
-    deriveds
+  deriveds

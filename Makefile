@@ -6,7 +6,7 @@ MODE ?= ordered-fallback
 TIME_LIMIT ?=
 MAX_CLAUSES ?=
 
-PROVER = dune exec bin/main.exe
+PROVER = dune exec -- bin/main.exe
 BENCH  = dune exec -- bench/run_bench.exe
 
 # ========= Helpers =========
