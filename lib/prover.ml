@@ -117,8 +117,12 @@ let print_szs outcome =
     match outcome.resolution_stats with
     | None -> ()
     | Some s ->
-        Printf.printf "%% clauses input      : %d\n" outcome.info.clause_count;
-        Printf.printf "%% clauses generated  : %d\n" s.generated_clauses;
-        Printf.printf "%% clauses processed  : %d\n" s.processed_clauses;
-        Printf.printf "%% wall clock seconds : %.6f\n" s.wall_clock_s
+        Printf.printf "%% clauses input           : %d\n" outcome.info.clause_count;
+        Printf.printf "%% clauses generated       : %d\n" s.generated_clauses;
+        Printf.printf "%% clauses processed       : %d\n" s.processed_clauses;
+        Printf.printf "%% resolution inferences   : %d\n" s.resolution_inferences;
+        Printf.printf "%% factoring inferences    : %d\n" s.factoring_inferences;
+        Printf.printf "%% subsumption tests       : %d\n" s.subsumption_tests;
+        Printf.printf "%% subsumption rejections  : %d\n" s.subsumption_rejections;
+        Printf.printf "%% wall clock seconds      : %.6f\n" s.wall_clock_s
   end

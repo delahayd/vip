@@ -26,6 +26,10 @@ type stop_reason =
 type stats = {
   generated_clauses : int;
   processed_clauses : int;
+  resolution_inferences : int;
+  factoring_inferences : int;
+  subsumption_tests : int;
+  subsumption_rejections : int;
   wall_clock_s : float;
 }
 

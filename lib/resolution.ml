@@ -30,6 +30,10 @@ type stop_reason =
 type stats = {
   generated_clauses : int;
   processed_clauses : int;
+  resolution_inferences : int;
+  factoring_inferences : int;
+  subsumption_tests : int;
+  subsumption_rejections : int;
   wall_clock_s : float;
 }
 
@@ -65,12 +69,6 @@ let is_negative = function
   | Neg _ -> true
   | Pos _ -> false
 
-let negative_indices c =
-  c
-  |> List.mapi (fun i lit -> i, lit)
-  |> List.filter (function _, Neg _ -> true | _ -> false)
-  |> List.map fst
-
 let all_indices c =
   let rec aux i acc = function
     | [] -> List.rev acc
@@ -78,10 +76,15 @@ let all_indices c =
   in
   aux 0 [] c
 
+let negative_indices c =
+  c
+  |> List.mapi (fun i lit -> i, lit)
+  |> List.filter (function _, Neg _ -> true | _ -> false)
+  |> List.map fst
+
 let selected_or_maximal_indices c =
   let negs = negative_indices c in
-  if negs <> [] then negs
-  else Ordering.maximal_literal_indices c
+  if negs <> [] then negs else Ordering.maximal_literal_indices c
 
 let dedup_clauses cls =
   let sorted = List.sort compare cls in
@@ -103,8 +106,7 @@ let resolve_pair c1 c2 i j =
         let s = unify_atoms a1 a2 empty_subst in
         let rem1 = List.filteri (fun k _ -> k <> i) c1 in
         let rem2 = List.filteri (fun k _ -> k <> j) c2 in
-        let resolvent = apply_subst_clause s (rem1 @ rem2) in
-        simplify_clause resolvent
+        simplify_clause (apply_subst_clause s (rem1 @ rem2))
       with Not_unifiable ->
         None
     else
@@ -154,7 +156,33 @@ let resolve_by_mode mode c1 c2 =
       let ordered = resolve_ordered_strict c1 c2 in
       if ordered <> [] then ordered else resolve_unrestricted c1 c2
 
-let ordered_factor_clause c =
+let factor_pairs_unrestricted c =
+  let c = rename_clause_apart c in
+  let results = ref [] in
+  List.iter
+    (fun i ->
+      List.iter
+        (fun j ->
+          if i < j then
+            let l1 = List.nth c i in
+            let l2 = List.nth c j in
+            if sign l1 = sign l2 then
+              let a1 = atom_of_literal l1 in
+              let a2 = atom_of_literal l2 in
+              if a1.pred = a2.pred && List.length a1.args = List.length a2.args then
+                try
+                  let s = unify_atoms a1 a2 empty_subst in
+                  let kept = List.filteri (fun k _ -> k <> j) c in
+                  match simplify_clause (apply_subst_clause s kept) with
+                  | Some c -> results := c :: !results
+                  | None -> ()
+                with Not_unifiable ->
+                  ())
+        (all_indices c))
+    (all_indices c);
+  dedup_clauses !results
+
+let factor_pairs_ordered c =
   let c = rename_clause_apart c in
   let active = selected_or_maximal_indices c in
   let results = ref [] in
@@ -172,14 +200,24 @@ let ordered_factor_clause c =
                 try
                   let s = unify_atoms a1 a2 empty_subst in
                   let kept = List.filteri (fun k _ -> k <> j) c in
-                  let factored = apply_subst_clause s kept in
-                  match simplify_clause factored with
+                  match simplify_clause (apply_subst_clause s kept) with
                   | Some c -> results := c :: !results
                   | None -> ()
-                with Not_unifiable -> ())
+                with Not_unifiable ->
+                  ())
         (all_indices c))
     active;
   dedup_clauses !results
+
+let factor_by_mode mode c =
+  match mode with
+  | Unrestricted ->
+      factor_pairs_unrestricted c
+  | Ordered ->
+      factor_pairs_ordered c
+  | Ordered_with_fallback ->
+      let ordered = factor_pairs_ordered c in
+      if ordered <> [] then ordered else factor_pairs_unrestricted c
 
 let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
   let start_t = Unix.gettimeofday () in
@@ -191,6 +229,10 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
 
   let generated = ref 0 in
   let processed = ref 0 in
+  let resolution_inferences = ref 0 in
+  let factoring_inferences = ref 0 in
+  let subsumption_tests = ref 0 in
+  let subsumption_rejections = ref 0 in
 
   let time_exceeded () =
     option_exists
@@ -211,12 +253,12 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
   let better_clause a b =
     let la = List.length a.clause_d in
     let lb = List.length b.clause_d in
-    if la <> lb then la < lb
+    if la <> lb then
+      la < lb
     else
       let na = clause_has_negative a.clause_d in
       let nb = clause_has_negative b.clause_d in
-      if na <> nb then na
-      else a.id < b.id
+      if na <> nb then na else a.id < b.id
   in
 
   let rec insert_agenda d = function
@@ -243,17 +285,27 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
   in
 
   let is_subsumed_by_existing c =
-    List.exists (fun d -> subsumes d.clause_d c) (existing_clauses ())
+    let rec aux = function
+      | [] -> false
+      | d :: tl ->
+          incr subsumption_tests;
+          if subsumes d.clause_d c then true else aux tl
+    in
+    aux (existing_clauses ())
   in
 
   let add_clause ~to_support ~parents ~rule c =
     match simplify_clause c with
-    | None -> None
+    | None ->
+        None
     | Some c ->
         let key = string_of_clause c in
-        if Hashtbl.mem known key || is_subsumed_by_existing c then
+        if Hashtbl.mem known key then
           None
-        else begin
+        else if is_subsumed_by_existing c then begin
+          incr subsumption_rejections;
+          None
+        end else begin
           incr generated;
           let d =
             {
@@ -303,28 +355,32 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
           if Hashtbl.mem all_by_id given.id then begin
             incr processed;
 
-            let factors =
-              match mode with
-              | Unrestricted -> ordered_factor_clause given.clause_d
-              | Ordered | Ordered_with_fallback -> ordered_factor_clause given.clause_d
-            in
-
+            let factors = factor_by_mode mode given.clause_d in
             List.iter
               (fun fc ->
-                if !stop_reason = None then
+                if !stop_reason = None then begin
+                  incr factoring_inferences;
                   match
                     add_clause
                       ~to_support:true
-                      ~parents:[given.id]
-                      ~rule:"factor"
+                      ~parents:[ given.id ]
+                      ~rule:
+                        (match mode with
+                         | Unrestricted -> "factor"
+                         | Ordered -> "ordered_factor"
+                         | Ordered_with_fallback -> "ordered_factor/fallback")
                       fc
                   with
                   | Some d when d.clause_d = [] ->
                       stop_reason := Some (Refutation_found d)
-                  | _ -> ())
+                  | _ -> ()
+                end)
               factors;
 
-            let candidates = existing_clauses () in
+            let candidates =
+              existing_clauses ()
+              |> List.filter (fun d -> d.id <> given.id)
+            in
 
             List.iter
               (fun other ->
@@ -339,21 +395,24 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
                     in
                     List.iter
                       (fun r ->
-                        if !stop_reason = None then
+                        if !stop_reason = None then begin
+                          incr resolution_inferences;
                           match
                             add_clause
                               ~to_support:true
-                              ~parents:[given.id; other.id]
+                              ~parents:[ given.id; other.id ]
                               ~rule:
                                 (match mode with
                                  | Unrestricted -> "resolution"
                                  | Ordered -> "ordered_resolution"
-                                 | Ordered_with_fallback -> "ordered_resolution/fallback")
+                                 | Ordered_with_fallback ->
+                                     "ordered_resolution/fallback")
                               r
                           with
                           | Some d when d.clause_d = [] ->
                               stop_reason := Some (Refutation_found d)
-                          | _ -> ())
+                          | _ -> ()
+                        end)
                       resolvents
                 end)
               candidates
@@ -373,6 +432,10 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
       {
         generated_clauses = !generated;
         processed_clauses = !processed;
+        resolution_inferences = !resolution_inferences;
+        factoring_inferences = !factoring_inferences;
+        subsumption_tests = !subsumption_tests;
+        subsumption_rejections = !subsumption_rejections;
         wall_clock_s = Unix.gettimeofday () -. start_t;
       };
   }
@@ -386,11 +449,10 @@ let print_derivation deriveds =
       let parents =
         match d.parents with
         | [] -> "input"
-        | ps ->
-            String.concat "," (List.map string_of_int ps)
+        | ps -> String.concat "," (List.map string_of_int ps)
       in
       Printf.printf
-        "%4d. %-28s [%s] %s\n"
+        "%4d. %-30s [%s] %s\n"
         d.id
         d.rule
         parents
