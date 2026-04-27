@@ -121,7 +121,6 @@ let run_file ?(config = default_config) filename =
       empty_clause;
       resolution_stats = Some res.stats;
     }
-
   with
   | Resolution.Timeout_hit ->
       ignore (Unix.alarm 0);

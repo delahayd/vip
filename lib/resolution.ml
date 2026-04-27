@@ -86,6 +86,14 @@ let negative_equality = function
   | Neg { pred = "="; args = [ l; r ] } -> Some (l, r)
   | _ -> None
 
+let literal_contains_equality = function
+  | Pos { pred = "="; args = [ _; _ ] }
+  | Neg { pred = "="; args = [ _; _ ] } -> true
+  | _ -> false
+
+let clause_contains_equality c =
+  List.exists literal_contains_equality c
+
 let all_indices c =
   let rec aux i acc = function
     | [] -> List.rev acc
@@ -684,10 +692,17 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
       | _ -> ()
     in
 
+    let equality_problem =
+      List.exists clause_contains_equality axioms
+      || List.exists clause_contains_equality support
+    in
+
+    let axioms_to_support = equality_problem in
+
     List.iter
       (fun c ->
         check_timeout ();
-        if !stop_reason = None then add_initial ~to_support:false c)
+        if !stop_reason = None then add_initial ~to_support:axioms_to_support c)
       axioms;
 
     List.iter
@@ -768,8 +783,7 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
                 (equality_factoring ~check_timeout mode given.clause_d);
 
               let candidates =
-                existing_clauses ()
-                |> List.filter (fun d -> d.id <> given.id)
+                existing_clauses () |> List.filter (fun d -> d.id <> given.id)
               in
 
               List.iter
@@ -850,7 +864,7 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
   | exn ->
       cleanup_alarm ();
       raise exn
-
+      
 let run_resolution ?(limits = default_limits) ~mode clauses =
   run_resolution_sos ~limits ~mode ~axioms:[] ~support:clauses ()
 
