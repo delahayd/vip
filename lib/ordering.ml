@@ -23,8 +23,7 @@ let precedence_rank s =
 let compare_symbol_precedence a b =
   let ra = precedence_rank a in
   let rb = precedence_rank b in
-  if ra <> rb then compare ra rb
-  else compare a b
+  if ra <> rb then compare ra rb else compare a b
 
 let symbol_weight _ = 1
 let variable_weight _ = 1
@@ -44,8 +43,7 @@ let add_var v m =
 
 let rec var_counts_term acc = function
   | Var v -> add_var v acc
-  | Fun (_, args) ->
-      List.fold_left var_counts_term acc args
+  | Fun (_, args) -> List.fold_left var_counts_term acc args
 
 let var_count_ge s t =
   let cs = var_counts_term SMap.empty s in
@@ -75,8 +73,7 @@ let rec lex_kbo_gt xs ys =
   | [], _ -> false
   | _, [] -> true
   | x :: xs, y :: ys ->
-      if x = y then lex_kbo_gt xs ys
-      else kbo_gt x y
+      if x = y then lex_kbo_gt xs ys else kbo_gt x y
 
 and kbo_gt_same_weight s t =
   match s, t with
@@ -84,8 +81,7 @@ and kbo_gt_same_weight s t =
   | Fun _, Var _ -> true
   | Fun (f, xs), Fun (g, ys) ->
       let c = compare_symbol_precedence f g in
-      if c <> 0 then c > 0
-      else lex_kbo_gt xs ys
+      if c <> 0 then c > 0 else lex_kbo_gt xs ys
 
 and kbo_gt s t =
   s <> t
@@ -94,6 +90,14 @@ and kbo_gt s t =
   let ws = term_weight s in
   let wt = term_weight t in
   ws > wt || (ws = wt && kbo_gt_same_weight s t)
+
+let strictly_greater_term_kbo s t =
+  kbo_gt s t
+
+let orient_equation l r =
+  if kbo_gt l r then Some (l, r)
+  else if kbo_gt r l then Some (r, l)
+  else None
 
 let compare_term_kbo s t =
   if s = t then 0

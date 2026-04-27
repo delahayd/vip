@@ -66,46 +66,66 @@ let run_file ?(config = default_config) filename =
   let parsed = load_problem filename in
   let part = partition_input_clauses parsed.inputs in
 
-  let limits = {
-    Resolution.time_limit_s = config.time_limit_s;
-    max_generated_clauses = config.max_generated_clauses;
-  } in
-
-  let res =
-    match part.support with
-    | [] ->
-        Resolution.run_resolution_sos
-          ~limits
-          ~mode:config.inference_mode
-          ~axioms:[]
-          ~support:part.axioms
-          ()
-    | _ ->
-        Resolution.run_resolution_sos
-          ~limits
-          ~mode:config.inference_mode
-          ~axioms:part.axioms
-          ~support:part.support
-          ()
+  let timeout_outcome () =
+    {
+      status = Timeout;
+      info = {
+        file = Some filename;
+        clause_count = List.length part.axioms + List.length part.support;
+        generated_clause_count = 0;
+      };
+      derivation = [];
+      empty_clause = None;
+      resolution_stats = None;
+    }
   in
 
-  let empty_clause =
-    match res.stop_reason with
-    | Refutation_found d -> Some d
-    | Saturation | Time_limit | Clause_limit -> None
-  in
+  try
+    let limits = {
+      Resolution.time_limit_s = config.time_limit_s;
+      max_generated_clauses = config.max_generated_clauses;
+    } in
 
-  {
-    status = infer_status_from_stop_reason res.stop_reason;
-    info = {
-      file = Some filename;
-      clause_count = List.length part.axioms + List.length part.support;
-      generated_clause_count = res.stats.generated_clauses;
-    };
-    derivation = res.derivation;
-    empty_clause;
-    resolution_stats = Some res.stats;
-  }
+    let res =
+      match part.support with
+      | [] ->
+          Resolution.run_resolution_sos
+            ~limits
+            ~mode:config.inference_mode
+            ~axioms:[]
+            ~support:part.axioms
+            ()
+      | _ ->
+          Resolution.run_resolution_sos
+            ~limits
+            ~mode:config.inference_mode
+            ~axioms:part.axioms
+            ~support:part.support
+            ()
+    in
+
+    let empty_clause =
+      match res.stop_reason with
+      | Refutation_found d -> Some d
+      | Saturation | Time_limit | Clause_limit -> None
+    in
+
+    {
+      status = infer_status_from_stop_reason res.stop_reason;
+      info = {
+        file = Some filename;
+        clause_count = List.length part.axioms + List.length part.support;
+        generated_clause_count = res.stats.generated_clauses;
+      };
+      derivation = res.derivation;
+      empty_clause;
+      resolution_stats = Some res.stats;
+    }
+
+  with
+  | Resolution.Timeout_hit ->
+      ignore (Unix.alarm 0);
+      timeout_outcome ()
 
 let print_szs outcome =
   let name =

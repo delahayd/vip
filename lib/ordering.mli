@@ -5,7 +5,9 @@ val clear_precedence : unit -> unit
 
 val term_weight : term -> int
 val compare_term_kbo : term -> term -> int
+val strictly_greater_term_kbo : term -> term -> bool
+val orient_equation : term -> term -> (term * term) option
+
 val compare_atom : atom -> atom -> int
 val compare_literal : literal -> literal -> int
-
 val maximal_literal_indices : clause -> int list

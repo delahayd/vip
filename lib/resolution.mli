@@ -1,5 +1,7 @@
 open Types
 
+exception Timeout_hit
+
 type inference_mode =
   | Unrestricted
   | Ordered
