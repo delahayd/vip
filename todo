@@ -1,3 +1,16 @@
+Roadmap réaliste :
+
+Si tu veux progresser efficacement :
+
+Indexation ⭐⭐⭐⭐⭐
+Given clause loop + heuristiques ⭐⭐⭐⭐⭐
+Simplification aggressive ⭐⭐⭐⭐
+Amélioration KBO + sélection ⭐⭐⭐⭐
+Superposition stricte complète ⭐⭐⭐⭐
+Splitting / SAT ⭐⭐⭐⭐⭐ (gros saut)
+
+* superposition + simplification destructive + indexing (là tu passes à un vrai prover compétitif).
+
 * indexation (discrimination trees / substitution trees)
 * selection function plus fine
 * term ordering tuning (KBO weights + precedence dynamique)
@@ -6,7 +19,9 @@
 * subsomption indexée
 * index discrimination tree
 
-* Lancer les benchs :
-make bench-dir DIR=bench/problems/TPTP-v9.2.1/Problems/SYN/ MODE=ordered-fallback TIME_LIMIT=3
+* Avant de faire quoique ce soit (dune build notamment) :
+eval $(opam env)
 
-* Pour les axiomes, penser à mettre la variable d' environnement TPTP.
+* Lancer les benchs :
+export TPTP=/home/delahaye/ip/bench/problems/TPTP-v9.2.1
+make bench-dir DIR=bench/problems/TPTP-v9.2.1/Problems/SYN/ MODE=ordered-fallback TIME_LIMIT=3

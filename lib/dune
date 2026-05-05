@@ -9,6 +9,8 @@
   fof
   clausify
   ordering
+  discrimination_index
+  term_index
   resolution
   tptp_parser
   tptp_lexer

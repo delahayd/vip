@@ -4,6 +4,9 @@ open Unif
 open Clause
 open Pretty
 
+exception Timeout_hit
+exception Rewrite_limit_hit
+
 type inference_mode =
   | Unrestricted
   | Ordered
@@ -47,15 +50,12 @@ type run_result = {
   stats : stats;
 }
 
-exception Timeout_hit
-exception Rewrite_limit_hit
-
-let max_demodulation_steps_per_term = 10_000
-
 let default_limits = {
   time_limit_s = None;
   max_generated_clauses = None;
 }
+
+let max_demodulation_steps_per_term = 10_000
 
 let id_counter = ref 0
 
@@ -132,6 +132,22 @@ let dedup_clauses ?(check_timeout = fun () -> ()) cls =
   in
   aux [] cls
 
+let dedup_clauses_with_parents ?(check_timeout = fun () -> ()) items =
+  let seen = Hashtbl.create 1024 in
+  let rec aux acc = function
+    | [] -> List.rev acc
+    | (c, parents) :: rest ->
+        check_timeout ();
+        let key = string_of_clause c in
+        if Hashtbl.mem seen key then
+          aux acc rest
+        else begin
+          Hashtbl.add seen key ();
+          aux ((c, parents) :: acc) rest
+        end
+  in
+  aux [] items
+
 let replace_nth xs n x =
   List.mapi (fun i y -> if i = n then x else y) xs
 
@@ -140,7 +156,12 @@ let replace_term_at_path t path replacement =
     match path, t with
     | [], _ -> replacement
     | i :: rest, Fun (f, args) ->
-        Fun (f, List.mapi (fun j arg -> if i = j then aux arg rest else arg) args)
+        let args' =
+          List.mapi
+            (fun j arg -> if i = j then aux arg rest else arg)
+            args
+        in
+        Fun (f, args')
     | _ :: _, Var _ -> t
   in
   aux t path
@@ -148,9 +169,9 @@ let replace_term_at_path t path replacement =
 let non_variable_subterms ~check_timeout t =
   let rec aux path acc = function
     | Var _ -> acc
-    | Fun (_, args) as t ->
+    | Fun (_, args) as u ->
         check_timeout ();
-        let acc = (path, t) :: acc in
+        let acc = (path, u) :: acc in
         List.mapi (fun i x -> (i, x)) args
         |> List.fold_left
              (fun acc (i, child) ->
@@ -177,41 +198,48 @@ let replace_literal_arg_at_path lit arg_index path replacement =
 let oriented_sides mode l r =
   match mode with
   | Unrestricted ->
-      begin match Ordering.orient_equation l r with
-      | Some dir -> [ dir ]
-      | None -> [ (l, r); (r, l) ]
+      begin
+        match Ordering.orient_equation l r with
+        | Some dir -> [ dir ]
+        | None -> [ l, r; r, l ]
       end
   | Ordered ->
-      begin match Ordering.orient_equation l r with
-      | Some dir -> [ dir ]
-      | None -> []
+      begin
+        match Ordering.orient_equation l r with
+        | Some dir -> [ dir ]
+        | None -> []
       end
   | Ordered_with_fallback ->
-      begin match Ordering.orient_equation l r with
-      | Some dir -> [ dir ]
-      | None -> [ (l, r); (r, l) ]
+      begin
+        match Ordering.orient_equation l r with
+        | Some dir -> [ dir ]
+        | None -> [ l, r; r, l ]
       end
 
 let rec match_term env pattern target =
   match pattern with
   | Var v ->
-      begin match StringMap.find_opt v env with
-      | None -> Some (StringMap.add v target env)
-      | Some t when t = target -> Some env
-      | Some _ -> None
+      begin
+        match StringMap.find_opt v env with
+        | None -> Some (StringMap.add v target env)
+        | Some t when t = target -> Some env
+        | Some _ -> None
       end
   | Fun (f, ps) ->
-      begin match target with
-      | Var _ -> None
-      | Fun (g, ts) ->
-          if f <> g || List.length ps <> List.length ts then None
-          else
-            List.fold_left2
-              (fun acc p t ->
-                match acc with
-                | None -> None
-                | Some env -> match_term env p t)
-              (Some env) ps ts
+      begin
+        match target with
+        | Var _ -> None
+        | Fun (g, ts) ->
+            if f <> g || List.length ps <> List.length ts then None
+            else
+              List.fold_left2
+                (fun acc p t ->
+                  match acc with
+                  | None -> None
+                  | Some env -> match_term env p t)
+                (Some env)
+                ps
+                ts
       end
 
 let rec rewrite_once_term ~check_timeout demods t =
@@ -220,9 +248,10 @@ let rec rewrite_once_term ~check_timeout demods t =
     | [] -> None
     | (lhs, rhs) :: rest ->
         check_timeout ();
-        begin match match_term StringMap.empty lhs t with
-        | Some env -> Some (apply_subst_term env rhs)
-        | None -> try_root rest
+        begin
+          match match_term StringMap.empty lhs t with
+          | Some env -> Some (apply_subst_term env rhs)
+          | None -> try_root rest
         end
   in
   match try_root demods with
@@ -235,15 +264,20 @@ let rec rewrite_once_term ~check_timeout demods t =
             | [] -> None
             | a :: suffix ->
                 check_timeout ();
-                match rewrite_once_term ~check_timeout demods a with
-                | Some a' -> Some (Fun (f, List.rev_append prefix (a' :: suffix)))
-                | None -> rewrite_arg (a :: prefix) suffix
+                begin
+                  match rewrite_once_term ~check_timeout demods a with
+                  | Some a' ->
+                      Some (Fun (f, List.rev_append prefix (a' :: suffix)))
+                  | None ->
+                      rewrite_arg (a :: prefix) suffix
+                end
           in
           rewrite_arg [] args
 
 let rec rewrite_fix_term ~check_timeout demods count t =
   check_timeout ();
-  if count > max_demodulation_steps_per_term then raise Rewrite_limit_hit
+  if count > max_demodulation_steps_per_term then
+    raise Rewrite_limit_hit
   else
     match rewrite_once_term ~check_timeout demods t with
     | None -> (t, count)
@@ -256,7 +290,8 @@ let rewrite_atom ~check_timeout demods count a =
         check_timeout ();
         let t', count = rewrite_fix_term ~check_timeout demods count t in
         (t' :: acc, count))
-      ([], count) a.args
+      ([], count)
+      a.args
   in
   ({ a with args = List.rev args }, count)
 
@@ -274,11 +309,13 @@ let rewrite_clause ~check_timeout demods c =
       check_timeout ();
       let lit', count = rewrite_literal ~check_timeout demods count lit in
       (lit' :: acc, count))
-    ([], 0) c
+    ([], 0)
+    c
   |> fun (lits, count) -> (List.rev lits, count)
 
 let oriented_demodulator_of_clause = function
-  | [ Pos { pred = "="; args = [ l; r ] } ] -> Ordering.orient_equation l r
+  | [ Pos { pred = "="; args = [ l; r ] } ] ->
+      Ordering.orient_equation l r
   | _ -> None
 
 let resolve_pair c1 c2 i j =
@@ -293,53 +330,29 @@ let resolve_pair c1 c2 i j =
         let rem1 = List.filteri (fun k _ -> k <> i) c1 in
         let rem2 = List.filteri (fun k _ -> k <> j) c2 in
         simplify_clause (apply_subst_clause s (rem1 @ rem2))
-      with Not_unifiable -> None
-    else None
-  else None
+      with Not_unifiable ->
+        None
+    else
+      None
+  else
+    None
 
-let resolve_unrestricted ~check_timeout c1 c2 =
+let resolve_two_clauses ~check_timeout c1 c2 =
   let c1 = rename_clause_apart c1 in
   let c2 = rename_clause_apart c2 in
   let results = ref [] in
-  List.iter
-    (fun i ->
+  List.iteri
+    (fun i _ ->
       check_timeout ();
-      List.iter
-        (fun j ->
+      List.iteri
+        (fun j _ ->
           check_timeout ();
           match resolve_pair c1 c2 i j with
           | Some c -> results := c :: !results
           | None -> ())
-        (all_indices c2))
-    (all_indices c1);
+        c2)
+    c1;
   dedup_clauses ~check_timeout !results
-
-let resolve_ordered_strict ~check_timeout c1 c2 =
-  let c1 = rename_clause_apart c1 in
-  let c2 = rename_clause_apart c2 in
-  let active1 = selected_or_maximal_indices c1 in
-  let active2 = selected_or_maximal_indices c2 in
-  let results = ref [] in
-  List.iter
-    (fun i ->
-      check_timeout ();
-      List.iter
-        (fun j ->
-          check_timeout ();
-          match resolve_pair c1 c2 i j with
-          | Some c -> results := c :: !results
-          | None -> ())
-        active2)
-    active1;
-  dedup_clauses ~check_timeout !results
-
-let resolve_by_mode ~check_timeout mode c1 c2 =
-  match mode with
-  | Unrestricted -> resolve_unrestricted ~check_timeout c1 c2
-  | Ordered -> resolve_ordered_strict ~check_timeout c1 c2
-  | Ordered_with_fallback ->
-      let ordered = resolve_ordered_strict ~check_timeout c1 c2 in
-      if ordered <> [] then ordered else resolve_unrestricted ~check_timeout c1 c2
 
 let factor_pairs_unrestricted ~check_timeout c =
   let c = rename_clause_apart c in
@@ -402,7 +415,8 @@ let factor_by_mode ~check_timeout mode c =
   | Ordered -> factor_pairs_ordered ~check_timeout c
   | Ordered_with_fallback ->
       let ordered = factor_pairs_ordered ~check_timeout c in
-      if ordered <> [] then ordered else factor_pairs_unrestricted ~check_timeout c
+      if ordered <> [] then ordered
+      else factor_pairs_unrestricted ~check_timeout c
 
 let equality_resolution ~check_timeout mode c =
   let c = rename_clause_apart c in
@@ -453,66 +467,155 @@ let equality_factoring ~check_timeout mode c =
     c;
   dedup_clauses ~check_timeout !results
 
-let superpose_from_into ~check_timeout mode source target =
-  let source = rename_clause_apart source in
-  let target = rename_clause_apart target in
+let superpose_from_into_position
+    source
+    target
+    eq_index
+    lhs
+    rhs
+    (te : Term_index.term_entry) =
+  let source_rest = List.filteri (fun i _ -> i <> eq_index) source in
+  let lit = List.nth target te.Term_index.lit_index in
+  try
+    let s = unify_terms lhs te.Term_index.subterm empty_subst in
+    let rhs' = apply_subst_term s rhs in
+    let lit' =
+      replace_literal_arg_at_path
+        lit
+        te.Term_index.arg_index
+        te.Term_index.path
+        rhs'
+    in
+    let target' =
+      List.mapi
+        (fun i x -> if i = te.Term_index.lit_index then lit' else x)
+        target
+    in
+    simplify_clause (apply_subst_clause s (source_rest @ target'))
+  with Not_unifiable ->
+    None
+
+let indexed_superpose_given ~check_timeout ~mode ~term_index ~all_by_id given =
   let results = ref [] in
+
+  (* Direction 1 :
+     égalités du given -> sous-termes des clauses indexées *)
+  let given_source_clause = rename_clause_apart given.clause_d in
+
   List.iteri
-    (fun eq_index eq_lit ->
+    (fun eq_index lit ->
       check_timeout ();
-      if is_active_literal mode source eq_index then
-        match positive_equality eq_lit with
+
+      if is_active_literal mode given_source_clause eq_index then
+        match positive_equality lit with
         | None -> ()
         | Some (l, r) ->
-            let dirs = oriented_sides mode l r in
             List.iter
               (fun (lhs, rhs) ->
                 check_timeout ();
-                let source_rest = List.filteri (fun i _ -> i <> eq_index) source in
-                List.iteri
-                  (fun lit_index lit ->
-                    check_timeout ();
-                    if is_active_literal mode target lit_index then
-                      let a = atom_of_literal lit in
-                      List.iteri
-                        (fun arg_index arg ->
-                          check_timeout ();
-                          let subterms = non_variable_subterms ~check_timeout arg in
-                          List.iter
-                            (fun (path, subterm) ->
-                              check_timeout ();
-                              try
-                                let s = unify_terms lhs subterm empty_subst in
-                                let rhs' = apply_subst_term s rhs in
-                                let lit' =
-                                  replace_literal_arg_at_path lit arg_index path rhs'
-                                in
-                                let target' =
-                                  List.mapi
-                                    (fun i x -> if i = lit_index then lit' else x)
-                                    target
-                                in
-                                let combined =
-                                  apply_subst_clause s (source_rest @ target')
-                                in
-                                match simplify_clause combined with
-                                | Some c -> results := c :: !results
-                                | None -> ()
-                              with Not_unifiable -> ())
-                            subterms)
-                        a.args)
-                  target)
-              dirs)
-    source;
-  dedup_clauses ~check_timeout !results
 
-let superpose_between ~check_timeout mode c1 c2 =
-  check_timeout ();
-  let r1 = superpose_from_into ~check_timeout mode c1 c2 in
-  check_timeout ();
-  let r2 = superpose_from_into ~check_timeout mode c2 c1 in
-  check_timeout ();
-  dedup_clauses ~check_timeout (r1 @ r2)
+                let entries =
+                  Term_index.find_terms_unifiable_with term_index lhs
+                in
+
+                List.iter
+                  (fun (te : Term_index.term_entry) ->
+                    check_timeout ();
+
+                    if te.Term_index.clause_id <> given.id then
+                      match Hashtbl.find_opt all_by_id te.Term_index.clause_id with
+                      | None -> ()
+                      | Some target_d ->
+                          let target_clause =
+                            rename_clause_apart target_d.clause_d
+                          in
+                          match
+                            superpose_from_into_position
+                              given_source_clause
+                              target_clause
+                              eq_index
+                              lhs
+                              rhs
+                              te
+                          with
+                          | Some c ->
+                              results := (c, [ given.id; target_d.id ]) :: !results
+                          | None ->
+                              ())
+                  entries)
+              (oriented_sides mode l r))
+    given_source_clause;
+
+  (* Direction 2 :
+     égalités indexées -> sous-termes du given *)
+  let given_target_clause = rename_clause_apart given.clause_d in
+
+  List.iteri
+    (fun lit_index lit ->
+      check_timeout ();
+
+      if is_active_literal mode given_target_clause lit_index then
+        let a = atom_of_literal lit in
+
+        List.iteri
+          (fun arg_index arg ->
+            check_timeout ();
+
+            let subterms =
+              non_variable_subterms ~check_timeout arg
+            in
+
+            List.iter
+              (fun (path, subterm) ->
+                check_timeout ();
+
+                let eqs =
+                  Term_index.find_equalities_unifiable_with term_index subterm
+                in
+
+                List.iter
+                  (fun (ee : Term_index.equality_entry) ->
+                    check_timeout ();
+
+                    if ee.Term_index.clause_id <> given.id then
+                      match Hashtbl.find_opt all_by_id ee.Term_index.clause_id with
+                      | None -> ()
+                      | Some eq_d ->
+                          let source_clause =
+                            rename_clause_apart eq_d.clause_d
+                          in
+                          let te : Term_index.term_entry =
+                            {
+                              Term_index.clause_id = given.id;
+                              lit_index;
+                              arg_index;
+                              path;
+                              subterm;
+                            }
+                          in
+                          match
+                            superpose_from_into_position
+                              source_clause
+                              given_target_clause
+                              ee.Term_index.lit_index
+                              ee.Term_index.lhs
+                              ee.Term_index.rhs
+                              te
+                          with
+                          | Some c ->
+                              results := (c, [ eq_d.id; given.id ]) :: !results
+                          | None ->
+                              ())
+                  eqs)
+              subterms)
+          a.args)
+    given_target_clause;
+
+  dedup_clauses_with_parents ~check_timeout (List.rev !results)
+
+let term_index_orientation_mode = function
+  | Ordered -> Term_index.Oriented_only
+  | Unrestricted | Ordered_with_fallback -> Term_index.Both_if_unorientable
 
 let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
   let start_t = Unix.gettimeofday () in
@@ -522,6 +625,9 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
   let agenda : derived list ref = ref [] in
   let all : derived list ref = ref [] in
   let demodulators : (term * term) list ref = ref [] in
+
+  let literal_index = Discrimination_index.create () in
+  let term_index = Term_index.create () in
 
   let generated = ref 0 in
   let processed = ref 0 in
@@ -570,7 +676,9 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
   in
 
   let clause_limit_exceeded () =
-    option_exists (fun n -> !generated >= n) limits.max_generated_clauses
+    option_exists
+      (fun n -> !generated >= n)
+      limits.max_generated_clauses
   in
 
   let clause_has_negative c =
@@ -664,7 +772,8 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
     | None -> None
     | Some c ->
         let key = string_of_clause c in
-        if Hashtbl.mem known key then None
+        if Hashtbl.mem known key then
+          None
         else if is_subsumed_by_existing c then begin
           incr subsumption_rejections;
           None
@@ -675,9 +784,56 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
           Hashtbl.replace all_by_id d.id d;
           all := d :: !all;
           register_demodulator c;
+          Discrimination_index.add_clause literal_index ~clause_id:d.id c;
+          Term_index.add_clause
+            term_index
+            ~clause_id:d.id
+            ~orientation_mode:(term_index_orientation_mode mode)
+            c;
           if to_support then enqueue d;
           Some d
         end
+  in
+
+  let resolution_candidates given =
+    let indexed_ids = Hashtbl.create 127 in
+
+    List.iter
+      (fun lit ->
+        check_timeout ();
+        let entries =
+          Discrimination_index.find_complementary literal_index lit
+        in
+        List.iter
+          (fun e ->
+            check_timeout ();
+            if e.Discrimination_index.clause_id <> given.id then
+              Hashtbl.replace indexed_ids e.Discrimination_index.clause_id ())
+          entries)
+      given.clause_d;
+
+    let indexed =
+      Hashtbl.fold
+        (fun id () acc ->
+          match Hashtbl.find_opt all_by_id id with
+          | Some d -> d :: acc
+          | None -> acc)
+        indexed_ids
+        []
+    in
+
+    let fallback =
+      Hashtbl.fold
+        (fun id d acc ->
+          check_timeout ();
+          if id <> given.id && not (Hashtbl.mem indexed_ids id) then
+            d :: acc
+          else acc)
+        all_by_id
+        []
+    in
+
+    indexed @ fallback
   in
 
   try
@@ -782,68 +938,58 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
                   end)
                 (equality_factoring ~check_timeout mode given.clause_d);
 
-              let candidates =
-                existing_clauses () |> List.filter (fun d -> d.id <> given.id)
-              in
-
               List.iter
                 (fun other ->
                   check_timeout ();
-                  if !stop_reason = None && Hashtbl.mem all_by_id other.id then begin
-                    if clause_limit_exceeded () then
-                      stop_reason := Some Clause_limit
-                    else begin
-                      List.iter
-                        (fun r ->
-                          check_timeout ();
-                          if !stop_reason = None then begin
-                            incr resolution_inferences;
-                            match
-                              add_clause
-                                ~to_support:true
-                                ~parents:[ given.id; other.id ]
-                                ~rule:
-                                  (match mode with
-                                   | Unrestricted -> "resolution"
-                                   | Ordered -> "ordered_resolution"
-                                   | Ordered_with_fallback ->
-                                       "ordered_resolution/fallback")
-                                r
-                            with
-                            | Some d when d.clause_d = [] ->
-                                stop_reason := Some (Refutation_found d)
-                            | _ -> ()
-                          end)
-                        (resolve_by_mode
-                           ~check_timeout
-                           mode
-                           given.clause_d
-                           other.clause_d);
-
-                      List.iter
-                        (fun r ->
-                          check_timeout ();
-                          if !stop_reason = None then begin
-                            incr superposition_inferences;
-                            match
-                              add_clause
-                                ~to_support:true
-                                ~parents:[ given.id; other.id ]
-                                ~rule:"superposition"
-                                r
-                            with
-                            | Some d when d.clause_d = [] ->
-                                stop_reason := Some (Refutation_found d)
-                            | _ -> ()
-                          end)
-                        (superpose_between
-                           ~check_timeout
-                           mode
-                           given.clause_d
-                           other.clause_d)
-                    end
+                  if !stop_reason = None then begin
+                    let resolvents =
+                      resolve_two_clauses
+                        ~check_timeout
+                        given.clause_d
+                        other.clause_d
+                    in
+                    List.iter
+                      (fun r ->
+                        check_timeout ();
+                        if !stop_reason = None then begin
+                          incr resolution_inferences;
+                          match
+                            add_clause
+                              ~to_support:true
+                              ~parents:[ given.id; other.id ]
+                              ~rule:"resolution"
+                              r
+                          with
+                          | Some d when d.clause_d = [] ->
+                              stop_reason := Some (Refutation_found d)
+                          | _ -> ()
+                        end)
+                      resolvents
                   end)
-                candidates
+                (resolution_candidates given);
+
+	      List.iter
+		(fun (r, parents) ->
+		  check_timeout ();
+		  if !stop_reason = None then begin
+		    incr superposition_inferences;
+		    match
+		      add_clause
+			~to_support:true
+			~parents
+			~rule:"indexed_superposition"
+			r
+		    with
+		    | Some d when d.clause_d = [] ->
+			stop_reason := Some (Refutation_found d)
+		    | _ -> ()
+		  end)
+		(indexed_superpose_given
+		   ~check_timeout
+		   ~mode
+		   ~term_index
+		   ~all_by_id
+		   given)
             end
     done;
 
@@ -864,7 +1010,7 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
   | exn ->
       cleanup_alarm ();
       raise exn
-      
+
 let run_resolution ?(limits = default_limits) ~mode clauses =
   run_resolution_sos ~limits ~mode ~axioms:[] ~support:clauses ()
 
