@@ -3,7 +3,7 @@ open Prover
 
 let usage () =
   prerr_endline
-    "Usage: prover_cli [--time-limit SEC] [--max-clauses N] [--proof] [--mode unrestricted|ordered|ordered-fallback] <fichier.p>";
+    "Usage: ip [--time-limit SEC] [--max-clauses N] [--proof] [--mode unrestricted|ordered|ordered-fallback] <fichier.p>";
   exit 2
 
 let parse_mode = function

@@ -1,13 +1,15 @@
 # ========= Configuration =========
 
 FILE ?=
-DIR ?= tests/integration
+#DIR ?= tests/integration
+DIR ?= bench/problems/TPTP-v9.2.1/Problems/SYN/
 MODE ?= ordered-fallback
-TIME_LIMIT ?=
+TIME_LIMIT ?= 3
 MAX_CLAUSES ?=
 
 PROVER = dune exec -- bin/main.exe
-BENCH  = dune exec -- bench/run_bench.exe
+BENCH = dune exec -- bench/run_bench.exe
+BENCH_COMPARE = dune exec bench/run_bench_compare.exe
 
 # ========= Helpers =========
 
@@ -19,9 +21,16 @@ endef
 
 # ========= Targets =========
 
+.PHONY: all
+all: build install
+
 .PHONY: build
 build:
 	dune build
+
+.PHONY: install
+install:
+	dune install --prefix .
 
 .PHONY: run
 run:
@@ -46,6 +55,14 @@ bench-dir:
 	  exit 1; \
 	fi
 	$(BENCH) --dir $(DIR) $(call build_args)
+
+.PHONY: bench-compare
+bench-compare:
+	$(BENCH_COMPARE) -- $(DIR) $(TIME_LIMIT)
+
+.PHONY: benchs
+benchs:
+	$(BENCH_COMPARE) -- $(DIR) $(TIME_LIMIT)
 
 .PHONY: clean
 clean:
