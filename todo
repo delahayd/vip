@@ -28,4 +28,23 @@ make bench-dir DIR=bench/problems/TPTP-v9.2.1/Problems/SYN/ MODE=ordered-fallbac
 
 * Lancer les benchs comparatifs :
 export TPTP=/home/delahaye/ip/bench/problems/TPTP-v9.2.1
-make bench-compare DIR=bench/problems/TPTP-v9.2.1/Problems/SYN/ MODE=ordered-fallback TIME_LIMIT=3
+make benchs-dir DIR=bench/problems/TPTP-v9.2.1/Problems/SYN/ MODE=ordered-fallback TIME_LIMIT=3
+
+* Lancer les tests de régression :
+make bench-regression OLD=bench/logs/file1 NEW=bench/logs/file2
+
+* Fontes :
+Site : https://patorjk.com/software/taag/
+Sélectionné : Calvin S
+Small
+BlurVision ASCII
+Doom
+Soft
+Standard
+Terrace
+Tmplr
+Classy
+Emboss (2)
+Future
+Dos Rebel
+Stop

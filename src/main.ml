@@ -1,48 +1,83 @@
 open Prover_lib
-open Prover
+
+let version_n = 1
+
+exception Invalid_version_index of int
+
+let version_of_n n =
+  if n < 1 then
+    raise (Invalid_version_index n)
+  else
+    exp 1.0 -. (1.0 /. float_of_int n)
+
+let version_string () =
+  Printf.sprintf "%.12f" (version_of_n version_n)
+
+let print_header () =
+  Header.header
+  |> String.to_seq
+  |> Seq.drop 1
+  |> String.of_seq
+  |> print_string
+
+let print_version () =
+  print_header ();
+  Printf.printf "ip version %s (seed n = %d)\n" (version_string ()) version_n
 
 let usage () =
   prerr_endline
-    "Usage: ip [--time-limit SEC] [--max-clauses N] [--proof] [--mode unrestricted|ordered|ordered-fallback] <fichier.p>";
+    "Usage: ip [--version] [--proof] [--time-limit SECONDS] [--max-clauses N] [--mode MODE] FILE";
   exit 2
 
-let parse_mode = function
-  | "unrestricted" -> Resolution.Unrestricted
-  | "ordered" -> Resolution.Ordered
-  | "ordered-fallback" -> Resolution.Ordered_with_fallback
+let mode_of_string = function
+  | "unrestricted" -> Prover_lib.Resolution.Unrestricted
+  | "ordered" -> Prover_lib.Resolution.Ordered
+  | "ordered-fallback" -> Prover_lib.Resolution.Ordered_with_fallback
   | s ->
       prerr_endline ("Unknown mode: " ^ s);
       usage ()
 
 let parse_args () =
+  let file = ref None in
+  let print_derivation = ref false in
   let time_limit_s = ref None in
   let max_generated_clauses = ref None in
-  let proof = ref false in
-  let inference_mode = ref Resolution.Ordered_with_fallback in
-  let file = ref None in
+  let inference_mode = ref Prover_lib.Resolution.Ordered_with_fallback in
+  let show_version = ref false in
 
   let rec loop i =
-    if i >= Array.length Sys.argv then
-      ()
+    if i >= Array.length Sys.argv then ()
     else
       match Sys.argv.(i) with
+      | "--version" ->
+          show_version := true;
+          loop (i + 1)
+
+      | "--proof" ->
+          print_derivation := true;
+          loop (i + 1)
+
       | "--time-limit" ->
           if i + 1 >= Array.length Sys.argv then usage ();
-          time_limit_s := Some (float_of_string Sys.argv.(i + 1));
+          let t =
+            try float_of_string Sys.argv.(i + 1)
+            with Failure _ -> usage ()
+          in
+          time_limit_s := Some t;
           loop (i + 2)
 
       | "--max-clauses" ->
           if i + 1 >= Array.length Sys.argv then usage ();
-          max_generated_clauses := Some (int_of_string Sys.argv.(i + 1));
+          let n =
+            try int_of_string Sys.argv.(i + 1)
+            with Failure _ -> usage ()
+          in
+          max_generated_clauses := Some n;
           loop (i + 2)
-
-      | "--proof" ->
-          proof := true;
-          loop (i + 1)
 
       | "--mode" ->
           if i + 1 >= Array.length Sys.argv then usage ();
-          inference_mode := parse_mode Sys.argv.(i + 1);
+          inference_mode := mode_of_string Sys.argv.(i + 1);
           loop (i + 2)
 
       | s when String.length s > 0 && s.[0] = '-' ->
@@ -56,65 +91,45 @@ let parse_args () =
                 file := Some s;
                 loop (i + 1)
             | Some _ ->
+                prerr_endline "Too many input files.";
                 usage ()
           end
   in
 
   loop 1;
 
-  match !file with
-  | None -> usage ()
-  | Some f ->
-      ({
-         time_limit_s = !time_limit_s;
-         max_generated_clauses = !max_generated_clauses;
-         print_derivation = !proof;
-         inference_mode = !inference_mode;
-       }, f)
-
-let exit_code_of_status = function
-  | Theorem | Unsatisfiable -> 0
-  | Timeout -> 124
-  | ResourceOut -> 3
-  | GaveUp -> 1
-  | Satisfiable | CounterSatisfiable -> 10
-  | InputError -> 2
-
-let input_error_outcome filename =
-  {
-    status = InputError;
-    info = {
-      file = Some filename;
-      clause_count = 0;
-      generated_clause_count = 0;
-    };
-    derivation = [];
-    empty_clause = None;
-    resolution_stats = None;
-  }
+  if !show_version then
+    `Version
+  else
+    match !file with
+    | None -> usage ()
+    | Some filename ->
+        `Run
+          ( filename,
+            {
+              Prover_lib.Prover.time_limit_s = !time_limit_s;
+              max_generated_clauses = !max_generated_clauses;
+              print_derivation = !print_derivation;
+              inference_mode = !inference_mode;
+            } )
 
 let () =
-  let config, filename = parse_args () in
-  try
-    let outcome = run_file ~config filename in
-    print_szs outcome;
+  match parse_args () with
+  | `Version ->
+      print_version ()
 
-    if config.print_derivation then begin
-      print_endline "% SZS output start CNFRefutation";
-      Resolution.print_derivation outcome.derivation;
-      print_endline "% SZS output end CNFRefutation"
-    end;
+  | `Run (filename, config) ->
+      try
+        let outcome = Prover_lib.Prover.run_file ~config filename in
+        Prover_lib.Prover.print_szs outcome;
 
-    exit (exit_code_of_status outcome.status)
-  with
-  | Tptp_frontend.Error msg ->
-      let outcome = input_error_outcome filename in
-      print_szs outcome;
-      prerr_endline ("% message: " ^ msg);
-      exit (exit_code_of_status InputError)
-
-  | Failure msg ->
-      let outcome = input_error_outcome filename in
-      print_szs outcome;
-      prerr_endline ("% message: " ^ msg);
-      exit (exit_code_of_status InputError)
+        if config.Prover_lib.Prover.print_derivation then begin
+          print_endline "% Proof trace:";
+          Prover_lib.Resolution.print_derivation outcome.derivation
+        end
+      with
+      | Prover_lib.Resolution.Timeout_hit ->
+          Printf.printf "%% SZS status Timeout for %s\n" filename
+      | exn ->
+          Printf.eprintf "InputError %s\n" (Printexc.to_string exn);
+          exit 1

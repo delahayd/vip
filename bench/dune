@@ -3,7 +3,7 @@
  (libraries prover_lib unix))
 
 (executable
- (name run_bench_compare)
+ (name check_regression)
  (libraries unix))
 
 (rule

@@ -9,7 +9,7 @@ MAX_CLAUSES ?=
 
 PROVER = dune exec -- bin/main.exe
 BENCH = dune exec -- bench/run_bench.exe
-BENCH_COMPARE = dune exec bench/run_bench_compare.exe
+REGRESSION = dune exec bench/check_regression.exe
 
 # ========= Helpers =========
 
@@ -26,10 +26,12 @@ all: build install
 
 .PHONY: build
 build:
+	@echo -n "==> Building project: "
 	dune build
 
 .PHONY: install
 install:
+	@echo -n "==> Installing project (in local): "
 	dune install --prefix .
 
 .PHONY: run
@@ -46,7 +48,7 @@ test:
 
 .PHONY: bench
 bench:
-	$(BENCH) --dir $(DIR) $(call build_args)
+	$(BENCH) --onlyip --dir $(DIR) $(call build_args)
 
 .PHONY: bench-dir
 bench-dir:
@@ -54,15 +56,23 @@ bench-dir:
 	  echo "Usage: make bench-dir DIR=path"; \
 	  exit 1; \
 	fi
-	$(BENCH) --dir $(DIR) $(call build_args)
-
-.PHONY: bench-compare
-bench-compare:
-	$(BENCH_COMPARE) -- $(DIR) $(TIME_LIMIT)
+	$(BENCH) --onlyip --dir $(DIR) $(call build_args)
 
 .PHONY: benchs
 benchs:
-	$(BENCH_COMPARE) -- $(DIR) $(TIME_LIMIT)
+	$(BENCH) -- $(DIR) $(TIME_LIMIT)
+
+.PHONY: benchs-dir
+benchs-dir:
+	@if [ -z "$(DIR)" ]; then \
+	  echo "Usage: make bench-dir DIR=path"; \
+	  exit 1; \
+	fi
+	$(BENCH) --dir $(DIR) $(call build_args)
+
+.PHONY: bench-regression
+bench-regression:
+	$(REGRESSION) -- $(OLD) $(NEW)
 
 .PHONY: clean
 clean:
