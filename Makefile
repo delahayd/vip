@@ -5,7 +5,9 @@ FILE ?=
 DIR ?= bench/problems/TPTP-v9.2.1/Problems/SYN/
 MODE ?= ordered-fallback
 TIME_LIMIT ?= 3
+ROBUST_TIME_LIMIT ?=
 MAX_CLAUSES ?=
+CASC ?=
 
 PROVER = dune exec -- bin/main.exe
 BENCH = dune exec -- bench/run_bench.exe
@@ -15,6 +17,7 @@ REGRESSION = dune exec bench/check_regression.exe
 
 define build_args
 $(if $(TIME_LIMIT),--time-limit $(TIME_LIMIT)) \
+$(if $(ROBUST_TIME_LIMIT),--robust-time-limit) \
 $(if $(MAX_CLAUSES),--max-clauses $(MAX_CLAUSES)) \
 --mode $(MODE)
 endef
@@ -60,7 +63,7 @@ bench-dir:
 
 .PHONY: benchs
 benchs:
-	$(BENCH) -- $(DIR) $(TIME_LIMIT)
+	$(BENCH) --dir $(DIR) $(call build_args)
 
 .PHONY: benchs-dir
 benchs-dir:
@@ -73,6 +76,14 @@ benchs-dir:
 .PHONY: bench-regression
 bench-regression:
 	$(REGRESSION) -- $(OLD) $(NEW)
+
+.PHONY: bench-casc
+bench-casc:
+	$(BENCH) --onlyip --dir $(DIR) --casc $(CASC) $(call build_args)
+
+.PHONY: benchs-casc
+benchs-casc:
+	$(BENCH) --dir $(DIR) --casc $(CASC) $(call build_args)
 
 .PHONY: clean
 clean:

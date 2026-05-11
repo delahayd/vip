@@ -33,6 +33,10 @@ make benchs-dir DIR=bench/problems/TPTP-v9.2.1/Problems/SYN/ MODE=ordered-fallba
 * Lancer les tests de régression :
 make bench-regression OLD=bench/logs/file1 NEW=bench/logs/file2
 
+* Lancer les tests de CASC (avec timeout robuste) :
+export TPTP=/home/delahaye/ip/bench/problems/casc/casc-30-2025
+make bench-casc DIR=/home/delahaye/ip/bench/problems/casc/casc-30-2025/Problems/FOF CASC=casc-30-2025_fof TIME_LIMIT=3 ROBUST_TIME_LIMIT=1
+
 * Fontes :
 Site : https://patorjk.com/software/taag/
 Sélectionné : Calvin S
