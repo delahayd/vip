@@ -24,11 +24,11 @@ eval $(opam env)
 
 * Lancer les benchs :
 export TPTP=/home/delahaye/ip/bench/problems/TPTP-v9.2.1
-make bench-dir DIR=bench/problems/TPTP-v9.2.1/Problems/SYN/ MODE=ordered-fallback TIME_LIMIT=3
+make bench DIR=bench/problems/TPTP-v9.2.1/Problems/SYN/ MODE=ordered-fallback TIME_LIMIT=3
 
 * Lancer les benchs comparatifs :
 export TPTP=/home/delahaye/ip/bench/problems/TPTP-v9.2.1
-make benchs-dir DIR=bench/problems/TPTP-v9.2.1/Problems/SYN/ MODE=ordered-fallback TIME_LIMIT=3
+make benchs DIR=bench/problems/TPTP-v9.2.1/Problems/SYN/ MODE=ordered-fallback TIME_LIMIT=3
 
 * Lancer les tests de régression :
 make bench-regression OLD=bench/logs/file1 NEW=bench/logs/file2

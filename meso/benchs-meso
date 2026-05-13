@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MAIL="David.Delahaye@lirmm.fr"
+REPO="git@github.com:delahayd/ip.git"
+
+TIME_LIMIT=""
+ROBUST_TIME_LIMIT=0
+MAX_CLAUSES=""
+MODE=""
+DIR=""
+CASC=""
+TPTP_DIR=""
+ONLYIP=0
+
+usage() {
+  cat <<EOF
+Usage: benchs-meso [options]
+
+Options:
+  --time-limit <temps>
+  --robust-time-limit
+  --max-clauses <nombre>
+  --mode <mode>
+  --dir <répertoire>
+  --casc <nom>
+  --tptp <répertoire>
+  --onlyip
+EOF
+  exit 2
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --time-limit)
+      [[ $# -ge 2 ]] || usage
+      TIME_LIMIT="$2"
+      shift 2
+      ;;
+    --robust-time-limit)
+      ROBUST_TIME_LIMIT=1
+      shift
+      ;;
+    --max-clauses)
+      [[ $# -ge 2 ]] || usage
+      MAX_CLAUSES="$2"
+      shift 2
+      ;;
+    --mode)
+      [[ $# -ge 2 ]] || usage
+      MODE="$2"
+      shift 2
+      ;;
+    --dir)
+      [[ $# -ge 2 ]] || usage
+      DIR="$2"
+      shift 2
+      ;;
+    --casc)
+      [[ $# -ge 2 ]] || usage
+      CASC="$2"
+      shift 2
+      ;;
+    --tptp)
+      [[ $# -ge 2 ]] || usage
+      TPTP_DIR="$2"
+      shift 2
+      ;;
+    --onlyip)
+      ONLYIP=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage
+      ;;
+  esac
+done
+
+if [[ "$ONLYIP" -eq 1 && -z "$CASC" ]]; then
+  MAKE_TARGET="bench"
+elif [[ "$ONLYIP" -eq 0 && -z "$CASC" ]]; then
+  MAKE_TARGET="benchs"
+elif [[ "$ONLYIP" -eq 1 && -n "$CASC" ]]; then
+  MAKE_TARGET="bench-casc"
+else
+  MAKE_TARGET="benchs-casc"
+fi
+
+MAKE_ARGS=()
+
+[[ -n "$TIME_LIMIT" ]] && MAKE_ARGS+=("TIME_LIMIT=$TIME_LIMIT")
+[[ "$ROBUST_TIME_LIMIT" -eq 1 ]] && MAKE_ARGS+=("ROBUST_TIME_LIMIT=1")
+[[ -n "$MAX_CLAUSES" ]] && MAKE_ARGS+=("MAX_CLAUSES=$MAX_CLAUSES")
+[[ -n "$MODE" ]] && MAKE_ARGS+=("MODE=$MODE")
+[[ -n "$DIR" ]] && MAKE_ARGS+=("DIR=$DIR")
+[[ -n "$CASC" ]] && MAKE_ARGS+=("CASC=$CASC")
+
+STAMP="$(date +%Y%m%d_%H%M%S)"
+WORKDIR="${TMPDIR:-$PWD}/ip_bench_${STAMP}"
+SLURM_SCRIPT="bench_meso_${STAMP}.slurm"
+
+cat > "$SLURM_SCRIPT" <<EOF
+#!/usr/bin/env bash
+#SBATCH --job-name=ip-bench
+#SBATCH --output=ip-bench-%j.out
+#SBATCH --error=ip-bench-%j.err
+#SBATCH --mail-user=David.Delahaye@lirmm.fr
+#SBATCH --mail-type=END,FAIL
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --partition=cpu-dedicated
+
+set -euo pipefail
+
+echo "[INFO] Working directory: $WORKDIR"
+mkdir -p "$WORKDIR"
+cd "$WORKDIR"
+
+echo "[INFO] Cloning repository..."
+git clone "$REPO"
+cd ip
+
+echo "[INFO] Building ip..."
+make
+
+EOF
+
+if [[ -n "$TPTP_DIR" ]]; then
+  cat >> "$SLURM_SCRIPT" <<EOF
+export TPTP="$TPTP_DIR"
+echo "[INFO] TPTP=\$TPTP"
+
+EOF
+fi
+
+cat >> "$SLURM_SCRIPT" <<EOF
+echo "[INFO] Running make target: $MAKE_TARGET"
+echo "[INFO] Make args: ${MAKE_ARGS[*]}"
+
+make "$MAKE_TARGET" ${MAKE_ARGS[*]}
+
+echo "[INFO] Job finished."
+EOF
+
+JOB_ID="$(sbatch "$SLURM_SCRIPT" | awk '{print $NF}')"
+
+echo "Submitted SLURM job: $JOB_ID"
+echo "SLURM script: $SLURM_SCRIPT"
+echo "Target: $MAKE_TARGET"
+echo "Workdir: $WORKDIR"

@@ -24,6 +24,7 @@ type config = {
   only_ip : bool;
   casc_dir : string option;
   robust_time_limit : bool;
+  size_limit_gb : int option;
 }
 
 type bench_row = {
@@ -136,7 +137,7 @@ let shell_quote s =
 
 let usage () =
   prerr_endline
-    "Usage: run_bench [--debug] [--onlyip] [--robust-time-limit] [--casc REP] [--dir DIR] --time-limit SECONDS [--max-clauses N] [--mode MODE]";
+    "Usage: run_bench [--debug] [--onlyip] [--robust-time-limit] [--casc REP] [--dir DIR] --time-limit SECONDS [--max-clauses N] [--mode MODE] [--size-limit GB]";
   exit 2
 
 let parse_args () =
@@ -148,6 +149,7 @@ let parse_args () =
   let only_ip = ref false in
   let casc_dir = ref None in
   let robust_time_limit = ref false in
+  let size_limit_gb = ref None in
 
   let rec loop i =
     if i >= Array.length Sys.argv then ()
@@ -190,6 +192,15 @@ let parse_args () =
           if i + 1 >= Array.length Sys.argv then usage ();
           mode := Some Sys.argv.(i + 1);
           loop (i + 2)
+      | "--size-limit" ->
+          if i + 1 >= Array.length Sys.argv then usage ();
+          let n =
+            try int_of_string Sys.argv.(i + 1)
+            with Failure _ -> usage ()
+          in
+          if n <= 0 then usage ();
+          size_limit_gb := Some n;
+          loop (i + 2)
       | _ ->
           usage ()
   in
@@ -211,6 +222,7 @@ let parse_args () =
     only_ip = !only_ip;
     casc_dir = !casc_dir;
     robust_time_limit = !robust_time_limit;
+    size_limit_gb = !size_limit_gb;
   }
 
 let is_problem_file f =
@@ -370,6 +382,10 @@ let is_success = function
   | "ContradictoryAxioms" -> true
   | _ -> false
 
+let is_error = function
+  | "Error" -> true
+  | _ -> false
+
 let is_incomplete expected actual =
   expected_unsat_like expected && result_sat_like actual
 
@@ -379,7 +395,7 @@ let is_unsound expected actual =
 let is_correct_success expected actual =
   if expected_unsat_like expected then result_unsat_like actual
   else if expected_sat_like expected then
-    result_sat_like actual || actual = "Timeout"
+    result_sat_like actual || actual = "Timeout" || actual = "GaveUp"
   else
     is_success actual
 
@@ -389,15 +405,34 @@ let is_counted_timeout expected actual =
 let robust_timeout_seconds time_limit =
   int_of_float (ceil (float_of_int time_limit *. 1.50))
 
+let size_limit_kb gb =
+  gb * 1024 * 1024
+
+let with_size_limit config cmd =
+  match config.size_limit_gb with
+  | None ->
+      cmd
+  | Some gb ->
+      let kb = size_limit_kb gb in
+      Printf.sprintf
+        "bash -c %s"
+        (shell_quote (Printf.sprintf "ulimit -v %d; exec %s" kb cmd))
+
 let command_for_run config prover file =
   let base =
     prover.cmd file config.time_limit config.max_clauses config.mode
   in
-  match prover.kind, config.robust_time_limit with
-  | Ip, true ->
-      Printf.sprintf "timeout %d %s" (robust_timeout_seconds config.time_limit) base
-  | _ ->
-      base
+  let with_robust_timeout =
+    match prover.kind, config.robust_time_limit with
+    | Ip, true ->
+        Printf.sprintf
+          "timeout %d %s"
+          (robust_timeout_seconds config.time_limit)
+          base
+    | _ ->
+        base
+  in
+  with_size_limit config with_robust_timeout
 
 let run_prover config prover file =
   let cmd = command_for_run config prover file in
@@ -459,6 +494,13 @@ let split_words s =
   |> List.map String.trim
   |> List.filter (fun x -> x <> "")
 
+let strip_trailing_comma s =
+  let len = String.length s in
+  if len > 0 && s.[len - 1] = ',' then
+    String.sub s 0 (len - 1)
+  else
+    s
+
 let read_problem_rating file =
   try
     let ic = open_in file in
@@ -474,7 +516,7 @@ let read_problem_rating file =
                 let parts = split_words payload in
                 let rating =
                   match parts with
-                  | r :: _ -> r
+                  | r :: _ -> strip_trailing_comma r
                   | [] -> ""
                 in
                 let version =
@@ -484,6 +526,7 @@ let read_problem_rating file =
                          String.length s > 0
                          && (s.[0] = 'v' || s.[0] = 'V'))
                   |> Option.value ~default:""
+                  |> strip_trailing_comma
                 in
                 let combined =
                   match rating, version with
@@ -556,6 +599,11 @@ let write_metadata oc ~stamp ~config ~versions =
   Printf.fprintf oc "# time_limit_seconds,%d\n" config.time_limit;
   Printf.fprintf oc "# robust_time_limit,%b\n" config.robust_time_limit;
   begin
+    match config.size_limit_gb with
+    | None -> Printf.fprintf oc "# size_limit_gb,\n"
+    | Some n -> Printf.fprintf oc "# size_limit_gb,%d\n" n
+  end;
+  begin
     match config.max_clauses with
     | None -> Printf.fprintf oc "# max_clauses,\n"
     | Some n -> Printf.fprintf oc "# max_clauses,%d\n" n
@@ -613,7 +661,6 @@ let pair_stats rows a b =
   let win = ref 0 in
   let draw = ref 0 in
   let loss = ref 0 in
-
   List.iter
     (fun row ->
       let sa =
@@ -626,7 +673,6 @@ let pair_stats rows a b =
       else if (sa && sb) || ((not sa) && not sb) then incr draw
       else incr loss)
     rows;
-
   !win, !draw, !loss
 
 let unique_solved rows prover_name active =
@@ -654,6 +700,7 @@ let prover_stats rows prover_name active =
   let timeouts = ref 0 in
   let incomplete = ref 0 in
   let unsound = ref 0 in
+  let errors = ref 0 in
   let total_time = ref 0.0 in
 
   List.iter
@@ -665,7 +712,8 @@ let prover_stats rows prover_name active =
       if is_correct_success row.expected_status status then incr success;
       if is_counted_timeout row.expected_status status then incr timeouts;
       if is_incomplete row.expected_status status then incr incomplete;
-      if is_unsound row.expected_status status then incr unsound)
+      if is_unsound row.expected_status status then incr unsound;
+      if is_error status then incr errors)
     rows;
 
   let avg_time_s =
@@ -673,28 +721,28 @@ let prover_stats rows prover_name active =
   in
   let uniques = unique_solved rows prover_name active in
 
-  !total, !success, !timeouts, !incomplete, !unsound, uniques, avg_time_s
+  !total, !success, !timeouts, !incomplete, !unsound, uniques, !errors, avg_time_s
 
 let write_stats oc config rows =
   let active = active_provers config in
 
   if config.only_ip then
     Printf.fprintf oc
-      "\nsection,prover,scope,total,success,timeout,incomplete,unsound,avg_time_s\n"
+      "\nsection,prover,scope,total,success,timeout,incomplete,unsound,error,avg_time_s\n"
   else
     Printf.fprintf oc
-      "\nsection,prover,scope,total,success,timeout,incomplete,unsound,uniques,avg_time_s\n";
+      "\nsection,prover,scope,total,success,timeout,incomplete,unsound,uniques,error,avg_time_s\n";
 
   List.iter
     (fun p ->
       List.iter
         (fun (scope_key, scope_label) ->
           let scoped_rows = scope_rows scope_key rows in
-          let total, success, timeouts, incomplete, unsound, uniques, avg_time_s =
+          let total, success, timeouts, incomplete, unsound, uniques, errors, avg_time_s =
             prover_stats scoped_rows p.name active
           in
           if config.only_ip then
-            Printf.fprintf oc "prover_stats,%s,%s,%d,%s,%s,%s,%s,%.6f\n"
+            Printf.fprintf oc "prover_stats,%s,%s,%d,%s,%s,%s,%s,%s,%.6f\n"
               (csv_escape p.name)
               (csv_escape scope_label)
               total
@@ -702,9 +750,10 @@ let write_stats oc config rows =
               (csv_escape (count_pct_cell timeouts total))
               (csv_escape (count_pct_cell incomplete total))
               (csv_escape (count_pct_cell unsound total))
+              (csv_escape (count_pct_cell errors total))
               avg_time_s
           else
-            Printf.fprintf oc "prover_stats,%s,%s,%d,%s,%s,%s,%s,%d,%.6f\n"
+            Printf.fprintf oc "prover_stats,%s,%s,%d,%s,%s,%s,%s,%d,%s,%.6f\n"
               (csv_escape p.name)
               (csv_escape scope_label)
               total
@@ -713,6 +762,7 @@ let write_stats oc config rows =
               (csv_escape (count_pct_cell incomplete total))
               (csv_escape (count_pct_cell unsound total))
               uniques
+              (csv_escape (count_pct_cell errors total))
               avg_time_s)
         stat_scopes)
     active;
@@ -774,6 +824,12 @@ let write_html_header oc ~stamp ~config ~versions =
     (html_escape config.dir)
     config.time_limit
     config.robust_time_limit;
+
+  begin
+    match config.size_limit_gb with
+    | None -> Printf.fprintf oc "<tr><td>Size limit</td><td></td></tr>"
+    | Some n -> Printf.fprintf oc "<tr><td>Size limit</td><td>%d Go</td></tr>" n
+  end;
 
   begin
     match config.max_clauses with
@@ -862,7 +918,7 @@ let write_html_stats oc config rows =
        <table><tr>\
        <th>Prouveur</th><th>Sous-ensemble</th><th>Total</th>\
        <th>Succès</th><th>Timeouts</th>\
-       <th>Incomplétude</th><th>Incorrection</th><th>Temps moyen</th>\
+       <th>Incomplétude</th><th>Incorrection</th><th>Erreurs</th><th>Temps moyen</th>\
        </tr>"
   else
     Printf.fprintf oc
@@ -871,7 +927,7 @@ let write_html_stats oc config rows =
        <th>Prouveur</th><th>Sous-ensemble</th><th>Total</th>\
        <th>Succès</th><th>Timeouts</th>\
        <th>Incomplétude</th><th>Incorrection</th><th>Uniques</th>\
-       <th>Temps moyen</th>\
+       <th>Erreurs</th><th>Temps moyen</th>\
        </tr>";
 
   List.iter
@@ -879,13 +935,13 @@ let write_html_stats oc config rows =
       List.iter
         (fun (scope_key, scope_label) ->
           let scoped_rows = scope_rows scope_key rows in
-          let total, success, timeouts, incomplete, unsound, uniques, avg_time_s =
+          let total, success, timeouts, incomplete, unsound, uniques, errors, avg_time_s =
             prover_stats scoped_rows p.name active
           in
           if config.only_ip then
             Printf.fprintf oc
               "<tr><td>%s</td><td>%s</td><td>%d</td>\
-               <td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%.3fs</td></tr>"
+               <td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%.3fs</td></tr>"
               (html_escape p.name)
               (html_escape scope_label)
               total
@@ -893,11 +949,12 @@ let write_html_stats oc config rows =
               (html_escape (count_pct_cell timeouts total))
               (html_escape (count_pct_cell incomplete total))
               (html_escape (count_pct_cell unsound total))
+              (html_escape (count_pct_cell errors total))
               avg_time_s
           else
             Printf.fprintf oc
               "<tr><td>%s</td><td>%s</td><td>%d</td>\
-               <td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%d</td><td>%.3fs</td></tr>"
+               <td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%d</td><td>%s</td><td>%.3fs</td></tr>"
               (html_escape p.name)
               (html_escape scope_label)
               total
@@ -906,6 +963,7 @@ let write_html_stats oc config rows =
               (html_escape (count_pct_cell incomplete total))
               (html_escape (count_pct_cell unsound total))
               uniques
+              (html_escape (count_pct_cell errors total))
               avg_time_s)
         stat_scopes)
     active;

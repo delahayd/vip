@@ -39,10 +39,6 @@ install:
 
 .PHONY: run
 run:
-	@if [ -z "$(FILE)" ]; then \
-	  echo "Usage: make run FILE=path/to/file.p"; \
-	  exit 1; \
-	fi
 	$(PROVER) $(call build_args) $(FILE)
 
 .PHONY: test
@@ -53,24 +49,8 @@ test:
 bench:
 	$(BENCH) --onlyip --dir $(DIR) $(call build_args)
 
-.PHONY: bench-dir
-bench-dir:
-	@if [ -z "$(DIR)" ]; then \
-	  echo "Usage: make bench-dir DIR=path"; \
-	  exit 1; \
-	fi
-	$(BENCH) --onlyip --dir $(DIR) $(call build_args)
-
 .PHONY: benchs
 benchs:
-	$(BENCH) --dir $(DIR) $(call build_args)
-
-.PHONY: benchs-dir
-benchs-dir:
-	@if [ -z "$(DIR)" ]; then \
-	  echo "Usage: make bench-dir DIR=path"; \
-	  exit 1; \
-	fi
 	$(BENCH) --dir $(DIR) $(call build_args)
 
 .PHONY: bench-regression
