@@ -37,6 +37,9 @@ make bench-regression OLD=bench/logs/file1 NEW=bench/logs/file2
 export TPTP=/home/delahaye/ip/bench/problems/casc/casc-30-2025
 make bench-casc DIR=/home/delahaye/ip/bench/problems/casc/casc-30-2025/Problems/FOF CASC=casc-30-2025_fof TIME_LIMIT=3 ROBUST_TIME_LIMIT=1
 
+* Lancer les benchs vers un autre répertoire :
+make bench DIR=/home/delahaye/ip/bench/problems/equality MODE=ordered-fallback TIME_LIMIT=3 LOGS=/home/delahaye/ip
+
 * Fontes :
 Site : https://patorjk.com/software/taag/
 Sélectionné : Calvin S

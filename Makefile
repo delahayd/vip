@@ -8,6 +8,9 @@ TIME_LIMIT ?= 3
 ROBUST_TIME_LIMIT ?=
 MAX_CLAUSES ?=
 CASC ?=
+BENCH_LOGS=bench/logs
+MESO=delahayed@io-login.meso.umontpellier.fr
+MESO_BENCH_LOGS=benchs-ip/logs
 
 PROVER = dune exec -- bin/main.exe
 BENCH = dune exec -- bench/run_bench.exe
@@ -19,6 +22,8 @@ define build_args
 $(if $(TIME_LIMIT),--time-limit $(TIME_LIMIT)) \
 $(if $(ROBUST_TIME_LIMIT),--robust-time-limit) \
 $(if $(MAX_CLAUSES),--max-clauses $(MAX_CLAUSES)) \
+$(if $(LOGS),--logs $(LOGS)) \
+$(if $(HOME_DIR),--home $(HOME_DIR)) \
 --mode $(MODE)
 endef
 
@@ -64,6 +69,10 @@ bench-casc:
 .PHONY: benchs-casc
 benchs-casc:
 	$(BENCH) --dir $(DIR) --casc $(CASC) $(call build_args)
+
+.PHONY: fetch_logs
+fetch-logs:
+	scp $(MESO):$(MESO_BENCH_LOGS)/* $(BENCH_LOGS)
 
 .PHONY: clean
 clean:

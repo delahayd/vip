@@ -17,6 +17,8 @@ type result = {
 
 type config = {
   dir : string;
+  home : string option;
+  logs_dir : string option;
   time_limit : int;
   max_clauses : int option;
   mode : string option;
@@ -137,11 +139,13 @@ let shell_quote s =
 
 let usage () =
   prerr_endline
-    "Usage: run_bench [--debug] [--onlyip] [--robust-time-limit] [--casc REP] [--dir DIR] --time-limit SECONDS [--max-clauses N] [--mode MODE] [--size-limit GB]";
+    "Usage: run_bench [--debug] [--onlyip] [--robust-time-limit] [--casc REP] [--logs DIR] [--dir DIR] [--home DIR] --time-limit SECONDS [--max-clauses N] [--mode MODE] [--size-limit GB]";
   exit 2
 
 let parse_args () =
   let dir = ref "." in
+  let home = ref None in
+  let logs_dir = ref None in
   let time_limit = ref None in
   let max_clauses = ref None in
   let mode = ref None in
@@ -168,9 +172,17 @@ let parse_args () =
           if i + 1 >= Array.length Sys.argv then usage ();
           casc_dir := Some Sys.argv.(i + 1);
           loop (i + 2)
+      | "--logs" ->
+          if i + 1 >= Array.length Sys.argv then usage ();
+          logs_dir := Some Sys.argv.(i + 1);
+          loop (i + 2)
       | "--dir" ->
           if i + 1 >= Array.length Sys.argv then usage ();
           dir := Sys.argv.(i + 1);
+          loop (i + 2)
+      | "--home" ->
+          if i + 1 >= Array.length Sys.argv then usage ();
+          home := Some Sys.argv.(i + 1);
           loop (i + 2)
       | "--time-limit" ->
           if i + 1 >= Array.length Sys.argv then usage ();
@@ -215,6 +227,8 @@ let parse_args () =
 
   {
     dir = !dir;
+    home = !home;
+    logs_dir = !logs_dir;
     time_limit;
     max_clauses = !max_clauses;
     mode = !mode;
@@ -291,14 +305,22 @@ let ensure_dir path =
     Unix.mkdir path 0o755
 
 let ensure_logs_dir config =
-  ensure_dir "bench";
-  ensure_dir "bench/logs";
+  let base =
+    match config.logs_dir with
+    | None ->
+        ensure_dir "bench";
+        "bench/logs"
+    | Some dir ->
+        dir
+  in
+  ensure_dir base;
   match config.casc_dir with
   | None ->
-      "bench/logs"
+      base
   | Some rep ->
-      ensure_dir "bench/logs/casc";
-      let dir = Filename.concat "bench/logs/casc" rep in
+      let casc_base = Filename.concat base "casc" in
+      ensure_dir casc_base;
+      let dir = Filename.concat casc_base rep in
       ensure_dir dir;
       dir
 
@@ -316,6 +338,39 @@ let unique_paths config stamp =
     else csv_path, html_path
   in
   loop 0
+
+let normalize_dir d =
+  let len = String.length d in
+  if len > 1 && d.[len - 1] = Filename.dir_sep.[0] then
+    String.sub d 0 (len - 1)
+  else
+    d
+
+let relative_to_dir ~dir path =
+  let dir = normalize_dir dir in
+  let prefix = dir ^ Filename.dir_sep in
+  if path = dir then Filename.basename path
+  else if starts_with path prefix then
+    String.sub path (String.length prefix) (String.length path - String.length prefix)
+  else
+    path
+
+let displayed_problem config path =
+  relative_to_dir ~dir:config.dir path
+
+let absolute_dir dir =
+  if Filename.is_relative dir then
+    Filename.concat (Sys.getcwd ()) dir
+  else
+    dir
+
+let link_path config path =
+  let problem = displayed_problem config path in
+  match config.home with
+  | Some home ->
+      Filename.concat home problem
+  | None ->
+      Filename.concat (absolute_dir config.dir) problem
 
 let file_uri path =
   let abs =
@@ -596,6 +651,16 @@ let stat_scopes =
 let write_metadata oc ~stamp ~config ~versions =
   Printf.fprintf oc "# bench_date,%s\n" (csv_escape stamp);
   Printf.fprintf oc "# problem_dir,%s\n" (csv_escape config.dir);
+  begin
+    match config.home with
+    | None -> Printf.fprintf oc "# home,\n"
+    | Some h -> Printf.fprintf oc "# home,%s\n" (csv_escape h)
+  end;
+  begin
+    match config.logs_dir with
+    | None -> Printf.fprintf oc "# logs_dir,bench/logs\n"
+    | Some d -> Printf.fprintf oc "# logs_dir,%s\n" (csv_escape d)
+  end;
   Printf.fprintf oc "# time_limit_seconds,%d\n" config.time_limit;
   Printf.fprintf oc "# robust_time_limit,%b\n" config.robust_time_limit;
   begin
@@ -634,10 +699,11 @@ let write_results_header oc config =
       "section,problem,expected_status,rating,ip,ip_time_s,vampire,vampire_time_s,e,e_time_s,zenon,zenon_time_s\n%!"
 
 let write_result_row oc config row =
+  let problem_name = displayed_problem config row.problem in
   if config.only_ip then
     Printf.fprintf oc
       "result,%s,%s,%s,%s,%.6f\n%!"
-      (csv_escape row.problem)
+      (csv_escape problem_name)
       (csv_escape row.expected_status)
       (csv_escape row.rating)
       (csv_escape (result_status "ip" row.results))
@@ -645,7 +711,7 @@ let write_result_row oc config row =
   else
     Printf.fprintf oc
       "result,%s,%s,%s,%s,%.6f,%s,%.6f,%s,%.6f,%s,%.6f\n%!"
-      (csv_escape row.problem)
+      (csv_escape problem_name)
       (csv_escape row.expected_status)
       (csv_escape row.rating)
       (csv_escape (result_status "ip" row.results))
@@ -815,13 +881,27 @@ let write_html_header oc ~stamp ~config ~versions =
      <table>\
      <tr><th>Champ</th><th>Valeur</th></tr>\
      <tr><td>Date</td><td>%s</td></tr>\
-     <tr><td>Répertoire</td><td>%s</td></tr>\
-     <tr><td>Time limit</td><td>%d</td></tr>\
+     <tr><td>Répertoire</td><td>%s</td></tr>"
+    (html_escape stamp)
+    (html_escape stamp)
+    (html_escape stamp)
+    (html_escape config.dir);
+
+  begin
+    match config.home with
+    | None -> Printf.fprintf oc "<tr><td>Home</td><td></td></tr>"
+    | Some h -> Printf.fprintf oc "<tr><td>Home</td><td>%s</td></tr>" (html_escape h)
+  end;
+
+  begin
+    match config.logs_dir with
+    | None -> Printf.fprintf oc "<tr><td>Logs</td><td>bench/logs</td></tr>"
+    | Some d -> Printf.fprintf oc "<tr><td>Logs</td><td>%s</td></tr>" (html_escape d)
+  end;
+
+  Printf.fprintf oc
+    "<tr><td>Time limit</td><td>%d</td></tr>\
      <tr><td>Robust time limit</td><td>%b</td></tr>"
-    (html_escape stamp)
-    (html_escape stamp)
-    (html_escape stamp)
-    (html_escape config.dir)
     config.time_limit
     config.robust_time_limit;
 
@@ -875,11 +955,12 @@ let write_html_header oc ~stamp ~config ~versions =
        </tr>%!"
 
 let write_html_row oc config row =
+  let problem_name = displayed_problem config row.problem in
   let problem_link =
     Printf.sprintf
       "<a href=\"%s\">%s</a>"
-      (html_escape (file_uri row.problem))
-      (html_escape row.problem)
+      (html_escape (file_uri (link_path config row.problem)))
+      (html_escape problem_name)
   in
   if config.only_ip then
     Printf.fprintf oc
@@ -1014,16 +1095,17 @@ let print_status_with_time name row =
     (result_time name row.results)
 
 let print_row config row =
+  let problem_name = displayed_problem config row.problem in
   if config.only_ip then
     Printf.printf "%-60s | %-18s | %-12s | %-22s\n%!"
-      row.problem
+      problem_name
       row.expected_status
       row.rating
       (print_status_with_time "ip" row)
   else
     Printf.printf
       "%-60s | %-18s | %-12s | %-22s | %-22s | %-22s | %-22s\n%!"
-      row.problem
+      problem_name
       row.expected_status
       row.rating
       (print_status_with_time "ip" row)
