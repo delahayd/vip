@@ -9,6 +9,8 @@ ROBUST_TIME_LIMIT=0
 MAX_CLAUSES=""
 MODE=""
 DIR=""
+HOME_DIR=""
+LOGS_DIR=""
 CASC=""
 TPTP_DIR=""
 ONLYIP=0
@@ -23,6 +25,8 @@ Options:
   --max-clauses <nombre>
   --mode <mode>
   --dir <répertoire>
+  --home <répertoire>
+  --logs <répertoire>
   --casc <nom>
   --tptp <répertoire>
   --onlyip
@@ -54,6 +58,16 @@ while [[ $# -gt 0 ]]; do
     --dir)
       [[ $# -ge 2 ]] || usage
       DIR="$2"
+      shift 2
+      ;;
+    --home)
+      [[ $# -ge 2 ]] || usage
+      HOME_DIR="$2"
+      shift 2
+      ;;
+    --logs)
+      [[ $# -ge 2 ]] || usage
+      LOGS_DIR="$2"
       shift 2
       ;;
     --casc)
@@ -97,6 +111,8 @@ MAKE_ARGS=()
 [[ -n "$MAX_CLAUSES" ]] && MAKE_ARGS+=("MAX_CLAUSES=$MAX_CLAUSES")
 [[ -n "$MODE" ]] && MAKE_ARGS+=("MODE=$MODE")
 [[ -n "$DIR" ]] && MAKE_ARGS+=("DIR=$DIR")
+[[ -n "$HOME_DIR" ]] && MAKE_ARGS+=("HOME_DIR=$HOME_DIR")
+[[ -n "$LOGS_DIR" ]] && MAKE_ARGS+=("LOGS_DIR=$LOGS_DIR")
 [[ -n "$CASC" ]] && MAKE_ARGS+=("CASC=$CASC")
 
 STAMP="$(date +%Y%m%d_%H%M%S)"

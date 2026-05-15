@@ -22,7 +22,7 @@ define build_args
 $(if $(TIME_LIMIT),--time-limit $(TIME_LIMIT)) \
 $(if $(ROBUST_TIME_LIMIT),--robust-time-limit) \
 $(if $(MAX_CLAUSES),--max-clauses $(MAX_CLAUSES)) \
-$(if $(LOGS),--logs $(LOGS)) \
+$(if $(LOGS_DIR),--logs $(LOGS_DIR)) \
 $(if $(HOME_DIR),--home $(HOME_DIR)) \
 --mode $(MODE)
 endef
