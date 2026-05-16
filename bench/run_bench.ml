@@ -81,8 +81,22 @@ let provers =
       name = "zenon";
       kind = External;
       cmd =
-        (fun file timeout _max_clauses _mode ->
-          Printf.sprintf "zenon -I $TPTP -itptp -max-time %d %s" timeout file);
+	(fun file timeout _max_clauses _mode ->
+	  let tptp =
+	    try Sys.getenv "TPTP"
+	    with Not_found -> ""
+	  in
+	  if String.trim tptp = "" then
+	    Printf.sprintf
+	      "zenon -itptp -max-time %d %s"
+	      timeout
+	      file
+	  else
+	    Printf.sprintf
+	      "zenon -I %s -itptp -max-time %d %s"
+	      tptp
+	      timeout
+	      file);
       version_cmd = "zenon -v";
     };
   ]
