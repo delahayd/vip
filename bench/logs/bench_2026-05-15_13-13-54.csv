@@ -1,0 +1,297 @@
+# bench_date,"2026-05-15_13-13-54"
+# problem_dir,"/home/delahayed/problems/TPTP-v9.2.1/Problems/SET"
+# home,"/home/delahaye/ip/bench/problems/TPTP-v9.2.1/Problems/SET"
+# logs_dir,"/home/delahayed/benchs-ip/logs"
+# time_limit_seconds,3
+# robust_time_limit,false
+# size_limit_gb,
+# max_clauses,
+# mode,"ordered-fallback"
+# casc,
+# only_ip,false
+# version_ip,"8dfcd15"
+# version_vampire,"Vampire 5.0.1 (Release build, commit 9eeba91d1 on 2026-05-09 07:13:19 +0100)"
+# version_e,"E 3.3.2 Countess Grey (37fde70d516b57cb64294f8fe39bc16ece8198f8)"
+# version_zenon,"zenon version 0.8.5 [a270] 2020-10-23"
+
+section,problem,expected_status,rating,ip,ip_time_s,vampire,vampire_time_s,e,e_time_s,zenon,zenon_time_s
+result,"SET001-1.p","Unsatisfiable","0.00 v2.0.0","Unsatisfiable",0.015875,"Unsatisfiable",0.033757,"Unsatisfiable",0.005576,"Unsatisfiable",0.016501
+result,"SET002-1.p","Unsatisfiable","0.00 v5.0.0","Unsatisfiable",0.101840,"Unsatisfiable",0.016394,"Unsatisfiable",0.006112,"Unsatisfiable",0.068697
+result,"SET003-1.p","Unsatisfiable","0.00 v2.0.0","Unsatisfiable",0.008551,"Unsatisfiable",0.012584,"Unsatisfiable",0.006664,"Unsatisfiable",0.025848
+result,"SET004-1.p","Unsatisfiable","0.00 v2.0.0","Unsatisfiable",0.008417,"Unsatisfiable",0.012615,"Unsatisfiable",0.006141,"Unsatisfiable",0.059873
+result,"SET005-1.p","Unsatisfiable","0.08 v9.1.0","Timeout",3.008022,"Unsatisfiable",0.081013,"Unsatisfiable",0.024269,"Unsatisfiable",0.027431
+result,"SET006-1.p","Unsatisfiable","0.00 v7.1.0","Unsatisfiable",0.009738,"Unsatisfiable",0.012806,"Unsatisfiable",0.006371,"Unsatisfiable",0.030521
+result,"SET007-1.p","Unsatisfiable","0.08 v9.1.0","Timeout",3.009942,"Unsatisfiable",0.068148,"Unsatisfiable",0.062952,"Timeout",3.582307
+result,"SET008-1.p","Unsatisfiable","0.00 v7.0.0","Unsatisfiable",0.027374,"Unsatisfiable",0.041183,"Unsatisfiable",0.007353,"Unsatisfiable",0.029842
+result,"SET009-1.p","Unsatisfiable","0.00 v7.0.0","Timeout",3.007838,"Unsatisfiable",0.028226,"Unsatisfiable",0.007470,"Unsatisfiable",0.057970
+result,"SET010-1.p","Unsatisfiable","0.08 v9.1.0","Timeout",3.011081,"Unsatisfiable",0.064336,"Unsatisfiable",0.012485,"Timeout",3.174412
+result,"SET011-1.p","Unsatisfiable","0.08 v9.1.0","Timeout",3.008537,"Unsatisfiable",0.029478,"Unsatisfiable",0.013587,"Timeout",3.230966
+result,"SET012-1.p","Unsatisfiable","0.31 v9.1.0","Timeout",3.010285,"Unsatisfiable",0.030936,"Unsatisfiable",0.017473,"Unsatisfiable",0.352089
+result,"SET013-1.p","Unsatisfiable","0.23 v9.1.0","Timeout",3.010566,"Unsatisfiable",0.076449,"Unsatisfiable",0.038790,"Timeout",3.341238
+result,"SET015-1.p","Unsatisfiable","0.23 v9.1.0","Unsatisfiable",0.075459,"Unsatisfiable",0.047992,"Unsatisfiable",0.108679,"Timeout",4.089999
+result,"SET016+1.p","Theorem","0.55 v9.0.0","Unsatisfiable",0.139388,"Theorem",0.040322,"Theorem",0.152689,"Timeout",3.147818
+result,"SET016-1.p","Unsatisfiable","0.05 v9.0.0","Unsatisfiable",0.006397,"Unsatisfiable",0.067816,"Unsatisfiable",0.005277,"Timeout",3.292796
+result,"SET017+1.p","Theorem","0.33 v9.1.0","Unsatisfiable",0.139021,"Theorem",0.035905,"Theorem",0.011081,"Timeout",3.599225
+result,"SET018+1.p","Theorem","0.61 v9.1.0","Unsatisfiable",0.139383,"Theorem",0.584960,"Theorem",0.206666,"Timeout",3.137182
+result,"SET018-1.p","Unsatisfiable","0.14 v9.1.0","Unsatisfiable",0.006113,"Unsatisfiable",0.044460,"Unsatisfiable",0.005348,"Timeout",4.134791
+result,"SET020+1.p","Theorem","0.18 v9.1.0","Unsatisfiable",0.138713,"Theorem",0.029046,"Theorem",0.059528,"Timeout",3.697350
+result,"SET024+1.p","Theorem","0.09 v9.1.0","Timeout",3.007403,"Theorem",0.050417,"Theorem",0.010357,"Timeout",3.215977
+result,"SET025+1.p","Theorem","0.09 v9.1.0","Timeout",3.007292,"Theorem",0.031687,"Theorem",0.008208,"Timeout",3.209392
+result,"SET027+1.p","Theorem","0.18 v9.1.0","Unsatisfiable",0.168222,"Theorem",0.030899,"Theorem",0.022932,"Unsatisfiable",0.158597
+result,"SET043+1.p","Theorem","0.00 v5.3.0","Unsatisfiable",0.005527,"Theorem",0.010710,"Theorem",0.005062,"Unsatisfiable",0.014583
+result,"SET044+1.p","Theorem","0.05 v9.1.0","Unsatisfiable",0.008622,"Theorem",0.011203,"Theorem",0.004985,"Unsatisfiable",0.014881
+result,"SET045+1.p","Theorem","0.05 v9.1.0","Timeout",3.039587,"Theorem",0.012086,"Theorem",0.004981,"Unsatisfiable",0.015670
+result,"SET046+1.p","Theorem","0.00 v5.3.0","Unsatisfiable",0.008188,"Theorem",0.031298,"Theorem",0.004745,"Unsatisfiable",0.014075
+result,"SET047+1.p","Theorem","0.00 v6.1.0","Unsatisfiable",0.078193,"Theorem",0.012001,"Theorem",0.004854,"Unsatisfiable",0.014020
+result,"SET054+1.p","Theorem","0.03 v9.0.0","Unsatisfiable",0.082891,"Theorem",0.011983,"Theorem",0.007022,"Unsatisfiable",0.022964
+result,"SET055+1.p","Theorem","0.06 v8.1.0","Unsatisfiable",0.021083,"Theorem",0.011977,"Theorem",0.007113,"Unsatisfiable",0.015514
+result,"SET056+1.p","Theorem","0.39 v8.1.0","Unsatisfiable",0.136303,"Theorem",0.013944,"Theorem",0.012348,"Unsatisfiable",0.090852
+result,"SET060+1.p","Theorem","0.06 v9.1.0","Unsatisfiable",0.114763,"Theorem",0.013379,"Theorem",0.009466,"Timeout",3.532120
+result,"SET061+1.p","Theorem","0.15 v9.0.0","Unsatisfiable",0.015473,"Theorem",0.034729,"Theorem",0.009240,"Unsatisfiable",0.019876
+result,"SET062+1.p","Theorem","0.12 v9.1.0","Unsatisfiable",0.017315,"Theorem",0.012810,"Theorem",0.010094,"Unsatisfiable",0.021472
+result,"SET063+1.p","Theorem","0.15 v9.0.0","Unsatisfiable",0.146577,"Theorem",0.013005,"Theorem",0.009987,"Unsatisfiable",0.256786
+result,"SET064+1.p","Theorem","0.18 v9.1.0","Unsatisfiable",0.023639,"Theorem",0.014245,"Theorem",0.009280,"Unsatisfiable",0.022372
+result,"SET065+1.p","Theorem","0.12 v9.0.0","Timeout",3.009865,"Theorem",0.043804,"Theorem",0.011022,"Unsatisfiable",0.059286
+result,"SET066+1.p","Theorem","0.76 v9.1.0","Unsatisfiable",0.119756,"Theorem",2.706081,"Timeout",3.053001,"Timeout",3.478066
+result,"SET067+1.p","Theorem","0.27 v9.1.0","Unsatisfiable",0.148057,"Theorem",0.015598,"Timeout",3.055966,"Timeout",3.327549
+result,"SET069+1.p","Theorem","0.73 v9.1.0","Timeout",3.007357,"Theorem",0.015032,"Timeout",3.050151,"Timeout",3.810136
+result,"SET071+1.p","Theorem","0.42 v9.0.0","Timeout",3.007830,"Theorem",0.014535,"Timeout",3.052635,"Timeout",3.177734
+result,"SET072+1.p","Theorem","0.33 v9.1.0","Unsatisfiable",0.137912,"Theorem",0.035488,"Theorem",0.010757,"Timeout",4.045684
+result,"SET073+1.p","Theorem","0.12 v9.0.0","Unsatisfiable",0.140669,"Theorem",0.014189,"Theorem",0.010117,"Timeout",3.594532
+result,"SET074+1.p","Theorem","0.15 v9.0.0","Unsatisfiable",0.139219,"Theorem",0.037474,"Theorem",0.009793,"Timeout",3.574657
+result,"SET076+1.p","Theorem","0.30 v9.0.0","Unsatisfiable",0.163696,"Theorem",0.047251,"Timeout",3.054415,"Timeout",3.146334
+result,"SET077+1.p","Theorem","0.06 v9.1.0","Timeout",3.007336,"Theorem",0.052881,"Theorem",0.008668,"Timeout",3.853129
+result,"SET079+1.p","Theorem","0.09 v9.0.0","Unsatisfiable",0.142714,"Theorem",0.066042,"Theorem",0.010019,"Timeout",3.509360
+result,"SET081+1.p","Theorem","0.18 v9.1.0","Unsatisfiable",0.139029,"Theorem",0.089330,"Theorem",0.007659,"Timeout",3.744607
+result,"SET082+1.p","Theorem","0.24 v9.0.0","Timeout",3.007243,"Theorem",0.052662,"Theorem",2.271931,"Timeout",3.890597
+result,"SET083+1.p","Theorem","0.27 v9.1.0","Unsatisfiable",0.150583,"Theorem",0.040091,"Theorem",0.011362,"Timeout",3.627372
+result,"SET084+1.p","Theorem","0.24 v9.1.0","Unsatisfiable",0.140906,"Theorem",0.030657,"Theorem",0.011853,"Timeout",3.241307
+result,"SET086+1.p","Theorem","0.09 v9.1.0","Unsatisfiable",0.138627,"Theorem",0.041481,"Theorem",0.008479,"Unsatisfiable",0.020290
+result,"SET090+1.p","Theorem","0.27 v9.1.0","Unsatisfiable",0.133753,"Theorem",0.048639,"Theorem",0.011415,"Timeout",3.085454
+result,"SET091+1.p","Theorem","0.15 v9.0.0","Unsatisfiable",0.134965,"Theorem",0.043709,"Theorem",0.010411,"Timeout",3.662277
+result,"SET093+1.p","Theorem","0.12 v9.1.0","Timeout",3.006886,"Theorem",0.074468,"Theorem",0.007379,"Timeout",3.578636
+result,"SET094+1.p","Theorem","0.27 v9.1.0","Unsatisfiable",0.134806,"Theorem",0.067270,"Theorem",0.011730,"Timeout",3.213914
+result,"SET095+1.p","Theorem","0.30 v9.1.0","Unsatisfiable",0.169333,"Theorem",0.075365,"Theorem",2.258398,"Timeout",3.305498
+result,"SET096+1.p","Theorem","0.52 v9.0.0","Unsatisfiable",0.150834,"Theorem",0.090554,"Theorem",1.622389,"Timeout",3.701406
+result,"SET097+1.p","Theorem","0.67 v9.0.0","Unsatisfiable",0.152874,"Timeout",2.934973,"Timeout",3.055270,"Timeout",3.408212
+result,"SET098+1.p","Theorem","0.70 v9.0.0","Unsatisfiable",0.155541,"Theorem",0.057332,"Timeout",3.053219,"Timeout",3.616836
+result,"SET099+1.p","Theorem","0.85 v9.1.0","Unsatisfiable",0.150573,"Theorem",0.078342,"Timeout",3.050914,"Timeout",3.627620
+result,"SET101+1.p","Theorem","0.15 v9.1.0","Timeout",3.006931,"Theorem",0.030565,"Theorem",0.010080,"Timeout",3.329713
+result,"SET102+1.p","Theorem","0.18 v9.1.0","Timeout",3.007248,"Theorem",0.014521,"Theorem",0.009292,"Timeout",3.363042
+result,"SET103+1.p","Theorem","0.39 v9.1.0","Timeout",3.008369,"Theorem",0.015355,"Theorem",2.240306,"Timeout",4.159989
+result,"SET104+1.p","Theorem","0.91 v9.0.0","Timeout",3.007057,"Theorem",0.020399,"Timeout",3.051214,"Timeout",3.788089
+result,"SET105+1.p","Theorem","0.85 v9.1.0","Timeout",3.007187,"Theorem",0.044088,"Timeout",3.054502,"Timeout",3.586613
+result,"SET108+1.p","Theorem","0.15 v9.1.0","Unsatisfiable",0.142924,"Theorem",0.040488,"Theorem",0.009264,"Timeout",3.048087
+result,"SET113+1.p","Theorem","1.00 v5.4.0","Unsatisfiable",0.141801,"Timeout",2.980066,"Timeout",3.058751,"Timeout",3.410753
+result,"SET117+1.p","Theorem","0.12 v9.1.0","Timeout",3.016590,"Theorem",0.077831,"Theorem",0.008659,"Timeout",3.598922
+result,"SET119+1.p","Theorem","1.00 v5.4.0","Timeout",3.007318,"Timeout",2.957040,"Timeout",3.047583,"Timeout",3.863726
+result,"SET120+1.p","Theorem","1.00 v5.4.0","Timeout",3.014505,"Timeout",2.979818,"Timeout",3.048502,"Timeout",3.095969
+result,"SET121+1.p","Theorem","1.00 v5.4.0","Timeout",3.009978,"Timeout",2.968578,"Timeout",3.052687,"Timeout",3.837996
+result,"SET122+1.p","Theorem","1.00 v5.4.0","Timeout",3.007111,"Timeout",2.930318,"Timeout",3.049098,"Timeout",3.426643
+result,"SET777-1.p","Satisfiable","0.00 v3.1.0","Timeout",3.007376,"Satisfiable",0.038984,"Satisfiable",0.005403,"Timeout",3.923489
+result,"SET778-1.p","Satisfiable","0.00 v3.1.0","Timeout",3.008991,"Satisfiable",0.043950,"Satisfiable",0.005881,"Timeout",3.093983
+result,"SET779-1.p","Satisfiable","0.00 v3.1.0","Timeout",3.008142,"Satisfiable",0.043890,"Satisfiable",0.006292,"Timeout",4.005413
+result,"SET780-1.p","Satisfiable","0.00 v3.1.0","Timeout",3.008136,"Satisfiable",0.040265,"Satisfiable",0.006366,"Timeout",3.664314
+result,"SET781-1.p","Satisfiable","0.00 v8.1.0","Timeout",3.009968,"Timeout",2.956653,"Timeout",3.064242,"Timeout",3.195203
+result,"SET782-1.p","Satisfiable","1.00 v3.1.0","Timeout",3.008335,"Timeout",2.912409,"Timeout",3.049438,"Timeout",3.781820
+result,"SET783+1.p","Satisfiable","1.00 v3.1.0","Timeout",3.009528,"Timeout",2.948311,"Timeout",3.066361,"Timeout",3.377435
+result,"SET784+1.p","Satisfiable","1.00 v3.1.0","Timeout",3.012391,"Timeout",2.931747,"Timeout",3.062063,"Timeout",3.782419
+result,"SET785+1.p","Satisfiable","1.00 v3.1.0","Timeout",3.009734,"Timeout",2.968589,"Timeout",3.066537,"Timeout",3.088342
+result,"SET786+1.p","Theorem","0.00 v6.1.0","Unsatisfiable",0.007964,"Theorem",0.011940,"Theorem",0.004589,"Unsatisfiable",0.014057
+result,"SET786-1.p","Unsatisfiable","0.00 v6.3.0","Unsatisfiable",0.008073,"Unsatisfiable",0.011538,"Unsatisfiable",0.005175,"Unsatisfiable",0.014518
+result,"SET787-1.p","Unsatisfiable","0.05 v9.0.0","Timeout",3.007450,"Unsatisfiable",0.072255,"Timeout",3.060738,"Timeout",3.334087
+result,"SET788+1.p","Theorem","0.05 v9.1.0","Timeout",3.006571,"Theorem",0.013600,"Theorem",0.004703,"Unsatisfiable",0.016920
+result,"SET818-1.p","Unsatisfiable","0.09 v9.1.0","Timeout",3.011880,"Unsatisfiable",0.064314,"Unsatisfiable",0.039680,"Timeout",3.648778
+result,"SET819-1.p","Unsatisfiable","0.09 v9.1.0","Timeout",3.011997,"Unsatisfiable",0.036552,"Unsatisfiable",0.038598,"Timeout",3.269417
+result,"SET820-1.p","Unsatisfiable","0.36 v9.1.0","Timeout",3.012842,"Unsatisfiable",0.058611,"Unsatisfiable",0.170459,"Timeout",3.629473
+result,"SET821-1.p","Unsatisfiable","0.36 v9.1.0","Timeout",3.012180,"Unsatisfiable",0.123156,"Unsatisfiable",0.107873,"Timeout",3.355308
+result,"SET822-1.p","Unsatisfiable","0.41 v9.1.0","Timeout",3.012125,"Unsatisfiable",0.057332,"Unsatisfiable",0.141811,"Timeout",3.527045
+result,"SET824-1.p","Unsatisfiable","0.09 v9.1.0","Timeout",3.012541,"Unsatisfiable",0.045857,"Unsatisfiable",0.039547,"Unsatisfiable",0.127150
+result,"SET825-1.p","Unsatisfiable","0.27 v9.1.0","Timeout",3.011863,"Unsatisfiable",0.051307,"Unsatisfiable",0.164049,"Unsatisfiable",1.658566
+result,"SET826-1.p","Unsatisfiable","0.05 v7.4.0","Timeout",3.012283,"Unsatisfiable",0.048193,"Unsatisfiable",0.062136,"Unsatisfiable",0.527391
+result,"SET827-1.p","Unsatisfiable","0.05 v7.4.0","Timeout",3.012155,"Unsatisfiable",0.043757,"Unsatisfiable",0.061357,"Unsatisfiable",0.246990
+result,"SET828-1.p","Unsatisfiable","0.05 v7.4.0","Timeout",3.012559,"Unsatisfiable",0.020199,"Unsatisfiable",0.062844,"Unsatisfiable",0.311150
+result,"SET829-1.p","Unsatisfiable","0.05 v7.4.0","Timeout",3.012132,"Unsatisfiable",0.042259,"Unsatisfiable",0.061512,"Unsatisfiable",0.389710
+result,"SET830-1.p","Unsatisfiable","0.50 v9.0.0","Timeout",3.012467,"Unsatisfiable",0.597325,"Unsatisfiable",0.323633,"Timeout",3.369702
+result,"SET831-1.p","Unsatisfiable","0.77 v9.1.0","Timeout",3.014019,"Unsatisfiable",0.536558,"Timeout",3.045251,"Timeout",3.651972
+result,"SET832-1.p","Unsatisfiable","0.05 v7.4.0","Timeout",3.011983,"Unsatisfiable",0.019712,"Unsatisfiable",0.061012,"Unsatisfiable",0.288475
+result,"SET833-1.p","Unsatisfiable","0.05 v7.4.0","Timeout",3.011509,"Unsatisfiable",0.021497,"Unsatisfiable",0.061598,"Unsatisfiable",0.310086
+result,"SET834-1.p","Unsatisfiable","0.55 v9.0.0","Timeout",3.012277,"Unsatisfiable",0.669928,"Unsatisfiable",0.265048,"Timeout",3.083346
+result,"SET835-1.p","Unsatisfiable","0.05 v7.4.0","Timeout",3.011899,"Unsatisfiable",0.052812,"Unsatisfiable",0.063584,"Unsatisfiable",0.449384
+result,"SET836-1.p","Unsatisfiable","0.05 v7.4.0","Timeout",3.012065,"Unsatisfiable",0.043701,"Unsatisfiable",0.062169,"Unsatisfiable",0.361036
+result,"SET837-1.p","Unsatisfiable","0.77 v9.1.0","Timeout",3.012516,"Unsatisfiable",0.525409,"Timeout",3.051738,"Timeout",3.271633
+result,"SET838-1.p","Unsatisfiable","0.23 v9.1.0","Timeout",3.012018,"Unsatisfiable",0.036855,"Unsatisfiable",0.041169,"Timeout",3.818861
+result,"SET839-1.p","Unsatisfiable","0.45 v9.1.0","Timeout",3.012125,"Unsatisfiable",0.091232,"Timeout",3.074882,"Timeout",3.489776
+result,"SET840-1.p","Unsatisfiable","0.82 v9.1.0","Timeout",3.018742,"Unsatisfiable",0.106342,"Timeout",3.079859,"Timeout",3.462881
+result,"SET841-1.p","Unsatisfiable","0.18 v9.1.0","Timeout",3.011672,"Unsatisfiable",0.059370,"Unsatisfiable",0.150879,"Unsatisfiable",0.168887
+result,"SET842-1.p","Unsatisfiable","0.32 v9.1.0","Timeout",3.011692,"Unsatisfiable",0.070623,"Unsatisfiable",0.156198,"Timeout",3.539092
+result,"SET843-1.p","Unsatisfiable","0.36 v9.1.0","Timeout",3.012396,"Unsatisfiable",0.071045,"Unsatisfiable",0.579914,"Timeout",4.552528
+result,"SET844-1.p","Unsatisfiable","0.05 v8.1.0","Timeout",3.012730,"Unsatisfiable",0.050117,"Unsatisfiable",0.471021,"Timeout",3.617440
+result,"SET845-1.p","Unsatisfiable","0.23 v9.1.0","Timeout",3.013276,"Unsatisfiable",0.076795,"Unsatisfiable",0.147335,"Timeout",3.069809
+result,"SET846-1.p","Unsatisfiable","0.18 v9.1.0","Timeout",3.012107,"Unsatisfiable",0.042308,"Unsatisfiable",0.287663,"Timeout",3.545795
+result,"SET847-1.p","Unsatisfiable","0.55 v9.0.0","Timeout",3.012704,"Unsatisfiable",0.039405,"Timeout",3.053356,"Timeout",3.923446
+result,"SET848-1.p","Unsatisfiable","0.23 v9.1.0","Timeout",3.018266,"Unsatisfiable",0.038419,"Timeout",3.050933,"Timeout",4.345995
+result,"SET849-1.p","Unsatisfiable","0.09 v9.1.0","Timeout",3.012468,"Unsatisfiable",0.045225,"Unsatisfiable",0.170264,"Unsatisfiable",0.167565
+result,"SET850-1.p","Unsatisfiable","0.09 v9.1.0","Timeout",3.012070,"Unsatisfiable",0.019444,"Unsatisfiable",0.058470,"Unsatisfiable",1.187961
+result,"SET851-1.p","Unsatisfiable","0.09 v9.1.0","Timeout",3.013787,"Unsatisfiable",0.072803,"Unsatisfiable",0.060069,"Timeout",4.010052
+result,"SET852-1.p","Unsatisfiable","0.18 v9.1.0","Timeout",3.012809,"Unsatisfiable",0.041937,"Unsatisfiable",0.516601,"Timeout",3.156926
+result,"SET853-1.p","Unsatisfiable","0.27 v9.1.0","Timeout",3.013101,"Unsatisfiable",0.060513,"Unsatisfiable",1.264658,"Timeout",3.275105
+result,"SET854-1.p","Unsatisfiable","1.00 v3.2.0","Timeout",3.013564,"Unsatisfiable",2.603863,"Timeout",3.106892,"Timeout",3.411005
+result,"SET855-1.p","Unsatisfiable","0.05 v7.4.0","Timeout",3.014825,"Unsatisfiable",0.045152,"Unsatisfiable",0.058086,"Unsatisfiable",2.827766
+result,"SET856-1.p","Unsatisfiable","0.05 v7.4.0","Timeout",3.012460,"Unsatisfiable",0.041429,"Unsatisfiable",0.017198,"Unsatisfiable",0.035399
+result,"SET857-1.p","Unsatisfiable","0.73 v9.1.0","Timeout",3.012345,"Unsatisfiable",2.484338,"Timeout",3.071162,"Timeout",3.209534
+result,"SET858-1.p","Unsatisfiable","0.45 v9.1.0","Timeout",3.012408,"Unsatisfiable",0.060166,"Unsatisfiable",2.088789,"Timeout",3.317684
+result,"SET859-1.p","Unsatisfiable","0.05 v7.4.0","Timeout",3.012466,"Unsatisfiable",0.043648,"Unsatisfiable",0.188360,"Timeout",3.452267
+result,"SET860-1.p","Unsatisfiable","0.41 v9.1.0","Timeout",3.025570,"Unsatisfiable",0.116514,"Unsatisfiable",0.286265,"Timeout",3.466356
+result,"SET861-1.p","Unsatisfiable","1.00 v3.2.0","Timeout",3.012293,"Timeout",2.965748,"Timeout",3.054533,"Timeout",3.597534
+result,"SET862-1.p","Unsatisfiable","0.91 v9.1.0","Timeout",3.012200,"Unsatisfiable",1.724401,"Timeout",3.053607,"Timeout",3.281066
+result,"SET863-1.p","Unsatisfiable","0.64 v9.1.0","Timeout",3.012231,"Unsatisfiable",1.695198,"Unsatisfiable",2.192160,"Timeout",3.119525
+result,"SET864-1.p","Unsatisfiable","0.14 v9.1.0","Timeout",3.012204,"Unsatisfiable",0.070226,"Unsatisfiable",0.067614,"Timeout",3.693338
+result,"SET865-1.p","Unsatisfiable","0.45 v9.0.0","Timeout",3.013244,"Unsatisfiable",0.062342,"Timeout",3.081610,"Timeout",3.600461
+result,"SET867+1.p","Theorem","0.15 v9.1.0","Unsatisfiable",0.090460,"Theorem",0.012218,"Theorem",0.005522,"Unsatisfiable",0.095719
+result,"SET872+1.p","Theorem","0.15 v9.1.0","Unsatisfiable",0.068681,"Theorem",0.012219,"Theorem",0.005912,"Timeout",3.238569
+result,"SET873+1.p","Theorem","0.12 v9.1.0","Timeout",3.008102,"Theorem",0.032438,"Theorem",0.005660,"Timeout",3.042192
+result,"SET874+1.p","Theorem","0.09 v9.1.0","Timeout",3.007671,"Theorem",0.067423,"Theorem",0.006041,"Timeout",3.283330
+result,"SET875+1.p","Theorem","0.09 v9.1.0","Unsatisfiable",0.007814,"Theorem",0.033774,"Theorem",0.005337,"Timeout",3.043304
+result,"SET876+1.p","Theorem","0.12 v9.1.0","Unsatisfiable",0.007594,"Theorem",0.043766,"Theorem",0.005142,"Timeout",3.535214
+result,"SET877+1.p","Theorem","0.12 v9.1.0","Timeout",3.005659,"Theorem",0.042451,"Theorem",0.005547,"Timeout",3.273594
+result,"SET878+1.p","Theorem","0.12 v9.1.0","Unsatisfiable",0.031766,"Theorem",0.029296,"Theorem",0.005485,"Timeout",3.210127
+result,"SET879+1.p","Theorem","0.12 v9.1.0","Timeout",3.005731,"Theorem",0.038236,"Theorem",0.005456,"Timeout",3.064951
+result,"SET880+1.p","Theorem","0.06 v9.1.0","Unsatisfiable",0.007777,"Theorem",0.034784,"Theorem",0.005480,"Unsatisfiable",0.015411
+result,"SET881+1.p","Theorem","0.06 v9.1.0","Unsatisfiable",0.016203,"Theorem",0.011705,"Theorem",0.005116,"Unsatisfiable",0.564797
+result,"SET882+1.p","Theorem","0.15 v9.1.0","Timeout",3.005769,"Theorem",0.039301,"Theorem",0.005584,"Timeout",3.207388
+result,"SET883+1.p","Theorem","0.03 v9.1.0","Unsatisfiable",0.005512,"Theorem",0.033835,"Theorem",0.004740,"Unsatisfiable",0.013430
+result,"SET884+1.p","Theorem","0.21 v9.1.0","Unsatisfiable",0.019164,"Theorem",0.012290,"Theorem",0.005535,"Timeout",3.209598
+result,"SET885+1.p","Theorem","0.18 v9.1.0","Unsatisfiable",0.044088,"Theorem",0.036222,"Theorem",0.006116,"Timeout",3.112824
+result,"SET886+1.p","Theorem","0.06 v9.1.0","Timeout",3.005882,"Theorem",0.055996,"Theorem",0.005445,"Unsatisfiable",0.394280
+result,"SET887+1.p","Theorem","0.27 v9.1.0","Timeout",3.007636,"Theorem",0.034467,"Theorem",0.006441,"Timeout",3.557888
+result,"SET888+1.p","Theorem","0.73 v9.1.0","Timeout",3.007751,"Theorem",0.751375,"Timeout",3.047108,"Timeout",3.113808
+result,"SET889+1.p","Theorem","0.30 v9.1.0","Unsatisfiable",0.178831,"Theorem",0.054058,"Theorem",0.008976,"Timeout",3.310374
+result,"SET890+1.p","Theorem","0.24 v9.0.0","Timeout",3.007834,"Theorem",0.062494,"Theorem",0.046631,"Timeout",3.219564
+result,"SET891+1.p","Theorem","0.06 v9.1.0","Unsatisfiable",0.005695,"Theorem",0.034606,"Theorem",0.005014,"Unsatisfiable",0.339521
+result,"SET893+1.p","Theorem","0.21 v9.1.0","Timeout",3.010746,"Theorem",0.050741,"Theorem",0.005760,"Timeout",3.183485
+result,"SET894+1.p","Theorem","0.55 v9.0.0","Timeout",3.005655,"Theorem",0.080009,"Timeout",3.058625,"Timeout",3.105645
+result,"SET895+1.p","Theorem","0.97 v9.1.0","Timeout",3.006155,"Theorem",2.644706,"Timeout",3.051444,"Timeout",3.369616
+result,"SET899+1.p","Theorem","0.00 v5.3.0","Unsatisfiable",0.006406,"Theorem",0.037171,"Theorem",0.007970,"Unsatisfiable",0.014278
+result,"SET900+1.p","Theorem","0.06 v9.0.0","Unsatisfiable",0.007166,"Theorem",0.013124,"Theorem",0.004924,"Unsatisfiable",0.013839
+result,"SET901+1.p","Theorem","0.12 v9.1.0","Timeout",3.006874,"Theorem",0.080501,"Theorem",0.005674,"Unsatisfiable",0.014120
+result,"SET902+1.p","Theorem","0.21 v9.0.0","Timeout",3.008701,"Theorem",0.040932,"Theorem",0.006146,"Timeout",3.332649
+result,"SET903+1.p","Theorem","0.09 v9.0.0","Timeout",3.008343,"Theorem",0.044289,"Theorem",0.005677,"Timeout",3.787146
+result,"SET904+1.p","Theorem","0.03 v9.0.0","Unsatisfiable",0.006644,"Theorem",0.047840,"Theorem",0.005335,"Unsatisfiable",0.014567
+result,"SET906+1.p","Theorem","0.18 v9.1.0","Timeout",3.006870,"Theorem",0.029649,"Theorem",0.005842,"Timeout",3.245753
+result,"SET907+1.p","Theorem","0.06 v9.1.0","Timeout",3.007684,"Theorem",0.037608,"Theorem",0.005806,"Unsatisfiable",0.020038
+result,"SET908+1.p","Theorem","0.12 v9.1.0","Timeout",3.007209,"Theorem",0.031714,"Theorem",0.005864,"Timeout",3.306159
+result,"SET909+1.p","Theorem","0.18 v9.1.0","Timeout",3.010053,"Theorem",0.033759,"Theorem",0.006528,"Timeout",3.131302
+result,"SET910+1.p","Theorem","0.03 v9.1.0","Unsatisfiable",0.005626,"Theorem",0.037351,"Theorem",0.004980,"Unsatisfiable",0.015425
+result,"SET911+1.p","Theorem","0.03 v9.1.0","Unsatisfiable",0.005806,"Theorem",0.011532,"Theorem",0.005114,"Unsatisfiable",0.013947
+result,"SET912+1.p","Theorem","0.06 v9.1.0","Unsatisfiable",0.008295,"Theorem",0.012263,"Theorem",0.005725,"Timeout",3.444721
+result,"SET913+1.p","Theorem","0.00 v5.5.0","Unsatisfiable",0.005172,"Theorem",0.044533,"Theorem",0.005064,"Unsatisfiable",0.013352
+result,"SET914+1.p","Theorem","0.18 v9.1.0","Timeout",3.005474,"Theorem",0.034856,"Theorem",0.006129,"Timeout",3.265387
+result,"SET915+1.p","Theorem","0.00 v5.3.0","Unsatisfiable",0.007146,"Theorem",0.039576,"Theorem",0.005137,"Unsatisfiable",0.015258
+result,"SET916+1.p","Theorem","0.39 v9.1.0","Timeout",3.005792,"Theorem",0.039203,"Theorem",0.041775,"Timeout",3.190880
+result,"SET917+1.p","Theorem","0.09 v9.0.0","Unsatisfiable",0.006351,"Theorem",0.079742,"Theorem",0.005060,"Unsatisfiable",0.030260
+result,"SET918+1.p","Theorem","0.21 v9.1.0","Timeout",3.005404,"Theorem",0.036751,"Theorem",0.006492,"Timeout",3.340252
+result,"SET919+1.p","Theorem","0.48 v9.1.0","Timeout",3.006187,"Theorem",0.550500,"Theorem",0.006730,"Timeout",3.063863
+result,"SET920+1.p","Theorem","0.15 v9.1.0","Timeout",3.005736,"Theorem",0.069965,"Theorem",0.005849,"Timeout",3.178458
+result,"SET921+1.p","Theorem","0.21 v9.0.0","Timeout",3.007611,"Theorem",0.043901,"Theorem",0.006535,"Timeout",3.158822
+result,"SET923+1.p","Theorem","0.09 v9.1.0","Unsatisfiable",0.006882,"Theorem",0.048172,"Theorem",0.005261,"Unsatisfiable",0.014178
+result,"SET924+1.p","Theorem","0.06 v9.1.0","Unsatisfiable",0.008130,"Theorem",0.011542,"Theorem",0.005240,"Unsatisfiable",0.014033
+result,"SET925+1.p","Theorem","0.06 v9.1.0","Unsatisfiable",0.007227,"Theorem",0.012512,"Theorem",0.005023,"Unsatisfiable",0.014216
+result,"SET926+1.p","Theorem","0.06 v7.4.0","Unsatisfiable",0.006388,"Theorem",0.011754,"Theorem",0.005273,"Unsatisfiable",0.015268
+result,"SET927+1.p","Theorem","0.09 v9.1.0","Timeout",3.006053,"Theorem",0.072288,"Theorem",0.005684,"Unsatisfiable",0.014061
+result,"SET928+1.p","Theorem","0.06 v9.0.0","Timeout",3.006441,"Theorem",0.033847,"Theorem",0.005742,"Unsatisfiable",1.649061
+result,"SET929+1.p","Theorem","0.12 v9.1.0","Unsatisfiable",0.008153,"Theorem",0.031508,"Theorem",0.005695,"Unsatisfiable",0.032145
+result,"SET930+1.p","Theorem","0.15 v9.0.0","Timeout",3.006054,"Theorem",0.074828,"Theorem",0.007010,"Timeout",4.028773
+result,"SET931+1.p","Theorem","0.18 v9.1.0","Timeout",3.007456,"Theorem",0.054539,"Theorem",0.006033,"Timeout",3.613002
+result,"SET932+1.p","Theorem","0.18 v9.1.0","Timeout",3.008993,"Theorem",0.047390,"Theorem",0.005630,"Timeout",3.194125
+result,"SET933+1.p","Theorem","0.12 v9.1.0","Unsatisfiable",0.010507,"Theorem",0.011235,"Theorem",0.005784,"Timeout",3.347088
+result,"SET934+1.p","Theorem","0.42 v9.1.0","Timeout",3.007834,"Theorem",0.076115,"Timeout",3.074672,"Timeout",3.316812
+result,"SET935+1.p","Theorem","0.30 v9.1.0","Timeout",3.021543,"Theorem",0.072535,"Theorem",0.007796,"Timeout",3.331207
+result,"SET936+1.p","Theorem","0.64 v9.0.0","Timeout",3.008864,"Theorem",0.079436,"Timeout",3.058848,"Error",0.067865
+result,"SET937+1.p","Theorem","0.64 v9.1.0","Timeout",3.008106,"Timeout",2.976398,"Theorem",0.263640,"Timeout",3.068726
+result,"SET938+1.p","Theorem","0.55 v9.1.0","Timeout",3.008087,"Theorem",0.202743,"Theorem",0.072405,"Timeout",3.332935
+result,"SET940+1.p","Theorem","0.03 v9.0.0","Unsatisfiable",0.025890,"Theorem",0.060789,"Theorem",0.006799,"Unsatisfiable",0.015334
+result,"SET941+1.p","Theorem","0.18 v9.1.0","Timeout",3.045363,"Theorem",0.112309,"Theorem",0.007346,"Timeout",3.739841
+result,"SET942+1.p","Theorem","0.24 v9.1.0","Timeout",3.012244,"Theorem",0.043373,"Theorem",0.007908,"Timeout",3.574078
+result,"SET943+1.p","Theorem","0.79 v9.1.0","Timeout",3.011743,"Theorem",0.135678,"Timeout",3.059153,"Timeout",3.346494
+result,"SET944+1.p","Theorem","0.55 v9.1.0","Timeout",3.006783,"Theorem",0.079765,"Timeout",3.048417,"Timeout",3.177407
+result,"SET945+1.p","Theorem","0.33 v9.1.0","Timeout",3.006343,"Theorem",0.063668,"Theorem",0.010302,"Timeout",3.518338
+result,"SET947+1.p","Theorem","0.15 v9.1.0","Unsatisfiable",0.010099,"Theorem",0.039695,"Theorem",0.008829,"Timeout",5.090374
+result,"SET948+1.p","Theorem","0.97 v9.1.0","Timeout",3.007721,"Timeout",2.941983,"Timeout",3.071256,"Timeout",3.121003
+result,"SET949+1.p","Theorem","0.12 v9.0.0","Timeout",3.006260,"Theorem",0.048759,"Theorem",0.006639,"Timeout",3.062333
+result,"SET950+1.p","Theorem","0.18 v9.0.0","Timeout",3.007712,"Theorem",0.136735,"Theorem",0.008479,"Timeout",3.195924
+result,"SET951+1.p","Theorem","0.45 v9.0.0","Timeout",3.005882,"Theorem",0.092072,"Timeout",3.055911,"Timeout",3.308538
+result,"SET952+1.p","Theorem","0.88 v9.1.0","Timeout",3.008199,"Timeout",2.930276,"Timeout",3.051156,"Timeout",3.124572
+result,"SET954+1.p","Theorem","0.06 v9.1.0","Timeout",3.009785,"Theorem",0.064318,"Theorem",0.005237,"Timeout",3.910807
+result,"SET955+1.p","Theorem","0.45 v9.0.0","Timeout",3.015028,"Theorem",0.096248,"Theorem",0.013694,"Timeout",3.606509
+result,"SET956+1.p","Theorem","0.15 v9.1.0","Timeout",3.034933,"Theorem",0.085199,"Theorem",0.006732,"Timeout",3.878993
+result,"SET957+1.p","Theorem","0.27 v9.1.0","Timeout",3.006209,"Theorem",0.047361,"Theorem",0.007340,"Timeout",5.021909
+result,"SET958+1.p","Theorem","0.12 v9.1.0","Timeout",3.005988,"Theorem",0.036364,"Theorem",0.006098,"Timeout",3.137869
+result,"SET959+1.p","Theorem","0.30 v9.1.0","Timeout",3.005627,"Theorem",0.036620,"Theorem",0.006661,"Timeout",4.313441
+result,"SET960+1.p","Theorem","0.36 v9.0.0","Timeout",3.005829,"Theorem",0.038407,"Theorem",0.006187,"Timeout",3.200272
+result,"SET961+1.p","Theorem","0.42 v9.1.0","Timeout",3.006134,"Theorem",0.034524,"Theorem",0.007015,"Timeout",3.235654
+result,"SET962+1.p","Theorem","0.27 v9.1.0","Timeout",3.006008,"Theorem",0.058622,"Theorem",0.006179,"Timeout",3.612843
+result,"SET963+1.p","Theorem","1.00 v3.2.0","Timeout",3.007698,"Timeout",2.920664,"Timeout",3.056659,"Timeout",3.288879
+result,"SET964+1.p","Theorem","0.42 v9.1.0","Timeout",3.020515,"Theorem",0.069876,"Theorem",0.040674,"Timeout",3.498179
+result,"SET967+1.p","Theorem","0.94 v9.0.0","Timeout",3.008860,"Theorem",0.156340,"Timeout",3.053606,"Timeout",3.497581
+result,"SET968+1.p","Theorem","0.15 v9.1.0","Timeout",3.006024,"Theorem",0.061423,"Theorem",0.005448,"Timeout",3.883236
+result,"SET969+1.p","Theorem","0.85 v9.1.0","Timeout",3.006204,"Theorem",0.368987,"Timeout",3.055927,"Timeout",3.371648
+result,"SET970+1.p","Theorem","0.94 v9.1.0","Timeout",3.006435,"Timeout",2.917357,"Timeout",3.099748,"Timeout",3.215728
+result,"SET971+1.p","Theorem","0.18 v9.1.0","Timeout",3.006105,"Theorem",0.034179,"Theorem",0.006136,"Timeout",4.328729
+result,"SET972+1.p","Theorem","0.88 v9.1.0","Timeout",3.007455,"Theorem",0.383620,"Timeout",3.053917,"Timeout",3.297651
+result,"SET973+1.p","Theorem","0.67 v9.0.0","Timeout",3.009377,"Timeout",2.927640,"Theorem",0.471951,"Timeout",3.207342
+result,"SET974+1.p","Theorem","0.15 v9.1.0","Timeout",3.006074,"Theorem",0.047619,"Theorem",0.006105,"Timeout",3.912286
+result,"SET975+1.p","Theorem","0.21 v9.1.0","Timeout",3.005945,"Theorem",0.067718,"Theorem",0.006055,"Timeout",4.086324
+result,"SET976+1.p","Theorem","0.18 v9.1.0","Timeout",3.005911,"Theorem",0.041762,"Theorem",0.006084,"Timeout",3.495647
+result,"SET977+1.p","Theorem","0.30 v9.1.0","Timeout",3.009095,"Theorem",0.062271,"Theorem",0.006278,"Timeout",3.144238
+result,"SET978+1.p","Theorem","0.06 v9.1.0","Unsatisfiable",0.007820,"Theorem",0.060955,"Theorem",0.005241,"Unsatisfiable",0.016095
+result,"SET979+1.p","Theorem","0.12 v9.0.0","Timeout",3.007106,"Theorem",0.052478,"Theorem",0.004847,"Timeout",3.884646
+result,"SET980+1.p","Theorem","0.48 v9.0.0","Timeout",3.008471,"Theorem",0.042613,"Theorem",0.009311,"Timeout",3.397845
+result,"SET981+1.p","Theorem","1.00 v5.4.0","Timeout",3.013693,"Timeout",2.913834,"Timeout",3.056678,"Timeout",3.286061
+result,"SET983+1.p","Theorem","0.15 v9.1.0","Timeout",3.006800,"Theorem",0.063033,"Theorem",0.006159,"Timeout",3.186238
+result,"SET984+1.p","Theorem","0.33 v9.1.0","Timeout",3.007400,"Theorem",0.136120,"Theorem",0.010449,"Timeout",3.573641
+result,"SET985+1.p","Theorem","0.12 v9.0.0","Timeout",3.006658,"Theorem",0.038264,"Theorem",0.005454,"Timeout",3.811885
+result,"SET986+1.p","Theorem","0.64 v9.1.0","Timeout",3.007369,"Theorem",0.478763,"Timeout",3.068845,"Timeout",3.281029
+result,"SET987+1.p","Theorem","0.09 v9.1.0","Unsatisfiable",0.007704,"Theorem",0.072171,"Theorem",0.005460,"Unsatisfiable",0.067966
+result,"SET988+1.p","Theorem","0.18 v9.1.0","Timeout",3.013270,"Theorem",0.043879,"Theorem",0.020564,"Unsatisfiable",0.038582
+result,"SET990+1.p","Theorem","0.88 v9.1.0","Timeout",3.016421,"Theorem",0.308492,"Timeout",3.045367,"Timeout",3.605367
+result,"SET991+1.p","Theorem","0.21 v9.1.0","Timeout",3.012961,"Theorem",0.039212,"Theorem",0.006261,"Timeout",3.308186
+result,"SET992+1.p","Theorem","0.48 v9.1.0","Timeout",3.010243,"Theorem",0.052985,"Theorem",0.014093,"Timeout",3.783577
+result,"SET993+1.p","Theorem","0.85 v9.1.0","Timeout",3.011242,"Theorem",0.862044,"Timeout",3.044948,"Timeout",3.609155
+result,"SET994+1.p","Theorem","0.39 v9.0.0","Timeout",3.013851,"Theorem",0.074905,"Theorem",0.007236,"Timeout",3.190044
+result,"SET995+1.p","Theorem","0.45 v9.1.0","Timeout",3.011156,"Theorem",0.073525,"Theorem",0.050749,"Timeout",3.208602
+result,"SET996+1.p","Theorem","0.73 v9.1.0","Timeout",3.012066,"Theorem",0.354320,"Theorem",0.187997,"Timeout",3.617566
+result,"SET997+1.p","Theorem","0.24 v9.1.0","Timeout",3.013019,"Theorem",0.092635,"Theorem",0.007408,"Timeout",3.628464
+result,"SET998+1.p","Theorem","0.94 v9.1.0","Timeout",3.012280,"Timeout",2.974843,"Timeout",3.063546,"Timeout",3.694957
+
+section,prover,scope,total,success,timeout,incomplete,unsound,uniques,error,avg_time_s
+prover_stats,"ip","Tous",248,"89 (35.9%)","159 (64.1%)","0 (0.0%)","0 (0.0%)",2,"0 (0.0%)",2.060747
+prover_stats,"ip","Theorem/Unsatisfiable",239,"80 (33.5%)","159 (66.5%)","0 (0.0%)","0 (0.0%)",2,"0 (0.0%)",2.025032
+prover_stats,"ip","Theorem (FOF)",174,"70 (40.2%)","104 (59.8%)","0 (0.0%)","0 (0.0%)",2,"0 (0.0%)",1.827758
+prover_stats,"ip","Unsatisfiable (CNF)",65,"10 (15.4%)","55 (84.6%)","0 (0.0%)","0 (0.0%)",0,"0 (0.0%)",2.553117
+prover_stats,"vampire","Tous",248,"233 (94.0%)","15 (6.0%)","0 (0.0%)","0 (0.0%)",29,"0 (0.0%)",0.362236
+prover_stats,"vampire","Theorem/Unsatisfiable",239,"224 (93.7%)","15 (6.3%)","0 (0.0%)","0 (0.0%)",29,"0 (0.0%)",0.313597
+prover_stats,"vampire","Theorem (FOF)",174,"160 (92.0%)","14 (8.0%)","0 (0.0%)","0 (0.0%)",18,"0 (0.0%)",0.335079
+prover_stats,"vampire","Unsatisfiable (CNF)",65,"64 (98.5%)","1 (1.5%)","0 (0.0%)","0 (0.0%)",11,"0 (0.0%)",0.256091
+prover_stats,"e","Tous",248,"201 (81.0%)","47 (19.0%)","0 (0.0%)","0 (0.0%)",2,"0 (0.0%)",0.729452
+prover_stats,"e","Theorem/Unsatisfiable",239,"192 (80.3%)","47 (19.7%)","0 (0.0%)","0 (0.0%)",2,"0 (0.0%)",0.692768
+prover_stats,"e","Theorem (FOF)",174,"139 (79.9%)","35 (20.1%)","0 (0.0%)","0 (0.0%)",2,"0 (0.0%)",0.677342
+prover_stats,"e","Unsatisfiable (CNF)",65,"53 (81.5%)","12 (18.5%)","0 (0.0%)","0 (0.0%)",0,"0 (0.0%)",0.734060
+prover_stats,"zenon","Tous",248,"78 (31.5%)","169 (68.1%)","0 (0.0%)","0 (0.0%)",0,"1 (0.4%)",2.554182
+prover_stats,"zenon","Theorem/Unsatisfiable",239,"69 (28.9%)","169 (70.7%)","0 (0.0%)","0 (0.0%)",0,"1 (0.4%)",2.516840
+prover_stats,"zenon","Theorem (FOF)",174,"44 (25.3%)","129 (74.1%)","0 (0.0%)","0 (0.0%)",0,"1 (0.6%)",2.591036
+prover_stats,"zenon","Unsatisfiable (CNF)",65,"25 (38.5%)","40 (61.5%)","0 (0.0%)","0 (0.0%)",0,"0 (0.0%)",2.318224
+
+section,prover_a,prover_b,win,draw,loss
+pair_stats,"ip","vampire",2,100,146
+pair_stats,"ip","e",7,122,119
+pair_stats,"ip","zenon",38,183,27
+pair_stats,"vampire","ip",146,100,2
+pair_stats,"vampire","e",34,212,2
+pair_stats,"vampire","zenon",155,93,0
+pair_stats,"e","ip",119,122,7
+pair_stats,"e","vampire",2,212,34
+pair_stats,"e","zenon",123,125,0
+pair_stats,"zenon","ip",27,183,38
+pair_stats,"zenon","vampire",0,93,155
+pair_stats,"zenon","e",0,125,123

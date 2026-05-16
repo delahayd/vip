@@ -1,0 +1,140 @@
+# bench_date,"2026-05-15_13-14-31"
+# problem_dir,"/home/delahayed/problems/TPTP-v9.2.1/Problems/PUZ"
+# home,"/home/delahaye/ip/bench/problems/TPTP-v9.2.1/Problems/PUZ"
+# logs_dir,"/home/delahayed/benchs-ip/logs"
+# time_limit_seconds,3
+# robust_time_limit,false
+# size_limit_gb,
+# max_clauses,
+# mode,"ordered-fallback"
+# casc,
+# only_ip,false
+# version_ip,"8dfcd15"
+# version_vampire,"Vampire 5.0.1 (Release build, commit 9eeba91d1 on 2026-05-09 07:13:19 +0100)"
+# version_e,"E 3.3.2 Countess Grey (37fde70d516b57cb64294f8fe39bc16ece8198f8)"
+# version_zenon,"zenon version 0.8.5 [a270] 2020-10-23"
+
+section,problem,expected_status,rating,ip,ip_time_s,vampire,vampire_time_s,e,e_time_s,zenon,zenon_time_s
+result,"PUZ001+1.p","Theorem","0.09 v9.1.0","Unsatisfiable",0.018931,"Theorem",0.011623,"Theorem",0.005427,"Unsatisfiable",0.016667
+result,"PUZ001-1.p","Unsatisfiable","0.00 v2.0.0","Unsatisfiable",0.016498,"Unsatisfiable",0.010206,"Unsatisfiable",0.004441,"Unsatisfiable",0.013991
+result,"PUZ002-1.p","Unsatisfiable","0.00 v2.0.0","Unsatisfiable",0.006669,"Unsatisfiable",0.010278,"Unsatisfiable",0.004644,"Unsatisfiable",0.013847
+result,"PUZ003-1.p","Unsatisfiable","0.00 v2.0.0","Unsatisfiable",0.010112,"Unsatisfiable",0.009838,"Unsatisfiable",0.004710,"Unsatisfiable",0.014330
+result,"PUZ004-1.p","Unsatisfiable","0.00 v2.0.0","Unsatisfiable",0.006740,"Unsatisfiable",0.010393,"Unsatisfiable",0.004574,"Unsatisfiable",0.014089
+result,"PUZ005+1.p","Theorem","0.00 v9.1.0","Timeout",3.008214,"Theorem",0.037619,"Theorem",0.163464,"Timeout",3.224337
+result,"PUZ005-1.p","Unsatisfiable","0.00 v2.5.0","Timeout",3.015679,"Unsatisfiable",0.082183,"Unsatisfiable",0.006897,"Unsatisfiable",0.250702
+result,"PUZ006-1.p","Unsatisfiable","0.05 v9.0.0","Unsatisfiable",0.012221,"Unsatisfiable",0.013058,"Unsatisfiable",0.007358,"Unsatisfiable",0.025344
+result,"PUZ007-1.p","Unsatisfiable","0.05 v9.1.0","Unsatisfiable",0.038487,"Unsatisfiable",0.014187,"Unsatisfiable",0.007094,"Unsatisfiable",0.026752
+result,"PUZ008-1.p","Unsatisfiable","0.00 v5.3.0","Unsatisfiable",0.007832,"Unsatisfiable",0.011505,"Unsatisfiable",0.008562,"Unsatisfiable",0.039497
+result,"PUZ009-1.p","Unsatisfiable","0.00 v2.0.0","Unsatisfiable",0.006737,"Unsatisfiable",0.019758,"Unsatisfiable",0.008210,"Unsatisfiable",0.014086
+result,"PUZ010-1.p","Unsatisfiable","0.12 v9.1.0","Timeout",3.007779,"Unsatisfiable",0.070729,"Unsatisfiable",1.617574,"Timeout",4.532633
+result,"PUZ011-1.p","Unsatisfiable","0.00 v2.0.0","Unsatisfiable",0.053330,"Unsatisfiable",0.011122,"Unsatisfiable",0.005064,"Unsatisfiable",0.015553
+result,"PUZ012-1.p","Unsatisfiable","0.00 v2.0.0","Unsatisfiable",0.089000,"Unsatisfiable",0.038210,"Unsatisfiable",0.005227,"Unsatisfiable",0.017085
+result,"PUZ013-1.p","Unsatisfiable","0.00 v2.0.0","Unsatisfiable",0.007368,"Unsatisfiable",0.010538,"Unsatisfiable",0.004675,"Unsatisfiable",0.014017
+result,"PUZ014-1.p","Unsatisfiable","0.00 v2.0.0","Unsatisfiable",0.015344,"Unsatisfiable",0.011260,"Unsatisfiable",0.004718,"Unsatisfiable",0.014156
+result,"PUZ015-1.p","Satisfiable","0.75 v9.1.0","Timeout",3.009653,"Timeout",2.924347,"Timeout",3.109532,"Timeout",4.382368
+result,"PUZ016-1.p","Unsatisfiable","0.17 v9.1.0","Timeout",3.009047,"Unsatisfiable",0.060054,"Timeout",3.051258,"Timeout",4.410205
+result,"PUZ017-1.p","Unsatisfiable","0.12 v9.1.0","Timeout",3.007119,"Unsatisfiable",0.056550,"Timeout",3.047823,"Timeout",3.564767
+result,"PUZ018-1.p","Unsatisfiable","0.12 v9.1.0","Timeout",3.007419,"Unsatisfiable",0.033720,"Unsatisfiable",0.010449,"Unsatisfiable",0.116725
+result,"PUZ019-1.p","Unsatisfiable","0.00 v5.1.0","Timeout",3.008929,"Unsatisfiable",0.063954,"Unsatisfiable",0.007618,"Timeout",3.384659
+result,"PUZ020-1.p","Unsatisfiable","0.05 v9.1.0","Unsatisfiable",0.419533,"Unsatisfiable",0.011804,"Unsatisfiable",0.005160,"Unsatisfiable",0.015211
+result,"PUZ021-1.p","Unsatisfiable","0.08 v9.1.0","Timeout",3.007295,"Unsatisfiable",0.084954,"Unsatisfiable",0.039028,"Unsatisfiable",1.564515
+result,"PUZ022-1.p","Unsatisfiable","0.00 v2.0.0","Unsatisfiable",0.973647,"Unsatisfiable",0.011788,"Unsatisfiable",0.005546,"Unsatisfiable",0.017309
+result,"PUZ023-1.p","Unsatisfiable","0.00 v2.0.0","Timeout",3.017816,"Unsatisfiable",0.013288,"Unsatisfiable",0.005901,"Unsatisfiable",0.017541
+result,"PUZ024-1.p","Unsatisfiable","0.00 v6.3.0","Timeout",3.009751,"Unsatisfiable",0.038126,"Unsatisfiable",0.005619,"Unsatisfiable",0.023999
+result,"PUZ025-1.p","Unsatisfiable","0.00 v9.1.0","Timeout",3.008077,"Unsatisfiable",0.037520,"Unsatisfiable",0.012998,"Unsatisfiable",0.550082
+result,"PUZ026-1.p","Unsatisfiable","0.00 v2.5.0","Timeout",3.007554,"Unsatisfiable",0.016191,"Unsatisfiable",0.008678,"Unsatisfiable",0.687574
+result,"PUZ027-1.p","Unsatisfiable","0.00 v2.0.0","Timeout",3.010478,"Unsatisfiable",0.014050,"Unsatisfiable",0.006494,"Unsatisfiable",0.023759
+result,"PUZ028-1.p","Satisfiable","0.00 v7.3.0","Timeout",3.006103,"Satisfiable",0.069781,"Satisfiable",0.006181,"Satisfiable",0.018970
+result,"PUZ029-1.p","Unsatisfiable","0.00 v2.0.0","Unsatisfiable",0.009478,"Unsatisfiable",0.011065,"Unsatisfiable",0.005176,"Unsatisfiable",0.014656
+result,"PUZ030-1.p","Unsatisfiable","0.00 v5.5.0","Timeout",3.006560,"Unsatisfiable",0.057544,"Unsatisfiable",0.011294,"Unsatisfiable",0.024781
+result,"PUZ031+1.p","Theorem","0.00 v8.1.0","Timeout",3.007381,"Theorem",0.048539,"Theorem",0.007530,"Unsatisfiable",0.544455
+result,"PUZ031-1.p","Unsatisfiable","0.00 v7.1.0","Timeout",3.013660,"Unsatisfiable",0.082357,"Unsatisfiable",0.007036,"Unsatisfiable",0.025615
+result,"PUZ032-1.p","Unsatisfiable","0.00 v2.2.1","Timeout",3.011757,"Unsatisfiable",0.029560,"Unsatisfiable",0.005910,"Unsatisfiable",0.059526
+result,"PUZ033-1.p","Unsatisfiable","0.00 v2.0.0","Unsatisfiable",0.010498,"Unsatisfiable",0.011685,"Unsatisfiable",0.005081,"Unsatisfiable",0.014676
+result,"PUZ035-1.p","Unsatisfiable","0.00 v2.1.0","Timeout",3.006790,"Unsatisfiable",0.052266,"Unsatisfiable",0.005773,"Unsatisfiable",0.016362
+result,"PUZ037-1.p","Unsatisfiable","0.33 v8.1.0","Unsatisfiable",0.065456,"Unsatisfiable",0.013992,"Unsatisfiable",0.010126,"Timeout",3.186638
+result,"PUZ038-1.p","Unsatisfiable","0.00 v6.1.0","Unsatisfiable",2.083737,"Unsatisfiable",0.022228,"Unsatisfiable",0.007501,"Timeout",3.135604
+result,"PUZ039-1.p","Unsatisfiable","0.06 v9.1.0","Timeout",3.011309,"Unsatisfiable",0.084744,"Unsatisfiable",0.244478,"Timeout",3.183358
+result,"PUZ040-1.p","Unsatisfiable","0.06 v9.1.0","Timeout",3.010291,"Unsatisfiable",0.091373,"Unsatisfiable",0.016166,"Timeout",3.279234
+result,"PUZ041-1.p","Unknown","1.00 v2.6.0","Timeout",3.010382,"Timeout",2.947770,"Timeout",3.055407,"Timeout",4.285088
+result,"PUZ042-1.p","Unsatisfiable","0.06 v9.1.0","Timeout",3.010143,"Unsatisfiable",0.106825,"Unsatisfiable",0.181516,"Timeout",3.216020
+result,"PUZ043-1.p","Satisfiable","0.00 v7.4.0","Timeout",3.008432,"Satisfiable",0.019685,"Satisfiable",0.011341,"Satisfiable",0.035427
+result,"PUZ044-1.p","Satisfiable","0.00 v3.1.0","Timeout",3.007544,"Satisfiable",0.017120,"Satisfiable",0.008355,"Timeout",3.813090
+result,"PUZ045-1.p","Satisfiable","0.00 v3.1.0","Timeout",3.008288,"Satisfiable",0.047759,"Satisfiable",0.005330,"Timeout",3.669037
+result,"PUZ046-1.p","Satisfiable","0.00 v5.4.0","Timeout",3.021775,"Satisfiable",0.018708,"Satisfiable",0.007291,"Satisfiable",0.026440
+result,"PUZ047+1.p","Theorem","0.00 v9.1.0","Unsatisfiable",0.007918,"Theorem",0.013379,"Theorem",0.005508,"Timeout",3.073349
+result,"PUZ047-1.p","Unsatisfiable","0.00 v5.3.0","Unsatisfiable",0.007875,"Unsatisfiable",0.012297,"Unsatisfiable",0.005161,"Unsatisfiable",0.096097
+result,"PUZ048-1.p","Satisfiable","0.33 v7.0.0","Timeout",3.012360,"Timeout",2.936716,"Timeout",3.077720,"Timeout",5.272204
+result,"PUZ049-1.p","Satisfiable","0.00 v8.2.0","Timeout",3.009861,"Timeout",2.919157,"Satisfiable",0.197779,"Timeout",4.369356
+result,"PUZ050-1.p","Unsatisfiable","0.82 v9.1.0","Timeout",3.013878,"Timeout",2.914828,"Timeout",3.061567,"Timeout",4.900993
+result,"PUZ051-1.p","Unknown","1.00 v2.6.0","Timeout",3.010203,"Timeout",2.944593,"Timeout",3.101487,"Timeout",4.188895
+result,"PUZ052-1.p","Satisfiable","1.00 v2.7.0","Timeout",3.017403,"Timeout",2.952579,"Timeout",3.133604,"Timeout",3.204784
+result,"PUZ053-1.p","Satisfiable","1.00 v2.7.0","Timeout",3.019060,"Timeout",2.984749,"Timeout",3.131507,"Timeout",3.143440
+result,"PUZ054-1.p","Satisfiable","0.00 v2.7.0","Timeout",3.012263,"Satisfiable",0.044647,"Satisfiable",0.013736,"Satisfiable",0.040207
+result,"PUZ055-1.p","Satisfiable","1.00 v2.7.0","Timeout",3.010700,"Timeout",2.988109,"Timeout",3.058795,"Timeout",3.573363
+result,"PUZ056-1.p","Unsatisfiable","0.33 v9.1.0","Timeout",3.011749,"Timeout",2.980994,"Timeout",3.079438,"Timeout",3.102533
+result,"PUZ057-1.p","Satisfiable","0.88 v9.1.0","Timeout",3.005649,"Timeout",2.993628,"Timeout",3.051094,"Timeout",4.779361
+result,"PUZ058-1.p","Satisfiable","0.38 v9.1.0","Timeout",3.038696,"Timeout",2.967303,"Timeout",3.056093,"Timeout",3.116732
+result,"PUZ059-1.p","Satisfiable","0.33 v7.0.0","Timeout",3.014857,"Timeout",2.959145,"Timeout",3.061078,"Timeout",5.158254
+result,"PUZ060+1.p","Theorem","0.00 v5.3.0","Unsatisfiable",0.006605,"Theorem",0.046892,"Theorem",0.006212,"Unsatisfiable",0.015089
+result,"PUZ061+1.p","Theorem","0.00 v5.3.0","Unsatisfiable",0.006838,"Theorem",0.011906,"Theorem",0.005320,"Unsatisfiable",0.015189
+result,"PUZ062-1.p","Unsatisfiable","0.86 v9.1.0","Timeout",3.115334,"Unsatisfiable",1.282536,"Timeout",3.048397,"Timeout",4.991021
+result,"PUZ063-1.p","Unsatisfiable","0.18 v9.1.0","Timeout",3.024774,"Unsatisfiable",0.062017,"Unsatisfiable",0.049246,"Timeout",3.086740
+result,"PUZ064-1.p","Unsatisfiable","0.73 v9.1.0","Timeout",3.023659,"Timeout",2.921263,"Timeout",3.049889,"Timeout",3.177044
+result,"PUZ065+1.p","Satisfiable","0.33 v9.1.0","Timeout",3.019485,"Satisfiable",0.318628,"Satisfiable",0.419105,"Timeout",3.831628
+result,"PUZ066+1.p","Satisfiable","0.17 v9.0.0","Timeout",3.017510,"Satisfiable",0.238953,"Satisfiable",0.058137,"Timeout",3.780539
+result,"PUZ067+1.p","Satisfiable","0.17 v9.0.0","Timeout",3.017199,"Satisfiable",0.249487,"Satisfiable",0.038450,"Timeout",3.273609
+result,"PUZ068+1.p","Satisfiable","0.17 v9.0.0","Timeout",3.017731,"Satisfiable",0.282526,"Satisfiable",0.038600,"Timeout",3.063477
+result,"PUZ068-1.p","Satisfiable","0.50 v9.1.0","Timeout",3.011612,"Timeout",2.957999,"Timeout",3.038274,"Timeout",4.535781
+result,"PUZ069+1.p","Satisfiable","0.17 v9.0.0","Timeout",3.016905,"Satisfiable",0.585319,"Satisfiable",0.056203,"Timeout",3.050760
+result,"PUZ069-1.p","Satisfiable","0.38 v9.1.0","Timeout",3.010303,"Timeout",2.925117,"Timeout",3.042165,"Timeout",4.496431
+result,"PUZ070+1.p","Satisfiable","0.17 v9.0.0","Timeout",3.018128,"Satisfiable",0.468207,"Satisfiable",0.062555,"Timeout",3.487363
+result,"PUZ070-1.p","Satisfiable","0.50 v9.1.0","Timeout",3.010403,"Timeout",2.915750,"Timeout",3.052644,"Timeout",4.461114
+result,"PUZ071+1.p","Satisfiable","0.17 v9.0.0","Timeout",3.016612,"Satisfiable",0.240443,"Satisfiable",0.076035,"Timeout",3.273052
+result,"PUZ071-1.p","Satisfiable","0.50 v9.1.0","Timeout",3.011307,"Timeout",2.950670,"Timeout",3.056303,"Timeout",4.720095
+result,"PUZ072+1.p","Satisfiable","0.17 v9.1.0","Timeout",3.017376,"Satisfiable",0.307305,"Satisfiable",0.471177,"Timeout",3.068577
+result,"PUZ072-1.p","Satisfiable","0.50 v9.1.0","Timeout",3.009911,"Timeout",2.986932,"Timeout",3.043359,"Timeout",4.404176
+result,"PUZ073+1.p","Theorem","0.00 v9.1.0","Error",5.277349,"Timeout",3.005755,"Timeout",3.033603,"Unsatisfiable",1.112665
+result,"PUZ074+1.p","Theorem","0.00 v9.1.0","Error",4.273615,"Theorem",0.441168,"Theorem",0.472294,"Unsatisfiable",0.108104
+result,"PUZ075+1.p","Theorem","0.00 v6.4.0","Error",4.682343,"Theorem",0.187757,"Theorem",0.051720,"Unsatisfiable",0.017381
+result,"PUZ076+1.p","Theorem","0.91 v9.1.0","Error",4.689721,"Timeout",2.934840,"Timeout",3.045135,"Timeout",18.106994
+result,"PUZ077+1.p","Theorem","0.79 v9.1.0","Error",9.503063,"Theorem",0.093170,"Timeout",3.048516,"Timeout",3.885789
+result,"PUZ078+1.p","Theorem","0.27 v9.1.0","Timeout",3.020937,"Theorem",0.065098,"Theorem",0.070910,"Unsatisfiable",0.875630
+result,"PUZ128+1.p","Theorem","0.00 v5.3.0","Unsatisfiable",0.011164,"Theorem",0.024153,"Theorem",0.004733,"Unsatisfiable",0.014650
+result,"PUZ130+1.p","Theorem","0.09 v9.1.0","Unsatisfiable",0.130346,"Theorem",0.043849,"Theorem",0.006780,"Timeout",3.737831
+result,"PUZ131+1.p","Theorem","0.06 v7.4.0","Unsatisfiable",0.012681,"Theorem",0.047134,"Theorem",0.005870,"Unsatisfiable",0.018627
+result,"PUZ132+1.p","Theorem","0.03 v9.1.0","Unsatisfiable",0.006766,"Theorem",0.011456,"Theorem",0.004891,"Unsatisfiable",0.013740
+result,"PUZ133+1.p","Theorem","0.39 v9.0.0","Timeout",3.005796,"Theorem",0.191761,"Timeout",3.042013,"Timeout",4.751127
+result,"PUZ153+1.p","CounterSatisfiable","0.00 v9.1.0","Timeout",3.006530,"CounterSatisfiable",0.014707,"CounterSatisfiable",0.004610,"Satisfiable",0.014496
+
+section,prover,scope,total,success,timeout,incomplete,unsound,uniques,error,avg_time_s
+prover_stats,"ip","Tous",91,"56 (61.5%)","30 (33.0%)","0 (0.0%)","0 (0.0%)",0,"5 (5.5%)",2.311113
+prover_stats,"ip","Theorem/Unsatisfiable",60,"27 (45.0%)","28 (46.7%)","0 (0.0%)","0 (0.0%)",0,"5 (8.3%)",1.948118
+prover_stats,"ip","Theorem (FOF)",17,"8 (47.1%)","4 (23.5%)","0 (0.0%)","0 (0.0%)",0,"5 (29.4%)",2.392333
+prover_stats,"ip","Unsatisfiable (CNF)",43,"19 (44.2%)","24 (55.8%)","0 (0.0%)","0 (0.0%)",0,"0 (0.0%)",1.772498
+prover_stats,"vampire","Tous",91,"84 (92.3%)","7 (7.7%)","0 (0.0%)","0 (0.0%)",5,"0 (0.0%)",0.757107
+prover_stats,"vampire","Theorem/Unsatisfiable",60,"55 (91.7%)","5 (8.3%)","0 (0.0%)","0 (0.0%)",5,"0 (0.0%)",0.311982
+prover_stats,"vampire","Theorem (FOF)",17,"15 (88.2%)","2 (11.8%)","0 (0.0%)","0 (0.0%)",2,"0 (0.0%)",0.424476
+prover_stats,"vampire","Unsatisfiable (CNF)",43,"40 (93.0%)","3 (7.0%)","0 (0.0%)","0 (0.0%)",3,"0 (0.0%)",0.267508
+prover_stats,"e","Tous",91,"79 (86.8%)","12 (13.2%)","0 (0.0%)","0 (0.0%)",0,"0 (0.0%)",0.892505
+prover_stats,"e","Theorem/Unsatisfiable",60,"50 (83.3%)","10 (16.7%)","0 (0.0%)","0 (0.0%)",0,"0 (0.0%)",0.561233
+prover_stats,"e","Theorem (FOF)",17,"13 (76.5%)","4 (23.5%)","0 (0.0%)","0 (0.0%)",0,"0 (0.0%)",0.763525
+prover_stats,"e","Unsatisfiable (CNF)",43,"37 (86.0%)","6 (14.0%)","0 (0.0%)","0 (0.0%)",0,"0 (0.0%)",0.481258
+prover_stats,"zenon","Tous",91,"69 (75.8%)","22 (24.2%)","0 (0.0%)","0 (0.0%)",1,"0 (0.0%)",2.164429
+prover_stats,"zenon","Theorem/Unsatisfiable",60,"40 (66.7%)","20 (33.3%)","0 (0.0%)","0 (0.0%)",1,"0 (0.0%)",1.573749
+prover_stats,"zenon","Theorem (FOF)",17,"11 (64.7%)","6 (35.3%)","0 (0.0%)","0 (0.0%)",1,"0 (0.0%)",2.325390
+prover_stats,"zenon","Unsatisfiable (CNF)",43,"29 (67.4%)","14 (32.6%)","0 (0.0%)","0 (0.0%)",0,"0 (0.0%)",1.276589
+
+section,prover_a,prover_b,win,draw,loss
+pair_stats,"ip","vampire",0,63,28
+pair_stats,"ip","e",0,68,23
+pair_stats,"ip","zenon",4,70,17
+pair_stats,"vampire","ip",28,63,0
+pair_stats,"vampire","e",5,86,0
+pair_stats,"vampire","zenon",16,74,1
+pair_stats,"e","ip",23,68,0
+pair_stats,"e","vampire",0,86,5
+pair_stats,"e","zenon",11,79,1
+pair_stats,"zenon","ip",17,70,4
+pair_stats,"zenon","vampire",1,74,16
+pair_stats,"zenon","e",1,79,11
