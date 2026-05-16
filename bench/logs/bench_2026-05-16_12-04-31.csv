@@ -1,0 +1,79 @@
+# bench_date,"2026-05-16_12-04-31"
+# problem_dir,"/home/delahayed/problems/equality"
+# home,"/home/delahaye/ip/bench/problems/equality"
+# logs_dir,"/home/delahayed/benchs-ip/logs"
+# time_limit_seconds,3
+# robust_time_limit,false
+# size_limit_gb,
+# max_clauses,
+# mode,"ordered-fallback"
+# casc,
+# only_ip,false
+# version_ip,"3b23b65"
+# version_vampire,"Vampire 5.0.1 (Release build, commit 9eeba91d1 on 2026-05-09 07:13:19 +0100)"
+# version_e,"E 3.3.2 Countess Grey (37fde70d516b57cb64294f8fe39bc16ece8198f8)"
+# version_zenon,"zenon version 0.8.5 [a270] 2020-10-23"
+
+section,problem,expected_status,rating,ip,ip_time_s,vampire,vampire_time_s,e,e_time_s,zenon,zenon_time_s
+result,"eq_large_01.p","Unknown","","Unsatisfiable",0.014963,"Theorem",0.035283,"Theorem",0.005725,"Unsatisfiable",0.015064
+result,"eq_large_02.p","Unknown","","Unsatisfiable",0.006089,"Theorem",0.013540,"Theorem",0.005614,"Unsatisfiable",0.015283
+result,"eq_large_03.p","Unknown","","Unsatisfiable",0.005810,"Theorem",0.011943,"Theorem",0.005163,"Unsatisfiable",0.017517
+result,"eq_large_04.p","Unknown","","Unsatisfiable",0.005866,"Theorem",0.011834,"Theorem",0.005975,"Unsatisfiable",0.015582
+result,"eq_large_05.p","Unknown","","Unsatisfiable",0.005890,"Theorem",0.011620,"Theorem",0.005366,"Unsatisfiable",0.015200
+result,"eq_large_06.p","Unknown","","Unsatisfiable",0.005851,"Theorem",0.012620,"Theorem",0.005813,"Unsatisfiable",0.016561
+result,"eq_large_07.p","Unknown","","Unsatisfiable",0.008373,"Theorem",0.018108,"Theorem",0.005472,"Unsatisfiable",0.015342
+result,"eq_large_08.p","Unknown","","Unsatisfiable",0.005928,"Theorem",0.011892,"Theorem",0.005378,"Unsatisfiable",0.017156
+result,"eq_large_09.p","Unknown","","Unsatisfiable",0.006316,"ContradictoryAxioms",0.011830,"ContradictoryAxioms",0.005706,"Unsatisfiable",0.016026
+result,"eq_large_10.p","Unknown","","Timeout",3.006110,"Theorem",0.034452,"Theorem",0.005834,"Unsatisfiable",0.015678
+result,"eq_medium_01.p","Unknown","","Unsatisfiable",0.005959,"Theorem",0.013101,"Theorem",0.005558,"Unsatisfiable",0.015425
+result,"eq_medium_02.p","Unknown","","Unsatisfiable",0.005870,"Theorem",0.012784,"Theorem",0.005381,"Unsatisfiable",0.015371
+result,"eq_medium_03.p","Unknown","","Unsatisfiable",0.005871,"Theorem",0.012319,"Theorem",0.005940,"Unsatisfiable",0.015826
+result,"eq_medium_04.p","Unknown","","Unsatisfiable",0.006284,"Theorem",0.013531,"Theorem",0.007283,"Unsatisfiable",0.016492
+result,"eq_medium_05.p","Unknown","","Unsatisfiable",0.006957,"Theorem",0.012125,"Theorem",0.005690,"Unsatisfiable",0.015199
+result,"eq_medium_06.p","Unknown","","Unsatisfiable",0.005819,"Theorem",0.012943,"Theorem",0.005889,"Unsatisfiable",0.016096
+result,"eq_medium_07.p","Unknown","","Unsatisfiable",0.007888,"Theorem",0.013437,"Theorem",0.006019,"Unsatisfiable",0.015989
+result,"eq_medium_08.p","Unknown","","Unsatisfiable",0.006913,"Theorem",0.013557,"Theorem",0.006973,"Unsatisfiable",0.015511
+result,"eq_medium_09.p","Unknown","","Unsatisfiable",0.007484,"ContradictoryAxioms",0.013146,"ContradictoryAxioms",0.006777,"Unsatisfiable",0.015465
+result,"eq_medium_10.p","Unknown","","Unsatisfiable",0.006248,"Theorem",0.013120,"Theorem",0.006584,"Unsatisfiable",0.015539
+result,"eq_small_01.p","Unknown","","Unsatisfiable",0.005994,"Theorem",0.011919,"Theorem",0.005417,"Unsatisfiable",0.015210
+result,"eq_small_02.p","Unknown","","Unsatisfiable",0.005996,"Theorem",0.014860,"Theorem",0.014173,"Unsatisfiable",0.015625
+result,"eq_small_03.p","Unknown","","Unsatisfiable",0.005905,"Theorem",0.012185,"Theorem",0.005315,"Unsatisfiable",0.015323
+result,"eq_small_04.p","Unknown","","Unsatisfiable",0.005985,"Theorem",0.011600,"Theorem",0.005185,"Unsatisfiable",0.015376
+result,"eq_small_05.p","Unknown","","Unsatisfiable",0.005719,"ContradictoryAxioms",0.012959,"ContradictoryAxioms",0.005681,"Unsatisfiable",0.015125
+result,"eq_small_06.p","Unknown","","Unsatisfiable",0.005951,"Theorem",0.012476,"Theorem",0.005598,"Unsatisfiable",0.015368
+result,"eq_small_07.p","Unknown","","Unsatisfiable",0.006166,"Theorem",0.012382,"Theorem",0.005706,"Unsatisfiable",0.016281
+result,"eq_small_08.p","Unknown","","Unsatisfiable",0.006508,"Theorem",0.012666,"Theorem",0.005599,"Unsatisfiable",0.015158
+result,"eq_small_09.p","Unknown","","Unsatisfiable",0.006459,"Theorem",0.012385,"Theorem",0.005678,"Unsatisfiable",0.015442
+result,"eq_small_10.p","Unknown","","Unsatisfiable",0.006117,"ContradictoryAxioms",0.011551,"ContradictoryAxioms",0.005465,"Unsatisfiable",0.015140
+
+section,prover,scope,total,success,timeout,incomplete,unsound,uniques,error,avg_time_s
+prover_stats,"ip","Tous",30,"29 (96.7%)","1 (3.3%)","0 (0.0%)","0 (0.0%)",0,"0 (0.0%)",0.106576
+prover_stats,"ip","Theorem/Unsatisfiable",0,"0 (0.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)",0,"0 (0.0%)",0.000000
+prover_stats,"ip","Theorem (FOF)",0,"0 (0.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)",0,"0 (0.0%)",0.000000
+prover_stats,"ip","Unsatisfiable (CNF)",0,"0 (0.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)",0,"0 (0.0%)",0.000000
+prover_stats,"vampire","Tous",30,"30 (100.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)",0,"0 (0.0%)",0.014272
+prover_stats,"vampire","Theorem/Unsatisfiable",0,"0 (0.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)",0,"0 (0.0%)",0.000000
+prover_stats,"vampire","Theorem (FOF)",0,"0 (0.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)",0,"0 (0.0%)",0.000000
+prover_stats,"vampire","Unsatisfiable (CNF)",0,"0 (0.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)",0,"0 (0.0%)",0.000000
+prover_stats,"e","Tous",30,"30 (100.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)",0,"0 (0.0%)",0.006065
+prover_stats,"e","Theorem/Unsatisfiable",0,"0 (0.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)",0,"0 (0.0%)",0.000000
+prover_stats,"e","Theorem (FOF)",0,"0 (0.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)",0,"0 (0.0%)",0.000000
+prover_stats,"e","Unsatisfiable (CNF)",0,"0 (0.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)",0,"0 (0.0%)",0.000000
+prover_stats,"zenon","Tous",30,"30 (100.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)",0,"0 (0.0%)",0.015679
+prover_stats,"zenon","Theorem/Unsatisfiable",0,"0 (0.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)",0,"0 (0.0%)",0.000000
+prover_stats,"zenon","Theorem (FOF)",0,"0 (0.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)",0,"0 (0.0%)",0.000000
+prover_stats,"zenon","Unsatisfiable (CNF)",0,"0 (0.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)",0,"0 (0.0%)",0.000000
+
+section,prover_a,prover_b,win,draw,loss
+pair_stats,"ip","vampire",0,29,1
+pair_stats,"ip","e",0,29,1
+pair_stats,"ip","zenon",0,29,1
+pair_stats,"vampire","ip",1,29,0
+pair_stats,"vampire","e",0,30,0
+pair_stats,"vampire","zenon",0,30,0
+pair_stats,"e","ip",1,29,0
+pair_stats,"e","vampire",0,30,0
+pair_stats,"e","zenon",0,30,0
+pair_stats,"zenon","ip",1,29,0
+pair_stats,"zenon","vampire",0,30,0
+pair_stats,"zenon","e",0,30,0
