@@ -1,7 +1,15 @@
 (executable
  (name main)
- (modules header main)
- (libraries prover_lib))
+ (modules header main sites)
+ (libraries prover_lib unix mad dune-site.plugins))
+
+(generate_sites_module
+ (module sites)
+ (sites ip))
+
+(install
+ (section (site (ip sounds)))
+ (files unsat.mp3 timeout.mp3))
 
 (install
  (section bin)

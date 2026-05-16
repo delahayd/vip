@@ -5,10 +5,8 @@ let version_n = 1
 exception Invalid_version_index of int
 
 let version_of_n n =
-  if n < 1 then
-    raise (Invalid_version_index n)
-  else
-    exp 1.0 -. (1.0 /. float_of_int n)
+  if n < 1 then raise (Invalid_version_index n)
+  else exp 1.0 -. (1.0 /. float_of_int n)
 
 let version_string () =
   Printf.sprintf "%.12f" (version_of_n version_n)
@@ -24,9 +22,75 @@ let print_version () =
   print_header ();
   Printf.printf "ip version %s (seed n = %d)\n" (version_string ()) version_n
 
+let find_mp3 mp3_file =
+  let candidates =
+    List.map
+      (fun dir -> Filename.concat dir mp3_file)
+      Sites.Sites.sounds
+  in
+  match List.find_opt Sys.file_exists candidates with
+  | Some file -> file
+  | None -> mp3_file
+
+let play_mp3_direct mp3_file =
+  let mp3f = find_mp3 mp3_file in
+  let mp3 = Mad.openfile mp3f in
+  Fun.protect
+    ~finally:(fun () -> try Mad.close mp3 with _ -> ())
+    (fun () ->
+      let first_pcm = Mad.decode_frame mp3 in
+      let sample_rate, channels, _samples_per_frame =
+        Mad.get_output_format mp3
+      in
+      let cmd =
+        Printf.sprintf
+          "aplay -q -t raw -f S16_LE -c %d -r %d"
+          channels
+          sample_rate
+      in
+      let out = Unix.open_process_out cmd in
+      Fun.protect
+        ~finally:(fun () -> try ignore (Unix.close_process_out out) with _ -> ())
+        (fun () ->
+          output_string out first_pcm;
+          flush out;
+          try
+            while true do
+              let pcm = Mad.decode_frame mp3 in
+              output_string out pcm;
+              flush out
+            done
+          with
+          | Mad.End_of_stream -> ()))
+
+
+let play_mp3_safely mp3_file =
+  try
+    flush stdout;
+    flush stderr;
+    match Unix.fork () with
+    | 0 ->
+        begin
+          try
+            play_mp3_direct mp3_file;
+            Unix._exit 0
+          with _ ->
+            Unix._exit 0
+        end
+    | _pid ->
+        ()
+  with _ ->
+    ()
+
+let play_duke_safely () =
+  play_mp3_safely "unsat.mp3"
+
+let play_timeout_safely () =
+  play_mp3_safely "timeout.mp3"
+
 let usage () =
   prerr_endline
-    "Usage: ip [--version] [--proof] [--time-limit SECONDS] [--max-clauses N] [--mode MODE] FILE";
+    "Usage: ip [--version] [--duke] [--proof] [--time-limit SECONDS] [--max-clauses N] [--mode MODE] FILE";
   exit 2
 
 let mode_of_string = function
@@ -44,6 +108,7 @@ let parse_args () =
   let max_generated_clauses = ref None in
   let inference_mode = ref Prover_lib.Resolution.Ordered_with_fallback in
   let show_version = ref false in
+  let duke = ref false in
 
   let rec loop i =
     if i >= Array.length Sys.argv then ()
@@ -51,6 +116,10 @@ let parse_args () =
       match Sys.argv.(i) with
       | "--version" ->
           show_version := true;
+          loop (i + 1)
+
+      | "--duke" ->
+          duke := true;
           loop (i + 1)
 
       | "--proof" ->
@@ -111,17 +180,24 @@ let parse_args () =
               max_generated_clauses = !max_generated_clauses;
               print_derivation = !print_derivation;
               inference_mode = !inference_mode;
-            } )
+            },
+            !duke )
 
 let () =
   match parse_args () with
   | `Version ->
       print_version ()
 
-  | `Run (filename, config) ->
+  | `Run (filename, config, duke) ->
       try
         let outcome = Prover_lib.Prover.run_file ~config filename in
         Prover_lib.Prover.print_szs outcome;
+
+        if duke then
+          match outcome.Prover_lib.Prover.status with
+          | Prover_lib.Prover.Unsatisfiable -> play_duke_safely ()
+          | Prover_lib.Prover.Timeout -> play_timeout_safely ()
+          | _ -> ();
 
         if config.Prover_lib.Prover.print_derivation then begin
           print_endline "% Proof trace:";
@@ -129,7 +205,8 @@ let () =
         end
       with
       | Prover_lib.Resolution.Timeout_hit ->
-          Printf.printf "%% SZS status Timeout for %s\n" filename
+	  Printf.printf "%% SZS status Timeout for %s\n%!" filename;
+	  if duke then play_timeout_safely ()
       | exn ->
           Printf.eprintf "InputError %s\n" (Printexc.to_string exn);
           exit 1
