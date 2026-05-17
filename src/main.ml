@@ -22,6 +22,19 @@ let print_version () =
   print_header ();
   Printf.printf "ip version %s (seed n = %d)\n" (version_string ()) version_n
 
+let command_available cmd =
+  Sys.command
+    (Printf.sprintf "command -v %s >/dev/null 2>&1" (Filename.quote cmd))
+  = 0
+
+let check_duke_dependencies duke =
+  if duke && not (command_available "ffmpeg") then begin
+    Printf.eprintf
+      "Warning: ffmpeg is not installed or not available in PATH. Sounds for --duke mode will not be played.\n%!";
+    false
+  end else
+    duke
+
 let find_mp3 mp3_file =
   let candidates =
     List.map
@@ -32,37 +45,21 @@ let find_mp3 mp3_file =
   | Some file -> file
   | None -> mp3_file
 
-let play_mp3_direct mp3_file =
-  let mp3f = find_mp3 mp3_file in
-  let mp3 = Mad.openfile mp3f in
-  Fun.protect
-    ~finally:(fun () -> try Mad.close mp3 with _ -> ())
-    (fun () ->
-      let first_pcm = Mad.decode_frame mp3 in
-      let sample_rate, channels, _samples_per_frame =
-        Mad.get_output_format mp3
-      in
-      let cmd =
-        Printf.sprintf
-          "aplay -q -t raw -f S16_LE -c %d -r %d"
-          channels
-          sample_rate
-      in
-      let out = Unix.open_process_out cmd in
-      Fun.protect
-        ~finally:(fun () -> try ignore (Unix.close_process_out out) with _ -> ())
-        (fun () ->
-          output_string out first_pcm;
-          flush out;
-          try
-            while true do
-              let pcm = Mad.decode_frame mp3 in
-              output_string out pcm;
-              flush out
-            done
-          with
-          | Mad.End_of_stream -> ()))
+let play_mp3 filename =
+  let mp3_file = find_mp3 filename in
+  let quoted = Filename.quote mp3_file in
 
+  let cmd =
+    Printf.sprintf
+      "ffmpeg -loglevel error -i %s -f s16le -acodec pcm_s16le -ac 2 -ar 44100 - | aplay -q -t raw -f S16_LE -c 2 -r 44100"
+      quoted
+  in
+
+  match Sys.command cmd with
+  | 0 -> ()
+  | n ->
+      Printf.eprintf "Error: MP3 playback failed with the code %d\n" n;
+      exit n
 
 let play_mp3_safely mp3_file =
   try
@@ -72,7 +69,7 @@ let play_mp3_safely mp3_file =
     | 0 ->
         begin
           try
-            play_mp3_direct mp3_file;
+            play_mp3 mp3_file;
             Unix._exit 0
           with _ ->
             Unix._exit 0
@@ -189,6 +186,7 @@ let () =
       print_version ()
 
   | `Run (filename, config, duke) ->
+      let duke = check_duke_dependencies duke in
       try
         let outcome = Prover_lib.Prover.run_file ~config filename in
         Prover_lib.Prover.print_szs outcome;
