@@ -72,7 +72,7 @@ benchs-casc:
 
 .PHONY: fetch_logs
 fetch-logs:
-	scp $(MESO):$(MESO_BENCH_LOGS)/* $(BENCH_LOGS)
+	scp -rp $(MESO):$(MESO_BENCH_LOGS)/* $(BENCH_LOGS)
 
 .PHONY: clean
 clean:
