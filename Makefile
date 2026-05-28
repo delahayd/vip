@@ -14,7 +14,7 @@ MESO_BENCH_LOGS=benchs-ip/logs
 
 PROVER = dune exec -- bin/main.exe
 BENCH = dune exec -- bench/run_bench.exe
-REGRESSION = dune exec bench/check_regression.exe
+REGRESSION = dune exec -- bench/check_regression.exe
 
 # ========= Helpers =========
 
@@ -60,7 +60,7 @@ benchs:
 
 .PHONY: bench-regression
 bench-regression:
-	$(REGRESSION) -- $(OLD) $(NEW)
+	$(REGRESSION) --home $(HOME_DIR) $(OLD) $(NEW)
 
 .PHONY: bench-casc
 bench-casc:
@@ -73,6 +73,17 @@ benchs-casc:
 .PHONY: fetch_logs
 fetch-logs:
 	scp -rp $(MESO):$(MESO_BENCH_LOGS)/* $(BENCH_LOGS)
+
+.PHONY: copy-local
+copy-local:
+	cd .. ; \
+	tar --exclude='ip/.git' \
+	--exclude='ip/_build' \
+	--exclude='ip/_opam' \
+	--exclude='ip/_opam' \
+	--exclude='ip/bench/problems' \
+	-cf - ip \
+	| ssh $(MESO) "cd benchs-ip ; tar -xf -"
 
 .PHONY: clean
 clean:

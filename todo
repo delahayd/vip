@@ -31,7 +31,7 @@ export TPTP=/home/delahaye/ip/bench/problems/TPTP-v9.2.1
 make benchs DIR=bench/problems/TPTP-v9.2.1/Problems/SYN/ MODE=ordered-fallback TIME_LIMIT=3
 
 * Lancer les tests de régression :
-make bench-regression OLD=bench/logs/file1 NEW=bench/logs/file2
+make bench-regression HOME_DIR=/home/delahaye/ip/bench/problems/TPTP-v9.2.1/Problems/SYN OLD=bench/logs/file1.csv NEW=bench/logs/file2.csv
 
 * Lancer les tests de CASC (avec timeout robuste) :
 export TPTP=/home/delahaye/ip/bench/problems/casc/casc-30-2025

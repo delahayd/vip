@@ -14,6 +14,7 @@ LOGS_DIR=""
 CASC=""
 TPTP_DIR=""
 ONLYIP=0
+LOCAL=0
 
 usage() {
   cat <<EOF
@@ -30,6 +31,7 @@ Options:
   --casc <nom>
   --tptp <répertoire>
   --onlyip
+  --local
 EOF
   exit 2
 }
@@ -84,6 +86,10 @@ while [[ $# -gt 0 ]]; do
       ONLYIP=1
       shift
       ;;
+    --local)
+      LOCAL=1
+      shift
+      ;;
     -h|--help)
       usage
       ;;
@@ -115,6 +121,15 @@ MAKE_ARGS=()
 [[ -n "$LOGS_DIR" ]] && MAKE_ARGS+=("LOGS_DIR=$LOGS_DIR")
 [[ -n "$CASC" ]] && MAKE_ARGS+=("CASC=$CASC")
 
+LOCAL_IP_DIR=""
+if [[ "$LOCAL" -eq 1 ]]; then
+  if [[ ! -d "ip" ]]; then
+    echo "[ERROR] --local selected, but local directory './ip' was not found." >&2
+    exit 1
+  fi
+  LOCAL_IP_DIR="$(realpath ip)"
+fi
+
 STAMP="$(date +%Y%m%d_%H%M%S)"
 WORKDIR="${TMPDIR:-$PWD}/ip_bench_${STAMP}"
 SLURM_SCRIPT="bench_meso_${STAMP}.slurm"
@@ -124,7 +139,7 @@ cat > "$SLURM_SCRIPT" <<EOF
 #SBATCH --job-name=ip-bench
 #SBATCH --output=ip-bench-%j.out
 #SBATCH --error=ip-bench-%j.err
-#SBATCH --mail-user=David.Delahaye@lirmm.fr
+#SBATCH --mail-user=$MAIL
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -136,10 +151,25 @@ echo "[INFO] Working directory: $WORKDIR"
 mkdir -p "$WORKDIR"
 cd "$WORKDIR"
 
+EOF
+
+if [[ "$LOCAL" -eq 1 ]]; then
+  cat >> "$SLURM_SCRIPT" <<EOF
+echo "[INFO] Using local ip repository: $LOCAL_IP_DIR"
+ln -s "$LOCAL_IP_DIR" ip
+cd ip
+
+EOF
+else
+  cat >> "$SLURM_SCRIPT" <<EOF
 echo "[INFO] Cloning repository..."
 git clone "$REPO"
 cd ip
 
+EOF
+fi
+
+cat >> "$SLURM_SCRIPT" <<EOF
 echo "[INFO] Building ip..."
 make
 
@@ -168,3 +198,4 @@ echo "Submitted SLURM job: $JOB_ID"
 echo "SLURM script: $SLURM_SCRIPT"
 echo "Target: $MAKE_TARGET"
 echo "Workdir: $WORKDIR"
+echo "Local mode: $LOCAL"
