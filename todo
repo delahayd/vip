@@ -22,6 +22,10 @@ Splitting / SAT ⭐⭐⭐⭐⭐ (gros saut)
 * Avant de faire quoique ce soit (dune build notamment) :
 eval $(opam env)
 
+* Lancer sur un problème en particulier :
+export TPTP=/home/delahaye/ip/bench/problems/TPTP-v9.2.1
+make run FILE=bench/problems/TPTP-v9.2.1/Problems/SYN/SYN308-1.p MODE=ordered-fallback TIME_LIMIT=3
+
 * Lancer les benchs :
 export TPTP=/home/delahaye/ip/bench/problems/TPTP-v9.2.1
 make bench DIR=bench/problems/TPTP-v9.2.1/Problems/SYN/ MODE=ordered-fallback TIME_LIMIT=3

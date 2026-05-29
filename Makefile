@@ -12,7 +12,7 @@ BENCH_LOGS=bench/logs
 MESO=delahayed@io-login.meso.umontpellier.fr
 MESO_BENCH_LOGS=benchs-ip/logs
 
-PROVER = dune exec -- bin/main.exe
+PROVER = dune exec -- bin/ip
 BENCH = dune exec -- bench/run_bench.exe
 REGRESSION = dune exec -- bench/check_regression.exe
 
