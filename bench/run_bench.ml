@@ -11,7 +11,6 @@ type prover = {
 
 type result = {
   status : string;
-  raw : string;
   time_s : float;
 }
 
@@ -533,7 +532,7 @@ let run_prover config prover file =
       "\n[DEBUG] Error on %s with %s\nCommand: %s\nExit code: %d\nOutput:\n%s\n%!"
       file prover.name cmd code output;
 
-  { status = status_str; raw = output; time_s }
+  { status = status_str; time_s }
 
 let read_problem_expected_status file =
   try
@@ -1172,7 +1171,7 @@ let () =
                           file
                           prover.name
                           (Printexc.to_string exn);
-                      { status = "Error"; raw = ""; time_s = 0.0 }
+                      { status = "Error"; time_s = 0.0 }
                   in
                   prover.name, r)
                 active

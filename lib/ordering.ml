@@ -58,7 +58,8 @@ let var_count_ge s t =
       ns >= nt)
     ct
 
-let rec structural_compare_term a b =
+let structural_compare_term a b =
+
   match a, b with
   | Var x, Var y -> compare x y
   | Var _, Fun _ -> -1

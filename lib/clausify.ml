@@ -13,8 +13,6 @@ type partitioned_clauses = {
   report : clausification_report;
 }
 
-exception Clausify_error of string
-
 let fresh_counter = ref 0
 let skolem_counter = ref 0
 

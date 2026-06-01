@@ -1,5 +1,3 @@
-open Prover_lib
-
 let version_n = 1
 
 exception Invalid_version_index of int

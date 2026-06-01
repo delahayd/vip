@@ -1,4 +1,3 @@
-open Types
 open Tptp_frontend
 open Clausify
 open Resolution

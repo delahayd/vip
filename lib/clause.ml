@@ -1,6 +1,5 @@
 open Types
 open Subst
-open Unif
 
 let rec term_size = function
   | Var _ -> 1
@@ -13,7 +12,8 @@ let atom_weight a =
 let literal_weight = function
   | Pos a | Neg a -> atom_weight a
 
-let rec compare_term t1 t2 =
+let compare_term t1 t2 =
+
   match t1, t2 with
   | Var a, Var b -> compare a b
   | Var _, Fun _ -> -1

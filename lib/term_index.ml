@@ -57,7 +57,8 @@ let positive_equality = function
   | Pos { pred = "="; args = [ l; r ] } -> Some (l, r)
   | _ -> None
 
-let rec non_variable_subterms t =
+let non_variable_subterms t =
+
   let rec aux path acc = function
     | Var _ -> acc
     | Fun (_, args) as u ->

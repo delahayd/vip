@@ -9,7 +9,7 @@ ROBUST_TIME_LIMIT ?=
 MAX_CLAUSES ?=
 CASC ?=
 BENCH_LOGS=bench/logs
-MESO=delahayed@io-login.meso.umontpellier.fr
+MESO=nokranii@io-login.meso.umontpellier.fr
 MESO_BENCH_LOGS=benchs-ip/logs
 
 PROVER = dune exec -- bin/main.exe

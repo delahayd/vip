@@ -156,9 +156,6 @@ let dedup_clauses_with_parents ?(check_timeout = fun () -> ()) items =
   in
   aux [] items
 
-let replace_nth xs n x =
-  List.mapi (fun i y -> if i = n then x else y) xs
-
 let replace_term_at_path t path replacement =
   let rec aux t path =
     match path, t with
@@ -757,14 +754,6 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
     !active
   in
 
-  let passive_clauses () =
-    List.map (fun e -> e.d) !passive
-  in
-
-  let existing_clauses () =
-    active_clauses () @ passive_clauses ()
-  in
-
   let is_subsumed_by ds c =
     let rec aux = function
       | [] -> false
@@ -822,7 +811,7 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
           let key = string_of_clause c in
           if Hashtbl.mem known key then
             None
-          else if is_subsumed_by (existing_clauses ()) c then begin
+          else if is_subsumed_by (active_clauses ()) c then begin
             incr subsumption_rejections;
             None
           end else begin
@@ -891,7 +880,7 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
     | [] -> None
     | entries ->
         let selected =
-          (* Four weight selections, then one age selection. *)
+          (* Ratio 4:1 (Weight:Age) for given-clause selection *)
           if !given_count mod 5 = 4 then
             select_by_age entries
           else
