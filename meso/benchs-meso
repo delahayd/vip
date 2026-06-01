@@ -145,6 +145,11 @@ cat > "$SLURM_SCRIPT" <<EOF
 #SBATCH --ntasks=1
 #SBATCH --partition=cpu-dedicated
 
+module load bioinfo-cirad
+module load opam/2.1.2
+export OPAMROOT=~/scratch_nokranii/.opam
+eval $(opam env)
+
 set -euo pipefail
 
 echo "[INFO] Working directory: $WORKDIR"
