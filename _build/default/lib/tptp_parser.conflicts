@@ -1,0 +1,60 @@
+
+** Conflict (reduce/reduce) in state 111.
+** Token involved: RPAREN
+** This state is reached from file after reading:
+
+entries KW_CNF LPAREN ann_name COMMA ann_role COMMA KW_TRUE
+
+** The derivations that appear below have the following common factor:
+** (The question mark symbol (?) represents the spot where the derivations begin to differ.)
+
+file 
+entries EOF 
+entries top_entry 
+        cnf_entry 
+        KW_CNF LPAREN ann_name COMMA ann_role COMMA cnf_formula RPAREN DOT // lookahead token appears
+                                                    (?)
+
+** In state 111, looking ahead at RPAREN, reducing production
+** cnf_formula -> KW_TRUE
+** is permitted because of the following sub-derivation:
+
+KW_TRUE . 
+
+** In state 111, looking ahead at RPAREN, reducing production
+** cnf_literal -> KW_TRUE
+** is permitted because of the following sub-derivation:
+
+cnf_disjunction // lookahead token is inherited
+cnf_literal // lookahead token is inherited
+KW_TRUE . 
+
+** Conflict (reduce/reduce) in state 112.
+** Token involved: RPAREN
+** This state is reached from file after reading:
+
+entries KW_CNF LPAREN ann_name COMMA ann_role COMMA KW_FALSE
+
+** The derivations that appear below have the following common factor:
+** (The question mark symbol (?) represents the spot where the derivations begin to differ.)
+
+file 
+entries EOF 
+entries top_entry 
+        cnf_entry 
+        KW_CNF LPAREN ann_name COMMA ann_role COMMA cnf_formula RPAREN DOT // lookahead token appears
+                                                    (?)
+
+** In state 112, looking ahead at RPAREN, reducing production
+** cnf_formula -> KW_FALSE
+** is permitted because of the following sub-derivation:
+
+KW_FALSE . 
+
+** In state 112, looking ahead at RPAREN, reducing production
+** cnf_literal -> KW_FALSE
+** is permitted because of the following sub-derivation:
+
+cnf_disjunction // lookahead token is inherited
+cnf_literal // lookahead token is inherited
+KW_FALSE . 

@@ -1,0 +1,16 @@
+# dune exec -- bench/check_regression.exe bench/logs/bench_2026-05-15_02-34-12.csv bench_logs_syn_final/bench_2026-05-29_15-49-39.csv
+# OCAMLPARAM: unset
+# Shared cache: enabled-except-user-rules
+# Shared cache location: /home/etudiant/.cache/dune/db
+# Workspace root: /home/etudiant/Cours/stage/ip
+# Auto-detected concurrency: 18
+# Dune context:
+#  { name = "default"
+#  ; kind = "default"
+#  ; profile = Dev
+#  ; merlin = true
+#  ; fdo_target_exe = None
+#  ; build_dir = In_build_dir "default"
+#  ; instrument_with = []
+#  }
+$ /home/etudiant/.opam/CP.2025.08.0~9.0~2025.08/bin/ocamlc.opt -config > /tmp/dune_c30c77_output

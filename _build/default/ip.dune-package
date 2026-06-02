@@ -1,0 +1,14 @@
+(lang dune 3.22)
+(name ip)
+(sections
+ (lib .)
+ (bin ../../bin)
+ (share ../../share/ip)
+ (share_root ../../share)
+ (doc ../../doc/ip))
+(sites (sounds share))
+(files
+ (lib (META dune-package))
+ (bin (ip))
+ (share_root (ip/sounds/timeout.mp3 ip/sounds/unsat.mp3))
+ (doc (LICENSE README.md)))

@@ -1,0 +1,15 @@
+lib: [
+  "_build/install/default/lib/ip/META"
+  "_build/install/default/lib/ip/dune-package"
+]
+bin: [
+  "_build/install/default/bin/ip"
+]
+share_root: [
+  "_build/install/default/share/ip/sounds/timeout.mp3" {"ip/sounds/timeout.mp3"}
+  "_build/install/default/share/ip/sounds/unsat.mp3" {"ip/sounds/unsat.mp3"}
+]
+doc: [
+  "_build/install/default/doc/ip/LICENSE"
+  "_build/install/default/doc/ip/README.md"
+]

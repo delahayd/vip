@@ -1,0 +1,23 @@
+# bench_date,"2026-05-29_14-06-10"
+# problem_dir,"tests/integration"
+# home,
+# logs_dir,"bench_logs"
+# time_limit_seconds,2
+# robust_time_limit,false
+# size_limit_gb,
+# max_clauses,
+# mode,
+# casc,
+# only_ip,true
+# version_ip,"d864328"
+
+section,problem,expected_status,rating,ip,ip_time_s
+result,"fof_unsat_01.p","Unknown","","Unsatisfiable",0.006059
+result,"sat_01.p","Unknown","","GaveUp",0.005703
+result,"unsat_01.p","Unknown","","Unsatisfiable",0.005415
+
+section,prover,scope,total,success,timeout,incomplete,unsound,error,avg_time_s
+prover_stats,"ip","Tous",3,"2 (66.7%)","0 (0.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)",0.005726
+prover_stats,"ip","Theorem/Unsatisfiable",0,"0 (0.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)",0.000000
+prover_stats,"ip","Theorem (FOF)",0,"0 (0.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)",0.000000
+prover_stats,"ip","Unsatisfiable (CNF)",0,"0 (0.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)",0.000000

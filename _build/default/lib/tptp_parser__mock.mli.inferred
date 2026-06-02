@@ -1,0 +1,56 @@
+type token =
+    XOR
+  | VAR of string
+  | TILDE
+  | RPAREN
+  | REVIMP
+  | RBRACK
+  | QUOTED of string
+  | QMARK
+  | NEQ
+  | LPAREN
+  | LBRACK
+  | KW_TRUE
+  | KW_INCLUDE
+  | KW_FOF
+  | KW_FALSE
+  | KW_CNF
+  | IMP
+  | IFF
+  | IDENT of string
+  | EQUAL
+  | EOF
+  | DOT
+  | COMMA
+  | COLON
+  | BAR
+  | BANG
+  | AMP
+val menhir_begin_marker : int
+val xv_var_list : string list
+val xv_unary_formula : Fof.formula
+val xv_top_entry : Fof.annotated_input
+val xv_term_list : Types.term list
+val xv_term : Types.term
+val xv_symbol_app : string * Types.term list
+val xv_quantified_formula : Fof.formula
+val xv_or_formula : Fof.formula
+val xv_name_list : string list
+val xv_include_entry : Fof.annotated_input
+val xv_impl_formula : Fof.formula
+val xv_formula : Fof.formula
+val xv_fof_symbol_tail : string * Types.term list -> Fof.formula
+val xv_fof_entry : Fof.annotated_input
+val xv_file : Fof.annotated_input list
+val xv_equiv_formula : Fof.formula
+val xv_entries : Fof.annotated_input list
+val xv_cnf_symbol_tail : string * Types.term list -> Types.literal
+val xv_cnf_literal : Types.literal
+val xv_cnf_formula : Types.clause
+val xv_cnf_entry : Fof.annotated_input
+val xv_cnf_disjunction : Types.clause
+val xv_atomic_formula : Fof.formula
+val xv_ann_role : string
+val xv_ann_name : string
+val xv_and_formula : Fof.formula
+val menhir_end_marker : int
