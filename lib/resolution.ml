@@ -783,10 +783,30 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
           incr subsumption_rejections;
           None
         end
-        else
-          let d' = { d with clause_d = c } in
-          Hashtbl.replace all_by_id d'.id d';
-          Some d'
+        else begin
+          (* Subsumption Resolution against active clauses *)
+          let rec try_sub_res c_curr = function
+            | [] -> c_curr
+            | a :: tl ->
+                if a.id = d.id then try_sub_res c_curr tl
+                else
+                  match subsumption_resolution a.clause_d c_curr with
+                  | Some c_new ->
+                      (* If we simplified it, we need to restart the check on the new clause
+                         because it might be further subsumption-resolved or even subsumed. *)
+                      try_sub_res c_new !active
+                  | None -> try_sub_res c_curr tl
+          in
+          let c_final = try_sub_res c !active in
+
+          if is_subsumed_by ~ignore_id:d.id (active_clauses ()) c_final then begin
+             incr subsumption_rejections;
+             None
+          end else
+            let d' = { d with clause_d = c_final } in
+            Hashtbl.replace all_by_id d'.id d';
+            Some d'
+        end
   in
 
   let select_by_age entries =

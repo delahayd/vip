@@ -211,6 +211,41 @@ let subsumes c1 c2 =
     in
     try_match_subset StringMap.empty 0
 
+let subsumption_resolution c1 c2 =
+  let n = List.length c1 in
+  let m = List.length c2 in
+  if n > m then None
+  else
+    (* For C1 = L v C1' to subsumption-resolve C2 = L2 v C2', 
+       L2 must be the complement of Lθ, and C1'θ must be a subset of C2'. *)
+    let rec find_resolving_lit i1 =
+      if i1 = n then None
+      else
+        let l1 = List.nth c1 i1 in
+        let c1_rest = List.filteri (fun k _ -> k <> i1) c1 in
+        
+        let rec find_target_lit i2 =
+          if i2 = m then None
+          else
+            let l2 = List.nth c2 i2 in
+            match l1, l2 with
+            | Pos a1, Neg a2 | Neg a1, Pos a2 ->
+                (try
+                  let subst = Match.match_atoms a1 a2 StringMap.empty in
+                  let c2_rest = List.filteri (fun k _ -> k <> i2) c2 in
+                  if subsumes (apply_subst_clause subst c1_rest) c2_rest then
+                    Some c2_rest
+                  else
+                    find_target_lit (i2 + 1)
+                 with Match.Not_matchable -> find_target_lit (i2 + 1))
+            | _ -> find_target_lit (i2 + 1)
+        in
+        match find_target_lit 0 with
+        | Some res -> Some res
+        | None -> find_resolving_lit (i1 + 1)
+    in
+    find_resolving_lit 0
+
 let maximal_literal_indices c =
   match c with
   | [] -> []

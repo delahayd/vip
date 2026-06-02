@@ -11,6 +11,7 @@ val complementary : literal -> literal -> bool
 val clause_is_tautology : clause -> bool
 val simplify_clause : clause -> clause option
 val subsumes : clause -> clause -> bool
+val subsumption_resolution : clause -> clause -> clause option
 
 val literal_weight : literal -> int
 val maximal_literal_indices : clause -> int list
