@@ -9,6 +9,7 @@
   fof
   clausify
   ordering
+  feature_vector
   discrimination_index
   term_index
   resolution

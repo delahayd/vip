@@ -636,6 +636,7 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
      active clauses; stale index hits are filtered through [all_by_id]. *)
   let literal_index = Discrimination_index.create () in
   let term_index = Term_index.create () in
+  let fv_index = Feature_vector.create () in
 
   let generated = ref 0 in
   let processed = ref 0 in
@@ -754,15 +755,19 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
     !active
   in
 
-  let is_subsumed_by ds c =
+  let is_subsumed_by _ c =
+    let candidates = Feature_vector.find_subsuming_candidates fv_index c in
     let rec aux = function
       | [] -> false
-      | d :: tl ->
-          check_timeout ();
-          incr subsumption_tests;
-          if subsumes d.clause_d c then true else aux tl
+      | id :: tl ->
+          match Hashtbl.find_opt all_by_id id with
+          | None -> aux tl
+          | Some d ->
+              check_timeout ();
+              incr subsumption_tests;
+              if subsumes d.clause_d c then true else aux tl
     in
-    aux ds
+    aux candidates
   in
 
   let register_demodulator c =
@@ -792,7 +797,8 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
       }
     in
     incr next_passive_id;
-    passive := entry :: !passive
+    passive := entry :: !passive;
+    Feature_vector.add fv_index d.clause_d d.id
   in
 
   let add_clause ~parents ~rule c =
@@ -895,33 +901,46 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
   in
 
   let delete_derived d =
-    Hashtbl.remove all_by_id d.id
+    Hashtbl.remove all_by_id d.id;
+    Feature_vector.remove fv_index d.id
   in
 
   let backward_subsume given =
-    let kept_active = ref [] in
-    List.iter
-      (fun d ->
-        check_timeout ();
-        incr subsumption_tests;
-        if d.id <> given.id && subsumes given.clause_d d.clause_d then
-          delete_derived d
-        else
-          kept_active := d :: !kept_active)
-      !active;
-    active := List.rev !kept_active;
+    let candidates = Feature_vector.find_subsumed_candidates fv_index given.clause_d in
+    if candidates = [] then ()
+    else
+      let candidates_set = Hashtbl.create (List.length candidates) in
+      List.iter (fun id -> Hashtbl.add candidates_set id ()) candidates;
 
-    let kept_passive = ref [] in
-    List.iter
-      (fun e ->
-        check_timeout ();
-        incr subsumption_tests;
-        if e.d.id <> given.id && subsumes given.clause_d e.d.clause_d then
-          delete_derived e.d
-        else
-          kept_passive := e :: !kept_passive)
-      !passive;
-    passive := List.rev !kept_passive
+      let kept_active = ref [] in
+      List.iter
+        (fun d ->
+          check_timeout ();
+          if Hashtbl.mem candidates_set d.id && d.id <> given.id then (
+            incr subsumption_tests;
+            if subsumes given.clause_d d.clause_d then
+              delete_derived d
+            else
+              kept_active := d :: !kept_active
+          ) else
+            kept_active := d :: !kept_active)
+        !active;
+      active := List.rev !kept_active;
+
+      let kept_passive = ref [] in
+      List.iter
+        (fun e ->
+          check_timeout ();
+          if Hashtbl.mem candidates_set e.d.id && e.d.id <> given.id then (
+            incr subsumption_tests;
+            if subsumes given.clause_d e.d.clause_d then
+              delete_derived e.d
+            else
+              kept_passive := e :: !kept_passive
+          ) else
+            kept_passive := e :: !kept_passive)
+        !passive;
+      passive := List.rev !kept_passive
   in
 
   let activate given =
