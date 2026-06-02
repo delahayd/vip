@@ -15,22 +15,30 @@ type node = {
 type t = {
   root : node;
   vectors : (int, feature_vector) Hashtbl.t;
+  symbol_to_id : (string, int) Hashtbl.t;
+  mutable next_symbol_id : int;
 }
 
-let symbol_to_id = Hashtbl.create 500
-let next_symbol_id = ref 3
+let create_node () = { children = IntMap.empty; ids = [] }
 
-let get_symbol_id s =
-  try Hashtbl.find symbol_to_id s
+let create () = {
+  root = create_node ();
+  vectors = Hashtbl.create 1000;
+  symbol_to_id = Hashtbl.create 100;
+  next_symbol_id = 3;
+}
+
+let get_symbol_id index s =
+  try Hashtbl.find index.symbol_to_id s
   with Not_found ->
-    if !next_symbol_id < vector_length then (
-      let id = !next_symbol_id in
-      Hashtbl.add symbol_to_id s id;
-      incr next_symbol_id;
+    if index.next_symbol_id < vector_length then (
+      let id = index.next_symbol_id in
+      Hashtbl.add index.symbol_to_id s id;
+      index.next_symbol_id <- id + 1;
       id
     ) else -1
 
-let compute_vector (c : clause) =
+let compute_vector index (c : clause) =
   let v = Array.make vector_length 0 in
   let n_pos = ref 0 in
   let n_neg = ref 0 in
@@ -38,7 +46,7 @@ let compute_vector (c : clause) =
   let rec traverse_term = function
     | Var _ -> ()
     | Fun (f, args) ->
-        let id = get_symbol_id f in
+        let id = get_symbol_id index f in
         if id <> -1 then v.(id) <- v.(id) + 1;
         List.iter traverse_term args
   in
@@ -46,12 +54,12 @@ let compute_vector (c : clause) =
   let traverse_lit = function
     | Pos { pred; args } ->
         incr n_pos;
-        let id = get_symbol_id pred in
+        let id = get_symbol_id index pred in
         if id <> -1 then v.(id) <- v.(id) + 1;
         List.iter traverse_term args
     | Neg { pred; args } ->
         incr n_neg;
-        let id = get_symbol_id pred in
+        let id = get_symbol_id index pred in
         if id <> -1 then v.(id) <- v.(id) + 1;
         List.iter traverse_term args
   in
@@ -62,15 +70,8 @@ let compute_vector (c : clause) =
   v.(2) <- !n_neg;
   v
 
-let create_node () = { children = IntMap.empty; ids = [] }
-
-let create () = {
-  root = create_node ();
-  vectors = Hashtbl.create 1000;
-}
-
 let add index c id =
-  let vec = compute_vector c in
+  let vec = compute_vector index c in
   Hashtbl.add index.vectors id vec;
   let rec insert curr idx =
     if idx = trie_depth then
@@ -107,7 +108,7 @@ let check_subsuming v_c v_d =
   !ok
 
 let find_subsumed_candidates index c =
-  let v_c = compute_vector c in
+  let v_c = compute_vector index c in
   let results = ref [] in
   
   let rec search curr idx =
@@ -127,7 +128,7 @@ let find_subsumed_candidates index c =
   !results
 
 let find_subsuming_candidates index c =
-  let v_c = compute_vector c in
+  let v_c = compute_vector index c in
   let results = ref [] in
 
   let rec search curr idx =

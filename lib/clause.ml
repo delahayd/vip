@@ -185,9 +185,27 @@ let simplify_clause c =
     if clause_is_tautology c then None else Some c
 
 let subsumes c1 c2 =
-  let c1 = normalize_clause c1 in
-  let c2 = normalize_clause c2 in
-  List.for_all (fun lit -> List.exists (( = ) lit) c2) c1
+  let n = List.length c1 in
+  let m = List.length c2 in
+  if n > m then false
+  else
+    (* Try to find a matching substitution for each literal of c1 into some literal of c2 *)
+    let rec try_match_subset subst idx =
+      if idx = n then true
+      else
+        let l1 = List.nth c1 idx in
+        let rec search_in_c2 = function
+          | [] -> false
+          | l2 :: rest ->
+              (try
+                let subst' = Match.match_literals l1 l2 subst in
+                if try_match_subset subst' (idx + 1) then true
+                else search_in_c2 rest
+               with Match.Not_matchable -> search_in_c2 rest)
+        in
+        search_in_c2 c2
+    in
+    try_match_subset StringMap.empty 0
 
 let maximal_literal_indices c =
   match c with
