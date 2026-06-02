@@ -1,2 +1,0 @@
-# ip
-Imitation Prover (IP)
