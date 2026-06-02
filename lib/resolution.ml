@@ -117,7 +117,11 @@ let negative_indices c =
 
 let selected_or_maximal_indices c =
   let negs = negative_indices c in
-  if negs <> [] then negs else Ordering.maximal_literal_indices c
+  if negs <> [] then
+    (* Efficient selection: pick only the first negative literal. *)
+    [ List.hd negs ]
+  else
+    Ordering.maximal_literal_indices c
 
 let is_active_literal mode c i =
   match mode with
@@ -342,20 +346,22 @@ let resolve_pair c1 c2 i j =
   else
     None
 
-let resolve_two_clauses ~check_timeout c1 c2 =
-  let c1 = rename_clause_apart c1 in
-  let c2 = rename_clause_apart c2 in
+let resolve_two_clauses ~check_timeout ~mode c1 c2 =
+  let c1_renamed = rename_clause_apart c1 in
+  let c2_renamed = rename_clause_apart c2 in
   let results = ref [] in
   List.iteri
     (fun i _ ->
       check_timeout ();
-      List.iteri
-        (fun j _ ->
-          check_timeout ();
-          match resolve_pair c1 c2 i j with
-          | Some c -> results := c :: !results
-          | None -> ())
-        c2)
+      if is_active_literal mode c1 i then
+        List.iteri
+          (fun j _ ->
+            check_timeout ();
+            if is_active_literal mode c2 j then
+              match resolve_pair c1_renamed c2_renamed i j with
+              | Some c -> results := c :: !results
+              | None -> ())
+          c2)
     c1;
   dedup_clauses ~check_timeout !results
 
@@ -531,23 +537,24 @@ let indexed_superpose_given ~check_timeout ~mode ~term_index ~all_by_id given =
                       match Hashtbl.find_opt all_by_id te.Term_index.clause_id with
                       | None -> ()
                       | Some target_d ->
-                          let target_clause =
-                            rename_clause_apart target_d.clause_d
-                          in
-                          match
-                            superpose_from_into_position
-                              given_source_clause
-                              target_clause
-                              eq_index
-                              lhs
-                              rhs
-                              te
-                          with
-                          | Some c ->
-                              results := (c, [ given.id; target_d.id ]) :: !results
-                          | None ->
-                              ())
-                  entries)
+                          if is_active_literal mode target_d.clause_d te.Term_index.lit_index then
+                            let target_clause =
+                              rename_clause_apart target_d.clause_d
+                            in
+                            match
+                              superpose_from_into_position
+                                given_source_clause
+                                target_clause
+                                eq_index
+                                lhs
+                                rhs
+                                te
+                            with
+                            | Some c ->
+                                results := (c, [ given.id; target_d.id ]) :: !results
+                            | None ->
+                                ()
+                  ) entries)
               (oriented_sides mode l r))
     given_source_clause;
 
@@ -586,32 +593,33 @@ let indexed_superpose_given ~check_timeout ~mode ~term_index ~all_by_id given =
                       match Hashtbl.find_opt all_by_id ee.Term_index.clause_id with
                       | None -> ()
                       | Some eq_d ->
-                          let source_clause =
-                            rename_clause_apart eq_d.clause_d
-                          in
-                          let te : Term_index.term_entry =
-                            {
-                              Term_index.clause_id = given.id;
-                              lit_index;
-                              arg_index;
-                              path;
-                              subterm;
-                            }
-                          in
-                          match
-                            superpose_from_into_position
-                              source_clause
-                              given_target_clause
-                              ee.Term_index.lit_index
-                              ee.Term_index.lhs
-                              ee.Term_index.rhs
-                              te
-                          with
-                          | Some c ->
-                              results := (c, [ eq_d.id; given.id ]) :: !results
-                          | None ->
-                              ())
-                  eqs)
+                          if is_active_literal mode eq_d.clause_d ee.Term_index.lit_index then
+                            let source_clause =
+                              rename_clause_apart eq_d.clause_d
+                            in
+                            let te : Term_index.term_entry =
+                              {
+                                Term_index.clause_id = given.id;
+                                lit_index;
+                                arg_index;
+                                path;
+                                subterm;
+                              }
+                            in
+                            match
+                              superpose_from_into_position
+                                source_clause
+                                given_target_clause
+                                ee.Term_index.lit_index
+                                ee.Term_index.lhs
+                                ee.Term_index.rhs
+                                te
+                            with
+                            | Some c ->
+                                results := (c, [ eq_d.id; given.id ]) :: !results
+                            | None ->
+                                ()
+                  ) eqs)
               subterms)
           a.args)
     given_target_clause;
@@ -953,9 +961,11 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
 
   let resolution_candidates given =
     let indexed_ids = Hashtbl.create 127 in
+    let given_active_indices = selected_or_maximal_indices given.clause_d in
 
     List.iter
-      (fun lit ->
+      (fun i ->
+        let lit = List.nth given.clause_d i in
         check_timeout ();
         let entries =
           Discrimination_index.find_complementary literal_index lit
@@ -964,9 +974,13 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
           (fun e ->
             check_timeout ();
             if e.Discrimination_index.clause_id <> given.id then
-              Hashtbl.replace indexed_ids e.Discrimination_index.clause_id ())
+              match Hashtbl.find_opt all_by_id e.Discrimination_index.clause_id with
+              | Some d ->
+                  if is_active_literal mode d.clause_d e.Discrimination_index.lit_index then
+                    Hashtbl.replace indexed_ids d.id ()
+              | None -> ())
           entries)
-      given.clause_d;
+      given_active_indices;
 
     let indexed =
       Hashtbl.fold
@@ -1105,6 +1119,7 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
                           let resolvents =
                             resolve_two_clauses
                               ~check_timeout
+                              ~mode
                               given.clause_d
                               other.clause_d
                           in
