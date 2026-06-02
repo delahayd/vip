@@ -755,12 +755,13 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
     !active
   in
 
-  let is_subsumed_by _ c =
+  let is_subsumed_by ?(ignore_id = -1) _ c =
     let candidates = Feature_vector.find_subsuming_candidates fv_index c in
     let rec aux = function
       | [] -> false
       | id :: tl ->
-          match Hashtbl.find_opt all_by_id id with
+          if id = ignore_id then aux tl
+          else match Hashtbl.find_opt all_by_id id with
           | None -> aux tl
           | Some d ->
               check_timeout ();
@@ -841,7 +842,7 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
     match simplify_clause c with
     | None -> None
     | Some c ->
-        if is_subsumed_by (active_clauses ()) c then begin
+        if is_subsumed_by ~ignore_id:d.id (active_clauses ()) c then begin
           incr subsumption_rejections;
           None
         end else
