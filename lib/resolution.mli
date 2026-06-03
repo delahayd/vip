@@ -12,6 +12,7 @@ type derived = {
   parents : int list;
   rule : string;
   clause_d : clause;
+  mutable is_active : bool;
 }
 
 type limits = {

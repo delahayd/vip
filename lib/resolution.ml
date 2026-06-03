@@ -17,6 +17,7 @@ type derived = {
   parents : int list;
   rule : string;
   clause_d : clause;
+  mutable is_active : bool;
 }
 
 type passive_entry = {
@@ -762,7 +763,7 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
           end
           else begin
             incr generated;
-            let d = { id = next_id (); parents; rule; clause_d = c } in
+            let d = { id = next_id (); parents; rule; clause_d = c; is_active = false } in
             Hashtbl.add known key d.id;
             Hashtbl.replace all_by_id d.id d;
             all := d :: !all;
