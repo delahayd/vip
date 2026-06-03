@@ -50,6 +50,7 @@ val default_limits : limits
 
 val run_resolution_sos :
   ?limits:limits ->
+  ?expensive_simplifications:bool ->
   mode:inference_mode ->
   axioms:clause list ->
   support:clause list ->

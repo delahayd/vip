@@ -87,27 +87,49 @@ let run_file ?(config = default_config) filename =
   in
 
   try
-    let limits = {
-      Resolution.time_limit_s = config.time_limit_s;
+    (* Portfolio Strategy: Stage 1 "Flash Mode" *)
+    let flash_timeout = 2.0 in
+    let total_timeout =
+      match config.time_limit_s with
+      | Some t -> t
+      | None -> 6.0 (* Default to 6s as requested *)
+    in
+
+    let flash_limits = {
+      Resolution.time_limit_s = Some (min flash_timeout total_timeout);
       max_generated_clauses = config.max_generated_clauses;
     } in
 
+    let flash_res =
+      Resolution.run_resolution_sos
+        ~limits:flash_limits
+        ~expensive_simplifications:false
+        ~mode:config.inference_mode
+        ~axioms:part.axioms
+        ~support:part.support
+        ()
+    in
+
     let res =
-      match part.support with
-      | [] ->
-          Resolution.run_resolution_sos
-            ~limits
-            ~mode:config.inference_mode
-            ~axioms:[]
-            ~support:part.axioms
-            ()
-      | _ ->
-          Resolution.run_resolution_sos
-            ~limits
-            ~mode:config.inference_mode
-            ~axioms:part.axioms
-            ~support:part.support
-            ()
+      match flash_res.stop_reason with
+      | Refutation_found _ -> flash_res
+      | Saturation -> flash_res (* Exhausted search space *)
+      | Time_limit | Clause_limit ->
+          (* Stage 2 "Deep Mode" for the remaining time *)
+          let remaining_time = total_timeout -. flash_res.stats.wall_clock_s in
+          if remaining_time <= 0.1 then flash_res
+          else
+            let deep_limits = {
+              Resolution.time_limit_s = Some remaining_time;
+              max_generated_clauses = config.max_generated_clauses;
+            } in
+            Resolution.run_resolution_sos
+              ~limits:deep_limits
+              ~expensive_simplifications:true
+              ~mode:config.inference_mode
+              ~axioms:part.axioms
+              ~support:part.support
+              ()
     in
 
     let empty_clause =
