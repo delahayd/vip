@@ -667,19 +667,25 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
   in
 
   let clause_weight c =
+    let len = List.length c in
     let base =
       List.fold_left (fun acc lit -> acc + literal_weight lit) 0 c
     in
-    let unit_bonus =
-      if List.length c = 1 then -2 else 0
+    (* Vampire strongly penalizes long clauses to fight combinatorial explosion *)
+    let length_penalty =
+      if len > 3 then (len - 3) * 5 else 0
     in
+    let unit_bonus =
+      if len = 1 then -3 else 0
+    in
+    (* Favor clauses with negative literals as they are often derived from the conjecture *)
     let negative_bonus =
-      if clause_has_negative c then -1 else 0
+      if clause_has_negative c then -2 else 0
     in
     let equality_penalty =
       if clause_has_equality c then 2 else 0
     in
-    max 1 (base + unit_bonus + negative_bonus + equality_penalty)
+    max 1 (base + length_penalty + unit_bonus + negative_bonus + equality_penalty)
   in
 
   let make_result stop_reason =
@@ -795,7 +801,7 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
                 if id = d.id then try_sub_res c_curr tl
                 else
                   match Hashtbl.find_opt all_by_id id with
-                  | Some a when List.exists (fun act -> act.id = a.id) !active ->
+                  | Some a when a.is_active ->
                       (match subsumption_resolution a.clause_d c_curr with
                        | Some c_new -> c_new (* Stop after one simplification to be fast *)
                        | None -> try_sub_res c_curr tl)
