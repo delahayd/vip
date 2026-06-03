@@ -723,7 +723,9 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
 
   let delete_derived d =
     Hashtbl.remove all_by_id d.id;
-    Feature_vector.remove fv_index d.id
+    Feature_vector.remove fv_index d.id;
+    let key = string_of_clause d.clause_d in
+    Hashtbl.remove known key
   in
 
   let enqueue_passive d =
@@ -784,20 +786,21 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
           None
         end
         else begin
-          (* Subsumption Resolution against active clauses *)
+          (* Subsumption Resolution against active clauses using FVI for speed *)
+          let candidates = Feature_vector.find_subsuming_candidates fv_index c in
           let rec try_sub_res c_curr = function
             | [] -> c_curr
-            | a :: tl ->
-                if a.id = d.id then try_sub_res c_curr tl
+            | id :: tl ->
+                if id = d.id then try_sub_res c_curr tl
                 else
-                  match subsumption_resolution a.clause_d c_curr with
-                  | Some c_new ->
-                      (* If we simplified it, we need to restart the check on the new clause
-                         because it might be further subsumption-resolved or even subsumed. *)
-                      try_sub_res c_new !active
-                  | None -> try_sub_res c_curr tl
+                  match Hashtbl.find_opt all_by_id id with
+                  | Some a when List.exists (fun act -> act.id = a.id) !active ->
+                      (match subsumption_resolution a.clause_d c_curr with
+                       | Some c_new -> c_new (* Stop after one simplification to be fast *)
+                       | None -> try_sub_res c_curr tl)
+                  | _ -> try_sub_res c_curr tl
           in
-          let c_final = try_sub_res c !active in
+          let c_final = try_sub_res c candidates in
 
           if is_subsumed_by ~ignore_id:d.id (active_clauses ()) c_final then begin
              incr subsumption_rejections;
@@ -836,20 +839,25 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
   in
 
   let select_given () =
-    match !passive with
-    | [] -> None
-    | entries ->
-        let selected =
-          (* Ratio 4:1 (Weight:Age) for given-clause selection *)
-          if !given_count mod 5 = 4 then select_by_age entries
-          else select_by_weight entries
-        in
-        match selected with
-        | None -> None
-        | Some e ->
-            remove_passive_entry e;
-            incr given_count;
-            Some e.d
+    let rec aux () =
+      match !passive with
+      | [] -> None
+      | entries ->
+          let selected =
+            (* Ratio 4:1 (Weight:Age) for given-clause selection *)
+            if !given_count mod 5 = 4 then select_by_age entries
+            else select_by_weight entries
+          in
+          match selected with
+          | None -> None
+          | Some e ->
+              remove_passive_entry e;
+              if Hashtbl.mem all_by_id e.d.id then (
+                incr given_count;
+                Some e.d
+              ) else aux ()
+    in
+    aux ()
   in
 
   let backward_demodulate rule =
@@ -870,27 +878,9 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
         end
         else kept_active := d :: !kept_active)
       !active;
-    active := List.rev !kept_active;
-
-    let kept_passive = ref [] in
-    List.iter
-      (fun e ->
-        check_timeout ();
-        let c', rewrites =
-          try rewrite_clause ~check_timeout [ rule ] e.d.clause_d
-          with Rewrite_limit_hit -> (e.d.clause_d, 0)
-        in
-        if rewrites > 0 then begin
-          delete_derived e.d;
-          match simplify_clause c' with
-          | None -> ()
-          | Some c_final ->
-              ignore
-                (add_clause ~parents:[ e.d.id ] ~rule:"backward_demod" c_final)
-        end
-        else kept_passive := e :: !kept_passive)
-      !passive;
-    passive := List.rev !kept_passive
+    active := List.rev !kept_active
+    (* We skip backward demodulation on the passive set to be fast.
+       Passive clauses will be simplified by forward demodulation when they are selected. *)
   in
 
   let register_demodulator c =
