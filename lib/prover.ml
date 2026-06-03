@@ -88,6 +88,7 @@ let run_file ?(config = default_config) filename =
 
   try
     (* Portfolio Strategy: Stage 1 "Flash Mode" *)
+    if config.print_derivation then Printf.printf "%% Stage 1: Flash Mode (2s)\n%!";
     let flash_timeout = 2.0 in
     let total_timeout =
       match config.time_limit_s with
@@ -101,13 +102,33 @@ let run_file ?(config = default_config) filename =
     } in
 
     let flash_res =
-      Resolution.run_resolution_sos
-        ~limits:flash_limits
-        ~expensive_simplifications:false
-        ~mode:config.inference_mode
-        ~axioms:part.axioms
-        ~support:part.support
-        ()
+      try
+        Resolution.run_resolution_sos
+          ~limits:flash_limits
+          ~expensive_simplifications:false
+          ~mode:config.inference_mode
+          ~axioms:part.axioms
+          ~support:part.support
+          ()
+      with Resolution.Timeout_hit ->
+        (* Stage 1 timed out, which is expected for hard problems *)
+        {
+          Resolution.stop_reason = Time_limit;
+          derivation = [];
+          stats = {
+            generated_clauses = 0;
+            processed_clauses = 0;
+            resolution_inferences = 0;
+            factoring_inferences = 0;
+            equality_resolution_inferences = 0;
+            equality_factoring_inferences = 0;
+            superposition_inferences = 0;
+            demodulation_rewrites = 0;
+            subsumption_tests = 0;
+            subsumption_rejections = 0;
+            wall_clock_s = flash_timeout;
+          };
+        }
     in
 
     let res =
@@ -116,13 +137,16 @@ let run_file ?(config = default_config) filename =
       | Saturation -> flash_res (* Exhausted search space *)
       | Time_limit | Clause_limit ->
           (* Stage 2 "Deep Mode" for the remaining time *)
-          let remaining_time = total_timeout -. flash_res.stats.wall_clock_s in
+          let wall_s = flash_res.stats.wall_clock_s in
+          let remaining_time = total_timeout -. wall_s in
           if remaining_time <= 0.1 then flash_res
           else
             let deep_limits = {
               Resolution.time_limit_s = Some remaining_time;
               max_generated_clauses = config.max_generated_clauses;
             } in
+            if config.print_derivation then
+              Printf.printf "%% Stage 1 failed. Entering Stage 2: Deep Mode (%.2fs)\n%!" remaining_time;
             Resolution.run_resolution_sos
               ~limits:deep_limits
               ~expensive_simplifications:true
