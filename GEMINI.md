@@ -22,118 +22,60 @@ Le projet utilise :
 
 ### `src/resolution.ml`
 Cœur du moteur de preuve.
-Évolutions importantes déjà intégrées :
-* Résolution ordonnée
-* Factoring
-* Superposition ordonnée
-* Sélection de littéraux
-* Simplification $true/$false
-* Démultiplication / réécriture
-* Indexation de termes
-* Boucle de saturation Active/Passive
-* Stratégie given-clause
-* Sélection age/weight
+Évolutions majeures intégrées pour la compétition CASC :
+* **Résolution ordonnée & Superposition ordonnée**
+* **Literal Selection :** Sélection stricte des littéraux maximaux (ordre KBO) pour les clauses positives, et sélection du premier littéral négatif pour les autres, réduisant drastiquement le facteur de branchement.
+* **Feature Vector Indexing (FVI) :** Indexation avancée basée sur un Trie Creux pour un filtrage en $O(1)$ des candidats à la subsomption (Forward & Backward).
+* **Backward Demodulation :** Simplification rétroactive des clauses actives par les nouvelles égalités unitaires.
+* **Subsumption Resolution :** Règle de simplification agressive (ex: $A \lor C$ et $\neg A \lor D \rightarrow D$).
+* **Portfolio Strategy (CASC Mode) :** Orchestration à deux étages. 
+  - *Stage 1 (Flash)* : 2.0s avec ratio 10:1 (poids/âge), sans simplifications lourdes pour résoudre instantanément les problèmes simples.
+  - *Stage 2 (Deep)* : Reste du temps avec ratio 4:1 et toutes les optimisations activées pour l'exploration profonde.
 
-Direction actuelle : Given-clause saturation loop + age/weight clause selection + simplification inter-reduction.
+### `lib/match.ml` & `lib/clause.ml`
+* Implémentation d'un matching du premier ordre (Sound & Complete).
+* Subsomption mathématiquement correcte (1-à-1 glouton, sans multiset complet pour des raisons de vitesse).
 
-### `src/term_index.ml`
-Indexation des termes et égalités.
-Types importants : `term_entry` et `equality_entry`.
-Utilisé pour :
-* Résolution indexée
-* Superposition indexée
-* Récupération de sous-termes
-
-### `src/discrimination_index.ml`
-Index discrimination tree.
-A servi à accélérer :
-* Retrieval de termes
-* Matching
-* Unification candidates
-
-**RÈGLE ABSOLUE :** Les constructeurs OCaml doivent commencer par une majuscule.
-
-### `src/main.ml`
+### `src/main.ml` & `lib/prover.ml`
 CLI du prouveur.
-Fonctionnalités actuelles : `--time-limit`, `--max-clauses`, `--mode`, `--proof`, `--version`, `--duke`.
+Fonctionnalités actuelles : `--time-limit`, `--max-clauses`, `--mode`, `--proof`, `--version`, `--duke`, `--tptp`, `--sos`, `--no-sos`.
+* **Note sur le SOS :** Activé par défaut, désactivable via `--no-sos` (place toutes les clauses dans le *Passive set* initialement).
 
-## Versionnage
-Le numéro de version est `e - (1/n)`, calculé via la formule `version_of_n n = exp 1.0 -. (1.0 /. float_of_int n)`.
-Le header ASCII est intégré dans `Header.header`.
+## Tests Unitaires
+Suite de tests exhaustive (`tests/unit/`) utilisant Alcotest :
+* `test_unify.ml`, `test_parser.ml`, `test_clausify.ml`
+* `test_match_subsume.ml` : Valide le matching profond, la subsomption, la consistance des variables et la Subsumption Resolution.
+* `test_fvi.ml` : Valide l'insertion, le filtrage et la suppression sécurisée dans l'index.
+* `test_resolution.ml` & `test_ordering.ml` : Valide la résolution binaire, l'égalité (paramodulation basique), le factoring et l'ordre KBO.
 
-## Benchmarks
+## Benchmarks et Outils
 
 ### `bench/run_bench.ml`
 Outil de benchmark massif. Supporte : `ip`, `Vampire`, `E`, `Zenon`.
 Options : `--dir`, `--time-limit`, `--robust-time-limit`, `--max-clauses`, `--mode`, `--onlyip`, `--casc`, `--home`, `--logs`, `--size-limit`.
 
-### Fonctionnalités de benchmark
-* **Génération :** CSV, HTML.
-* **Statistiques par prouveur :** succès, timeouts, incomplétude, incorrection, erreurs, temps moyen, uniques.
-* **Comparaisons :** win/draw/loss.
-
-### Définition des succès
-Pour les problèmes `Satisfiable` et `CounterSatisfiable`, les résultats suivants comptent comme succès : `Satisfiable`, `CounterSatisfiable`, `Timeout`, `GaveUp`.
-
-### Hyperliens (HTML)
-* Les problèmes sont affichés sans le préfixe `--dir`.
-* `--home` permet de reconstruire le chemin réel.
-* **RÈGLE ABSOLUE :** Quand `--home` n’est pas fourni, `link_path` doit utiliser le chemin absolu basé sur `--dir`.
-
-## Outils Tiers & Paramètres Spécifiques
-
-### Zenon
-* Commande correcte : `zenon -I $TPTP -itptp -max-time %d %s`.
-* **RÈGLE ABSOLUE :** Si `$TPTP` est vide, ne pas mettre `-I`.
-
-### Timeout Robuste
-Fonction correcte :
-`let robust_timeout_seconds time_limit = int_of_float (ceil (float_of_int time_limit *. 1.50))`
-
-## Scripts et Utilitaires
+### `bench/check_regression.ml`
+Compare deux CSV benchmark pour détecter les régressions et les nouveaux succès. Produit du HTML.
 
 ### BENCHS-MESO
-Script SLURM.
-* **Fonctions :** clone Git automatique, lancement `make bench`, génération SLURM, mail de fin de job.
-* **Options :** `--time-limit`, `--robust-time-limit`, `--max-clauses`, `--mode`, `--dir`, `--home`, `--logs`, `--casc`, `--tptp`, `--onlyip`, `--local`.
-* **Comportement de `--local` :** Utilise `./ip` localement, aucun `git clone`. Le script crée la commande `ln -s "$LOCAL_IP_DIR" ip`.
-
-### `check_regression.ml`
-Compare deux CSV benchmark.
-* **Détecte :** régressions, nouveaux problèmes prouvés.
-* **Produit :** HTML.
-* **Options :** `--home` pour les hyperliens.
+Script SLURM pour lancement sur cluster.
+* **Comportement de `--local` :** Utilise `./ip` localement, aucun `git clone`. 
 
 ---
 
-## Contexte de la session en cours
+## Contexte de la session en cours et Bilan
 
 ### État Actuel du Moteur
-* **Gains :** +24 problèmes SYN.
-* **Régressions :** ~210 régressions.
-* **Causes probables :** backward subsumption trop agressive, simplification excessive, stratégie age/weight trop orientée poids.
+* Le moteur a été **sécurisé mathématiquement** (Soundness). L'ancienne version supprimait des clauses par erreur (bug de matching), ce qui trichait sur la taille de l'espace de recherche.
+* **Gains :** ~46 problèmes très difficiles prouvés que l'ancienne version ratait.
+* **Régressions :** ~266 problèmes simples/moyens en timeout. 
+* **Diagnostic :** La rigueur mathématique empêche de tailler l'arbre au hasard. Sur les problèmes FOF (First-Order Formulas), l'explosion combinatoire est inévitable sans *Clause Splitting*. Le mode "Flash" du Portfolio a permis d'atténuer le problème, mais le mur combinatoire reste présent sur les clauses disjointes (ex: $A(x) \lor B(y)$).
 
-### Direction Recommandée
-**Étape immédiate :**
-* Conserver : Active/Passive, given-clause, age/weight.
-* Désactiver temporairement : backward subsumption, forward subsumption sur passive.
+### L'Étape Manquante (Ce qu'il reste à implémenter)
+Pour dépasser les performances de Vampire sur les problèmes SYN et annuler les régressions, la **seule** brique architecturale manquante est :
+1. **Le Clause Splitting (Architecture AVATAR) :** Casser les clauses sans variables communes en sous-problèmes gérés par un solveur SAT. (Déjà en cours de développement sur une autre branche).
 
-**Stratégie future :**
-1. given-clause robuste
-2. simplification sûre
-3. backward simplification
-4. indexation complète
-5. fallback strategy
-
-### Philosophie Actuelle
-Ne pas utiliser un SOS strict.
-Préférer : given-clause globale + priorité conjecture via pondération.
-
-### Objectif à Moyen Terme
-Se rapprocher de `E` et `Vampire` en ajoutant :
-* boucle given-clause mature
-* simplification inter-réduction
-* sélection sophistiquée
-* saturation contrôlée
-* superposition fortement indexée
-* bonnes heuristiques de clause selection
+### Objectif à Moyen Terme (CASC)
+* Fusionner le moteur de base actuel (FVI, Match, Portfolio, Subsumption Resolution) avec la branche du **Splitting**.
+* Implémenter le filtrage **Sine Level** pour ignorer les axiomes hors-sujet.
+* Continuer de peaufiner les stratégies du **Portfolio**.
