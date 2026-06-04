@@ -51,6 +51,7 @@ val default_limits : limits
 val run_resolution_sos :
   ?limits:limits ->
   ?expensive_simplifications:bool ->
+  ?emulate_v1:bool ->
   mode:inference_mode ->
   axioms:clause list ->
   support:clause list ->
@@ -68,4 +69,6 @@ val print_derivation : derived list -> unit
 (** Internal functions exposed for unit testing ONLY *)
 val test_resolve : inference_mode -> clause -> clause -> clause list
 val test_factor : inference_mode -> clause -> clause list
+val equality_resolution : check_timeout:(unit -> unit) -> emulate_v1:bool -> inference_mode -> clause -> clause list
+val equality_factoring : check_timeout:(unit -> unit) -> emulate_v1:bool -> inference_mode -> clause -> clause list
 

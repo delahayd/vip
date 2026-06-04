@@ -40,7 +40,7 @@ let test_factoring_unrestricted () =
 let test_equality_resolution () =
   (* X != a v P(X) -> P(a) *)
   let c = [ neq (var "X") (const "a"); pos (atom "p" [var "X"]) ] in
-  let res = Resolution.equality_resolution ~check_timeout:(fun () -> ()) Unrestricted c in
+  let res = Resolution.equality_resolution ~check_timeout:(fun () -> ()) ~emulate_v1:false Unrestricted c in
   let expected = [ pos (atom "p" [const "a"]) ] in
   match res with
   | [ r ] ->
@@ -50,7 +50,7 @@ let test_equality_resolution () =
 let test_equality_factoring () =
   (* X = a v X = b -> a = b v X = b (Wait, paramodulation is complex. We test simple equality factoring if implemented) *)
   let c = [ eq (var "X") (const "a"); eq (var "X") (const "b") ] in
-  let res = Resolution.equality_factoring ~check_timeout:(fun () -> ()) Unrestricted c in
+  let res = Resolution.equality_factoring ~check_timeout:(fun () -> ()) ~emulate_v1:false Unrestricted c in
   (* Engine produces: =(V0,b) | ~=(a,b) *)
   let expected = [ eq (var "V0") (const "b"); neq (const "a") (const "b") ] in
   match res with

@@ -115,19 +115,21 @@ let negative_indices c =
   |> List.filter (function _, Neg _ -> true | _ -> false)
   |> List.map fst
 
-let selected_or_maximal_indices c =
+let selected_or_maximal_indices ~emulate_v1 c =
   let negs = negative_indices c in
   if negs <> [] then
-    (* Efficient selection: pick only the first negative literal. *)
-    [ List.hd negs ]
+    if emulate_v1 then negs
+    else
+      (* Efficient selection: pick only the first negative literal. *)
+      [ List.hd negs ]
   else
     all_indices c
 
-let is_active_literal mode c i =
+let is_active_literal ~emulate_v1 mode c i =
   match mode with
   | Unrestricted -> true
   | Ordered | Ordered_with_fallback ->
-      List.exists (( = ) i) (selected_or_maximal_indices c)
+      List.exists (( = ) i) (selected_or_maximal_indices ~emulate_v1 c)
 
 let dedup_clauses ?(check_timeout = fun () -> ()) cls =
   let seen = Hashtbl.create 1024 in
@@ -239,18 +241,18 @@ let resolve_pair c1 c2 i j =
   else
     None
 
-let resolve_two_clauses ~check_timeout ~mode c1 c2 =
+let resolve_two_clauses ~check_timeout ~emulate_v1 ~mode c1 c2 =
   let c1_renamed = rename_clause_apart c1 in
   let c2_renamed = rename_clause_apart c2 in
   let results = ref [] in
   List.iteri
     (fun i _ ->
       check_timeout ();
-      if is_active_literal mode c1 i then
+      if is_active_literal ~emulate_v1 mode c1 i then
         List.iteri
           (fun j _ ->
             check_timeout ();
-            if is_active_literal mode c2 j then
+            if is_active_literal ~emulate_v1 mode c2 j then
               match resolve_pair c1_renamed c2_renamed i j with
               | Some c -> results := c :: !results
               | None -> ())
@@ -285,9 +287,9 @@ let factor_pairs_unrestricted ~check_timeout c =
     (all_indices c);
   dedup_clauses ~check_timeout !results
 
-let factor_pairs_ordered ~check_timeout c =
+let factor_pairs_ordered ~check_timeout ~emulate_v1 c =
   let c = rename_clause_apart c in
-  let active = selected_or_maximal_indices c in
+  let active = selected_or_maximal_indices ~emulate_v1 c in
   let results = ref [] in
   List.iter
     (fun i ->
@@ -313,22 +315,22 @@ let factor_pairs_ordered ~check_timeout c =
     active;
   dedup_clauses ~check_timeout !results
 
-let factor_by_mode ~check_timeout mode c =
+let factor_by_mode ~check_timeout ~emulate_v1 mode c =
   match mode with
   | Unrestricted -> factor_pairs_unrestricted ~check_timeout c
-  | Ordered -> factor_pairs_ordered ~check_timeout c
+  | Ordered -> factor_pairs_ordered ~check_timeout ~emulate_v1 c
   | Ordered_with_fallback ->
-      let ordered = factor_pairs_ordered ~check_timeout c in
+      let ordered = factor_pairs_ordered ~check_timeout ~emulate_v1 c in
       if ordered <> [] then ordered
       else factor_pairs_unrestricted ~check_timeout c
 
-let equality_resolution ~check_timeout mode c =
+let equality_resolution ~check_timeout ~emulate_v1 mode c =
   let c = rename_clause_apart c in
   let results = ref [] in
   List.iteri
     (fun i lit ->
       check_timeout ();
-      if is_active_literal mode c i then
+      if is_active_literal ~emulate_v1 mode c i then
         match negative_equality lit with
         | None -> ()
         | Some (l, r) ->
@@ -342,13 +344,13 @@ let equality_resolution ~check_timeout mode c =
     c;
   dedup_clauses ~check_timeout !results
 
-let equality_factoring ~check_timeout mode c =
+let equality_factoring ~check_timeout ~emulate_v1 mode c =
   let c = rename_clause_apart c in
   let results = ref [] in
   List.iteri
     (fun i lit1 ->
       check_timeout ();
-      if is_active_literal mode c i then
+      if is_active_literal ~emulate_v1 mode c i then
         match positive_equality lit1 with
         | None -> ()
         | Some (l1, r1) ->
@@ -451,7 +453,7 @@ let superpose_from_into_position
   with Not_unifiable ->
     None
 
-let indexed_superpose_given ~check_timeout ~mode ~term_index ~all_by_id given =
+let indexed_superpose_given ~check_timeout ~emulate_v1 ~mode ~term_index ~all_by_id given =
   let results = ref [] in
 
   (* Direction 1 :
@@ -462,7 +464,7 @@ let indexed_superpose_given ~check_timeout ~mode ~term_index ~all_by_id given =
     (fun eq_index lit ->
       check_timeout ();
 
-      if is_active_literal mode given_source_clause eq_index then
+      if is_active_literal ~emulate_v1 mode given_source_clause eq_index then
         match positive_equality lit with
         | None -> ()
         | Some (l, r) ->
@@ -482,7 +484,7 @@ let indexed_superpose_given ~check_timeout ~mode ~term_index ~all_by_id given =
                       match Hashtbl.find_opt all_by_id te.Term_index.clause_id with
                       | None -> ()
                       | Some target_d ->
-                          if is_active_literal mode target_d.clause_d te.Term_index.lit_index then
+                          if is_active_literal ~emulate_v1 mode target_d.clause_d te.Term_index.lit_index then
                             let target_clause =
                               rename_clause_apart target_d.clause_d
                             in
@@ -511,7 +513,7 @@ let indexed_superpose_given ~check_timeout ~mode ~term_index ~all_by_id given =
     (fun lit_index lit ->
       check_timeout ();
 
-      if is_active_literal mode given_target_clause lit_index then
+      if is_active_literal ~emulate_v1 mode given_target_clause lit_index then
         let a = atom_of_literal lit in
 
         List.iteri
@@ -538,7 +540,7 @@ let indexed_superpose_given ~check_timeout ~mode ~term_index ~all_by_id given =
                       match Hashtbl.find_opt all_by_id ee.Term_index.clause_id with
                       | None -> ()
                       | Some eq_d ->
-                          if is_active_literal mode eq_d.clause_d ee.Term_index.lit_index then
+                          if is_active_literal ~emulate_v1 mode eq_d.clause_d ee.Term_index.lit_index then
                             let source_clause =
                               rename_clause_apart eq_d.clause_d
                             in
@@ -575,7 +577,7 @@ let term_index_orientation_mode = function
   | Ordered -> Term_index.Oriented_only
   | Unrestricted | Ordered_with_fallback -> Term_index.Both_if_unorientable
 
-let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = true) ~mode ~axioms ~support () =
+let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = true) ?(emulate_v1 = false) ~mode ~axioms ~support () =
   let start_t = Unix.gettimeofday () in
 
   let known : (string, int) Hashtbl.t = Hashtbl.create 4099 in
@@ -671,21 +673,27 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     let base =
       List.fold_left (fun acc lit -> acc + literal_weight lit) 0 c
     in
-    (* Vampire strongly penalizes long clauses to fight combinatorial explosion *)
-    let length_penalty =
-      if len > 3 then (len - 3) * 5 else 0
-    in
-    let unit_bonus =
-      if len = 1 then -3 else 0
-    in
-    (* Favor clauses with negative literals as they are often derived from the conjecture *)
-    let negative_bonus =
-      if clause_has_negative c then -2 else 0
-    in
-    let equality_penalty =
-      if clause_has_equality c then 2 else 0
-    in
-    max 1 (base + length_penalty + unit_bonus + negative_bonus + equality_penalty)
+    if emulate_v1 then
+      let unit_bonus = if len = 1 then -2 else 0 in
+      let negative_bonus = if clause_has_negative c then -1 else 0 in
+      let equality_penalty = if clause_has_equality c then 2 else 0 in
+      max 1 (base + unit_bonus + negative_bonus + equality_penalty)
+    else
+      (* Vampire strongly penalizes long clauses to fight combinatorial explosion *)
+      let length_penalty =
+        if len > 3 then (len - 3) * 5 else 0
+      in
+      let unit_bonus =
+        if len = 1 then -3 else 0
+      in
+      (* Favor clauses with negative literals as they are often derived from the conjecture *)
+      let negative_bonus =
+        if clause_has_negative c then -2 else 0
+      in
+      let equality_penalty =
+        if clause_has_equality c then 2 else 0
+      in
+      max 1 (base + length_penalty + unit_bonus + negative_bonus + equality_penalty)
   in
 
   let make_result stop_reason =
@@ -713,19 +721,27 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   in
 
   let is_subsumed_by ?(ignore_id = -1) _ c =
-    let candidates = Feature_vector.find_subsuming_candidates fv_index c in
-    let rec aux = function
-      | [] -> false
-      | id :: tl ->
-          if id = ignore_id then aux tl
-          else match Hashtbl.find_opt all_by_id id with
-          | None -> aux tl
-          | Some d ->
-              check_timeout ();
-              incr subsumption_tests;
-              if subsumes d.clause_d c then true else aux tl
-    in
-    aux candidates
+    if emulate_v1 then
+      let c_norm = normalize_clause c in
+      List.exists
+        (fun d ->
+          d.id <> ignore_id
+          && List.for_all (fun lit -> List.exists (( = ) lit) c_norm) (normalize_clause d.clause_d))
+        (active_clauses ())
+    else
+      let candidates = Feature_vector.find_subsuming_candidates fv_index c in
+      let rec aux = function
+        | [] -> false
+        | id :: tl ->
+            if id = ignore_id then aux tl
+            else match Hashtbl.find_opt all_by_id id with
+            | None -> aux tl
+            | Some d ->
+                check_timeout ();
+                incr subsumption_tests;
+                if subsumes d.clause_d c then true else aux tl
+      in
+      aux candidates
   in
 
   let delete_derived d =
@@ -920,41 +936,57 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   in
 
   let backward_subsume given =
-    let candidates = Feature_vector.find_subsumed_candidates fv_index given.clause_d in
-    if candidates = [] then ()
-    else
-      let candidates_set = Hashtbl.create (List.length candidates) in
-      List.iter (fun id -> Hashtbl.add candidates_set id ()) candidates;
-
+    if emulate_v1 then
+      let given_norm = normalize_clause given.clause_d in
       let kept_active = ref [] in
       List.iter
         (fun d ->
           check_timeout ();
-          if Hashtbl.mem candidates_set d.id && d.id <> given.id then (
-            incr subsumption_tests;
-            if subsumes given.clause_d d.clause_d then
+          if d.id <> given.id then begin
+            if List.for_all (fun lit -> List.exists (( = ) lit) (normalize_clause d.clause_d)) given_norm then
               delete_derived d
             else
               kept_active := d :: !kept_active
-          ) else
+          end else
             kept_active := d :: !kept_active)
         !active;
-      active := List.rev !kept_active;
+      active := List.rev !kept_active
+    else
+      let candidates = Feature_vector.find_subsumed_candidates fv_index given.clause_d in
+      if candidates = [] then ()
+      else
+        let candidates_set = Hashtbl.create (List.length candidates) in
+        List.iter (fun id -> Hashtbl.add candidates_set id ()) candidates;
 
-      let kept_passive = ref [] in
-      List.iter
-        (fun e ->
-          check_timeout ();
-          if Hashtbl.mem candidates_set e.d.id && e.d.id <> given.id then (
-            incr subsumption_tests;
-            if subsumes given.clause_d e.d.clause_d then
-              delete_derived e.d
-            else
-              kept_passive := e :: !kept_passive
-          ) else
-            kept_passive := e :: !kept_passive)
-        !passive;
-      passive := List.rev !kept_passive
+        let kept_active = ref [] in
+        List.iter
+          (fun d ->
+            check_timeout ();
+            if Hashtbl.mem candidates_set d.id && d.id <> given.id then (
+              incr subsumption_tests;
+              if subsumes given.clause_d d.clause_d then
+                delete_derived d
+              else
+                kept_active := d :: !kept_active
+            ) else
+              kept_active := d :: !kept_active)
+          !active;
+        active := List.rev !kept_active;
+
+        let kept_passive = ref [] in
+        List.iter
+          (fun e ->
+            check_timeout ();
+            if Hashtbl.mem candidates_set e.d.id && e.d.id <> given.id then (
+              incr subsumption_tests;
+              if subsumes given.clause_d e.d.clause_d then
+                delete_derived e.d
+              else
+                kept_passive := e :: !kept_passive
+            ) else
+              kept_passive := e :: !kept_passive)
+          !passive;
+        passive := List.rev !kept_passive
   in
 
   let activate given =
@@ -964,9 +996,9 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     index_active_clause given
   in
 
-  let resolution_candidates given =
+  let resolution_candidates ~emulate_v1 given =
     let indexed_ids = Hashtbl.create 127 in
-    let given_active_indices = selected_or_maximal_indices given.clause_d in
+    let given_active_indices = selected_or_maximal_indices ~emulate_v1 given.clause_d in
 
     List.iter
       (fun i ->
@@ -981,7 +1013,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
             if e.Discrimination_index.clause_id <> given.id then
               match Hashtbl.find_opt all_by_id e.Discrimination_index.clause_id with
               | Some d ->
-                  if is_active_literal mode d.clause_d e.Discrimination_index.lit_index then
+                  if is_active_literal ~emulate_v1 mode d.clause_d e.Discrimination_index.lit_index then
                     Hashtbl.replace indexed_ids d.id ()
               | None -> ())
           entries)
@@ -1082,7 +1114,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
                             fc
                             stop_reason
                         end)
-                      (factor_by_mode ~check_timeout mode given.clause_d);
+                      (factor_by_mode ~check_timeout ~emulate_v1 mode given.clause_d);
 
                     List.iter
                       (fun c ->
@@ -1095,7 +1127,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
                             c
                             stop_reason
                         end)
-                      (equality_resolution ~check_timeout mode given.clause_d);
+                      (equality_resolution ~check_timeout ~emulate_v1 mode given.clause_d);
 
                     List.iter
                       (fun c ->
@@ -1108,7 +1140,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
                             c
                             stop_reason
                         end)
-                      (equality_factoring ~check_timeout mode given.clause_d);
+                      (equality_factoring ~check_timeout ~emulate_v1 mode given.clause_d);
 
                     List.iter
                       (fun other ->
@@ -1117,6 +1149,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
                           let resolvents =
                             resolve_two_clauses
                               ~check_timeout
+                              ~emulate_v1
                               ~mode
                               given.clause_d
                               other.clause_d
@@ -1134,7 +1167,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
                               end)
                             resolvents
                         end)
-                      (resolution_candidates given);
+                      (resolution_candidates ~emulate_v1 given);
 
                     List.iter
                       (fun (r, parents) ->
@@ -1149,6 +1182,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
                         end)
                       (indexed_superpose_given
                          ~check_timeout
+                         ~emulate_v1
                          ~mode
                          ~term_index
                          ~all_by_id
@@ -1195,8 +1229,8 @@ let print_derivation deriveds =
     deriveds
 
 let test_resolve mode c1 c2 =
-  resolve_two_clauses ~check_timeout:(fun () -> ()) ~mode c1 c2
+  resolve_two_clauses ~check_timeout:(fun () -> ()) ~emulate_v1:false ~mode c1 c2
 
 let test_factor mode c =
-  factor_by_mode ~check_timeout:(fun () -> ()) mode c
+  factor_by_mode ~check_timeout:(fun () -> ()) ~emulate_v1:false mode c
 
