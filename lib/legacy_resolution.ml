@@ -853,7 +853,7 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
       || List.exists clause_contains_equality support
     in
 
-    let axioms_to_support = equality_problem in
+    let axioms_to_support = equality_problem || support = [] in
 
     List.iter
       (fun c ->

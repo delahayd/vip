@@ -193,23 +193,25 @@ let subsumes c1 c2 =
   let m = List.length c2 in
   if n > m then false
   else
-    (* Try to find a matching substitution for each literal of c1 into some literal of c2 *)
-    let rec try_match_subset subst idx =
-      if idx = n then true
-      else
-        let l1 = List.nth c1 idx in
-        let rec search_in_c2 = function
-          | [] -> false
-          | l2 :: rest ->
-              (try
-                let subst' = Match.match_literals l1 l2 subst in
-                if try_match_subset subst' (idx + 1) then true
-                else search_in_c2 rest
-               with Match.Not_matchable -> search_in_c2 rest)
-        in
-        search_in_c2 c2
+    let remove_nth xs n =
+      xs |> List.filteri (fun i _ -> i <> n)
     in
-    try_match_subset StringMap.empty 0
+    let rec try_match_subset subst remaining_targets = function
+      | [] -> true
+      | l1 :: rest_c1 ->
+          let rec search i = function
+            | [] -> false
+            | l2 :: rest_targets ->
+                (try
+                   let subst' = Match.match_literals l1 l2 subst in
+                   let remaining_targets' = remove_nth remaining_targets i in
+                   try_match_subset subst' remaining_targets' rest_c1
+                   || search (i + 1) rest_targets
+                 with Match.Not_matchable -> search (i + 1) rest_targets)
+          in
+          search 0 remaining_targets
+    in
+    try_match_subset StringMap.empty c2 c1
 
 let subsumption_resolution c1 c2 =
   let n = List.length c1 in

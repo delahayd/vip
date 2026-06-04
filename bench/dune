@@ -10,4 +10,5 @@
  (alias runtest)
  (deps (glob_files_rec %{project_root}/bench/problems/*.p))
  (action
-   (run ./run_bench.exe problems)))
+   (setenv IP_BIN %{exe:../src/main.exe}
+    (run ./run_bench.exe --onlyip --dir problems --time-limit 1))))

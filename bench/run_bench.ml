@@ -35,6 +35,9 @@ type bench_row = {
   results : (string * result) list;
 }
 
+let ip_binary () =
+  try Sys.getenv "IP_BIN" with Not_found -> "./bin/ip"
+
 let provers =
   [
     {
@@ -59,7 +62,8 @@ let provers =
             with Not_found -> ""
           in
           Printf.sprintf
-            "./bin/ip --time-limit %d%s%s%s %s"
+            "%s --time-limit %d%s%s%s %s"
+            (Filename.quote (ip_binary ()))
             timeout
             max_clause_arg
             mode_arg

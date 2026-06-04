@@ -34,6 +34,23 @@ let test_match_terms_4 () =
     fail "Should raise Not_matchable"
   with Match.Not_matchable -> ()
 
+let test_match_terms_deep () =
+  (* f(g(X, a), h(Y)) matches f(g(b, a), h(c)) *)
+  let t1 = fun_ "f" [fun_ "g" [var "X"; const "a"]; fun_ "h" [var "Y"]] in
+  let t2 = fun_ "f" [fun_ "g" [const "b"; const "a"]; fun_ "h" [const "c"]] in
+  let s = Match.match_terms t1 t2 StringMap.empty in
+  check string "X -> b" "b" (Pretty.string_of_term (StringMap.find "X" s));
+  check string "Y -> c" "c" (Pretty.string_of_term (StringMap.find "Y" s))
+
+let test_match_terms_deep_fail () =
+  (* f(g(X, X), h(Y)) does not match f(g(b, a), h(c)) *)
+  let t1 = fun_ "f" [fun_ "g" [var "X"; var "X"]; fun_ "h" [var "Y"]] in
+  let t2 = fun_ "f" [fun_ "g" [const "b"; const "a"]; fun_ "h" [const "c"]] in
+  try
+    let _ = Match.match_terms t1 t2 StringMap.empty in
+    fail "Should raise Not_matchable"
+  with Match.Not_matchable -> ()
+
 let test_subsumes_1 () =
   (* P(X) subsumes P(a) *)
   let c1 = [ pos (atom "p" [var "X"]) ] in
@@ -64,6 +81,19 @@ let test_subsumes_5 () =
   let c2 = [ pos (atom "p" [const "a"]); pos (atom "q" [const "b"]) ] in
   check bool "subsumes subset" true (Clause.subsumes c1 c2)
 
+let test_subsumes_order_independent () =
+  (* P(X) v Q(Y) subsumes Q(b) v P(a) *)
+  let c1 = [ pos (atom "p" [var "X"]); pos (atom "q" [var "Y"]) ] in
+  let c2 = [ pos (atom "q" [const "b"]); pos (atom "p" [const "a"]) ] in
+  check bool "subsumes order independent" true (Clause.subsumes c1 c2)
+
+let test_subsumes_multiplicity () =
+  (* P(X) v P(Y) does NOT currently subsume P(a) in our simple engine.
+     Subsumption is one-to-one over target literals. *)
+  let c1 = [ pos (atom "p" [var "X"]); pos (atom "p" [var "Y"]) ] in
+  let c2 = [ pos (atom "p" [const "a"]) ] in
+  check bool "subsumes multiplicity (known limitation: greedy 1-to-1)" false (Clause.subsumes c1 c2)
+
 let test_subsumes_resolution_1 () =
   (* P(X) subsumption-resolves ~P(a) v Q(b) -> Q(b) *)
   let c1 = [ pos (atom "p" [var "X"]) ] in
@@ -93,6 +123,8 @@ let () =
          test_case "no match const to var" `Quick test_match_terms_2;
          test_case "match identical vars to identical consts" `Quick test_match_terms_3;
          test_case "no match identical vars to diff consts" `Quick test_match_terms_4;
+         test_case "match deep terms" `Quick test_match_terms_deep;
+         test_case "fail match deep terms on var conflict" `Quick test_match_terms_deep_fail;
        ]);
       ("subsumption",
        [
@@ -101,6 +133,8 @@ let () =
          test_case "general subset subsumes specific superset" `Quick test_subsumes_3;
          test_case "identical vars enforce equality in subsumption" `Quick test_subsumes_4;
          test_case "subset subsumes superset" `Quick test_subsumes_5;
+         test_case "subsumption is order independent" `Quick test_subsumes_order_independent;
+         test_case "subsumption rejects multiplicity reduction" `Quick test_subsumes_multiplicity;
        ]);
       ("subsumption_resolution",
        [

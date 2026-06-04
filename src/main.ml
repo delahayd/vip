@@ -206,11 +206,12 @@ let () =
         let outcome = Prover_lib.Prover.run_file ~config filename in
         Prover_lib.Prover.print_szs outcome;
 
-        if duke then
+        if duke then begin
           match outcome.Prover_lib.Prover.status with
           | Prover_lib.Prover.Unsatisfiable -> play_duke_safely ()
           | Prover_lib.Prover.Timeout -> play_timeout_safely ()
-          | _ -> ();
+          | _ -> ()
+        end;
 
         if config.Prover_lib.Prover.print_derivation then begin
           print_endline "% Proof trace:";

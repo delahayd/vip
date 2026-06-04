@@ -65,6 +65,46 @@ let infer_status_from_stop_reason = function
   | Time_limit -> Timeout
   | Clause_limit -> ResourceOut
 
+let resolution_mode_of_legacy = function
+  | Resolution.Unrestricted -> Legacy_resolution.Unrestricted
+  | Resolution.Ordered -> Legacy_resolution.Ordered
+  | Resolution.Ordered_with_fallback -> Legacy_resolution.Ordered_with_fallback
+
+let derived_of_legacy (d : Legacy_resolution.derived) : Resolution.derived =
+  {
+    Resolution.id = d.id;
+    parents = d.parents;
+    rule = d.rule;
+    clause_d = d.clause_d;
+    is_active = false;
+  }
+
+let result_of_legacy (l_res : Legacy_resolution.run_result) : Resolution.run_result =
+  {
+    Resolution.stop_reason =
+      (match l_res.stop_reason with
+       | Legacy_resolution.Refutation_found d ->
+           Resolution.Refutation_found (derived_of_legacy d)
+       | Legacy_resolution.Saturation -> Resolution.Saturation
+       | Legacy_resolution.Time_limit -> Resolution.Time_limit
+       | Legacy_resolution.Clause_limit -> Resolution.Clause_limit);
+    derivation = List.map derived_of_legacy l_res.derivation;
+    stats =
+      {
+        Resolution.generated_clauses = l_res.stats.generated_clauses;
+        processed_clauses = l_res.stats.processed_clauses;
+        resolution_inferences = l_res.stats.resolution_inferences;
+        factoring_inferences = l_res.stats.factoring_inferences;
+        equality_resolution_inferences = l_res.stats.equality_resolution_inferences;
+        equality_factoring_inferences = l_res.stats.equality_factoring_inferences;
+        superposition_inferences = l_res.stats.superposition_inferences;
+        demodulation_rewrites = l_res.stats.demodulation_rewrites;
+        subsumption_tests = l_res.stats.subsumption_tests;
+        subsumption_rejections = l_res.stats.subsumption_rejections;
+        wall_clock_s = l_res.stats.wall_clock_s;
+      };
+  }
+
 let run_file ?(config = default_config) filename =
   let load_config =
     match config.tptp_dir with
@@ -113,44 +153,12 @@ let run_file ?(config = default_config) filename =
         let l_res =
           Legacy_resolution.run_resolution_sos
             ~limits:flash_limits
-            ~mode:(match config.inference_mode with
-                   | Resolution.Unrestricted -> Legacy_resolution.Unrestricted
-                   | Resolution.Ordered -> Legacy_resolution.Ordered
-                   | Resolution.Ordered_with_fallback -> Legacy_resolution.Ordered_with_fallback)
+            ~mode:(resolution_mode_of_legacy config.inference_mode)
             ~axioms
             ~support
             ()
         in
-        {
-          Resolution.stop_reason = (match l_res.stop_reason with
-            | Legacy_resolution.Refutation_found d ->
-                (* We only care that it's found, the empty clause details can be mapped simply *)
-                Resolution.Refutation_found {
-                  Resolution.id = d.id;
-                  parents = d.parents;
-                  rule = d.rule;
-                  clause_d = d.clause_d;
-                  is_active = false;
-                }
-            | Legacy_resolution.Saturation -> Resolution.Saturation
-            | Legacy_resolution.Time_limit -> Resolution.Time_limit
-            | Legacy_resolution.Clause_limit -> Resolution.Clause_limit
-          );
-          derivation = [];
-          stats = {
-            Resolution.generated_clauses = l_res.stats.generated_clauses;
-            processed_clauses = l_res.stats.processed_clauses;
-            resolution_inferences = l_res.stats.resolution_inferences;
-            factoring_inferences = l_res.stats.factoring_inferences;
-            equality_resolution_inferences = l_res.stats.equality_resolution_inferences;
-            equality_factoring_inferences = l_res.stats.equality_factoring_inferences;
-            superposition_inferences = l_res.stats.superposition_inferences;
-            demodulation_rewrites = l_res.stats.demodulation_rewrites;
-            subsumption_tests = l_res.stats.subsumption_tests;
-            subsumption_rejections = l_res.stats.subsumption_rejections;
-            wall_clock_s = l_res.stats.wall_clock_s;
-          };
-        }
+        result_of_legacy l_res
       with Legacy_resolution.Timeout_hit ->
         (* Stage 1 timed out, which is expected for hard problems *)
         {
@@ -176,8 +184,7 @@ let run_file ?(config = default_config) filename =
     let res =
       match flash_res.stop_reason with
       | Refutation_found _ -> flash_res
-      | Saturation -> flash_res (* Exhausted search space *)
-      | Time_limit | Clause_limit ->
+      | Saturation | Time_limit | Clause_limit ->
           (* Stage 2 "Deep Mode" for the remaining time *)
           let wall_s = flash_res.stats.wall_clock_s in
           let remaining_time = total_timeout -. wall_s in

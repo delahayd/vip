@@ -5,7 +5,15 @@ open Prover
 let here = Sys.getcwd ()
 
 let path name =
-  Filename.concat here ("tests/integration/" ^ name)
+  let candidates =
+    [
+      Filename.concat here name;
+      Filename.concat here ("tests/integration/" ^ name);
+    ]
+  in
+  match List.find_opt Sys.file_exists candidates with
+  | Some path -> path
+  | None -> Filename.concat here name
 
 let config : Prover.config =
   {
