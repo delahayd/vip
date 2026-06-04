@@ -11,6 +11,9 @@ let atom p args = { pred = p; args = args }
 let pos a = Pos a
 let neg a = Neg a
 
+let eq l r = pos (atom "=" [l; r])
+let neq l r = neg (atom "=" [l; r])
+
 let c1 = [ pos (atom "p" [var "X"]); pos (atom "q" [var "X"]) ]
 let c2 = [ neg (atom "p" [const "a"]); pos (atom "r" [var "Y"]) ]
 
@@ -34,15 +37,39 @@ let test_factoring_unrestricted () =
       check string "factored clause" (Pretty.string_of_clause expected) (Pretty.string_of_clause r)
   | _ -> fail "Should generate exactly one factor"
 
+let test_equality_resolution () =
+  (* X != a v P(X) -> P(a) *)
+  let c = [ neq (var "X") (const "a"); pos (atom "p" [var "X"]) ] in
+  let res = Resolution.equality_resolution ~check_timeout:(fun () -> ()) Unrestricted c in
+  let expected = [ pos (atom "p" [const "a"]) ] in
+  match res with
+  | [ r ] ->
+      check string "equality resolved" (Pretty.string_of_clause expected) (Pretty.string_of_clause r)
+  | _ -> fail "Should generate exactly one equality resolvent"
+
+let test_equality_factoring () =
+  (* X = a v X = b -> a = b v X = b (Wait, paramodulation is complex. We test simple equality factoring if implemented) *)
+  let c = [ eq (var "X") (const "a"); eq (var "X") (const "b") ] in
+  let res = Resolution.equality_factoring ~check_timeout:(fun () -> ()) Unrestricted c in
+  (* Engine produces: =(V0,b) | ~=(a,b) *)
+  let expected = [ eq (var "V0") (const "b"); neq (const "a") (const "b") ] in
+  match res with
+  | [ r ] ->
+      (* Order might differ, checking exact string for now. Expected output structure depends on implementation. *)
+      check string "equality factored" (Pretty.string_of_clause expected) (Pretty.string_of_clause r)
+  | _ -> fail "Should generate exactly one equality factor"
+
 let () =
   run "Resolution and Factoring"
     [
       ("resolution",
        [
          test_case "binary resolution unrestricted" `Quick test_binary_resolution_unrestricted;
+         test_case "equality resolution" `Quick test_equality_resolution;
        ]);
       ("factoring",
        [
          test_case "factoring unrestricted" `Quick test_factoring_unrestricted;
+         test_case "equality factoring" `Quick test_equality_factoring;
        ])
     ]
