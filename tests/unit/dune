@@ -17,3 +17,11 @@
 (test
  (name test_fvi)
  (libraries prover_lib alcotest))
+
+(test
+ (name test_resolution)
+ (libraries prover_lib alcotest))
+
+(test
+ (name test_ordering)
+ (libraries prover_lib alcotest))

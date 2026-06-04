@@ -1193,3 +1193,10 @@ let print_derivation deriveds =
         parents
         (string_of_clause d.clause_d))
     deriveds
+
+let test_resolve mode c1 c2 =
+  resolve_two_clauses ~check_timeout:(fun () -> ()) ~mode c1 c2
+
+let test_factor mode c =
+  factor_by_mode ~check_timeout:(fun () -> ()) mode c
+
