@@ -85,7 +85,7 @@ let play_timeout_safely () =
 
 let usage () =
   prerr_endline
-    "Usage: ip [--version] [--duke] [--proof] [--time-limit SECONDS] [--max-clauses N] [--mode MODE] [--tptp DIR] FILE";
+    "Usage: ip [--version] [--duke] [--proof] [--time-limit SECONDS] [--max-clauses N] [--mode MODE] [--tptp DIR] [--sos|--no-sos] FILE";
   exit 2
 
 let mode_of_string = function
@@ -105,6 +105,7 @@ let parse_args () =
   let show_version = ref false in
   let duke = ref false in
   let tptp_dir = ref None in
+  let use_sos = ref true in
 
   let rec loop i =
     if i >= Array.length Sys.argv then ()
@@ -112,6 +113,14 @@ let parse_args () =
       match Sys.argv.(i) with
       | "--version" ->
           show_version := true;
+          loop (i + 1)
+
+      | "--sos" ->
+          use_sos := true;
+          loop (i + 1)
+
+      | "--no-sos" ->
+          use_sos := false;
           loop (i + 1)
 
       | "--duke" ->
@@ -182,6 +191,7 @@ let parse_args () =
               print_derivation = !print_derivation;
               inference_mode = !inference_mode;
               tptp_dir = !tptp_dir;
+              use_sos = !use_sos;
             },
             !duke )
 

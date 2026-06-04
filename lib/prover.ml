@@ -18,6 +18,7 @@ type config = {
   print_derivation : bool;
   inference_mode : Resolution.inference_mode;
   tptp_dir : string option;
+  use_sos : bool;
 }
 
 type problem_info = {
@@ -40,6 +41,7 @@ let default_config = {
   print_derivation = false;
   inference_mode = Resolution.Ordered_with_fallback;
   tptp_dir = None;
+  use_sos = true;
 }
 
 let string_of_szs_status = function
@@ -72,12 +74,17 @@ let run_file ?(config = default_config) filename =
   let parsed = load_problem ~config:load_config filename in
   let part = partition_input_clauses parsed.inputs in
 
+  let axioms, support =
+    if config.use_sos then (part.axioms, part.support)
+    else ([], part.axioms @ part.support)
+  in
+
   let timeout_outcome () =
     {
       status = Timeout;
       info = {
         file = Some filename;
-        clause_count = List.length part.axioms + List.length part.support;
+        clause_count = List.length axioms + List.length support;
         generated_clause_count = 0;
       };
       derivation = [];
@@ -107,9 +114,10 @@ let run_file ?(config = default_config) filename =
           ~limits:flash_limits
           ~expensive_simplifications:false
           ~mode:config.inference_mode
-          ~axioms:part.axioms
-          ~support:part.support
+          ~axioms
+          ~support
           ()
+
       with Resolution.Timeout_hit ->
         (* Stage 1 timed out, which is expected for hard problems *)
         {
@@ -151,8 +159,8 @@ let run_file ?(config = default_config) filename =
               ~limits:deep_limits
               ~expensive_simplifications:true
               ~mode:config.inference_mode
-              ~axioms:part.axioms
-              ~support:part.support
+              ~axioms
+              ~support
               ()
     in
 

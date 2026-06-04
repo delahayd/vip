@@ -7,7 +7,7 @@ let here = Sys.getcwd ()
 let path name =
   Filename.concat here ("tests/integration/" ^ name)
 
-let config_quick =
+let config : Prover.config =
   {
     (* default_config with *)
     time_limit_s = Some 2.0;
@@ -15,10 +15,12 @@ let config_quick =
     print_derivation = false;
     inference_mode = Resolution.Ordered_with_fallback;
     tptp_dir = None;
+    use_sos = true;
   }
 
+
 let expect_unsat file () =
-  match run_file ~config:config_quick (path file) with
+  match run_file ~config:config (path file) with
   | { status = Unsatisfiable; empty_clause = Some _; _ }
   | { status = Theorem; empty_clause = Some _; _ } ->
       ()
@@ -30,7 +32,7 @@ let expect_unsat file () =
            (string_of_szs_status status))
 
 let expect_not_refuted file () =
-  match run_file ~config:config_quick (path file) with
+  match run_file ~config:config (path file) with
   | { status = Unsatisfiable; _ }
   | { status = Theorem; _ } ->
       fail ("expected non-refutation for " ^ file)
@@ -44,7 +46,7 @@ let expect_not_refuted file () =
       ()
 
 let check_stats_present file () =
-  let result = run_file ~config:config_quick (path file) in
+  let result = run_file ~config:config (path file) in
   match result.resolution_stats with
   | None ->
       fail ("expected stats for " ^ file)
@@ -54,7 +56,7 @@ let check_stats_present file () =
       check bool "time >= 0" true (s.wall_clock_s >= 0.0)
 
 let check_derivation_present file () =
-  let result = run_file ~config:config_quick (path file) in
+  let result = run_file ~config:config (path file) in
   match result.status with
   | Unsatisfiable | Theorem ->
       check bool "derivation non-empty" true (List.length result.derivation > 0);

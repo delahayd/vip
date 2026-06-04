@@ -16,6 +16,7 @@ type config = {
   print_derivation : bool;
   inference_mode : Resolution.inference_mode;
   tptp_dir : string option;
+  use_sos : bool;
 }
 
 type problem_info = {

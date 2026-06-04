@@ -1,0 +1,50 @@
+# bench_date,"2026-06-03_15-05-51"
+# problem_dir,"bench/problems/equality"
+# home,
+# logs_dir,"local_portfolio_v2"
+# time_limit_seconds,6
+# robust_time_limit,false
+# size_limit_gb,
+# max_clauses,
+# mode,
+# casc,
+# only_ip,true
+# version_ip,"273dbb2"
+
+section,problem,expected_status,rating,ip,ip_time_s
+result,"eq_large_01.p","Unknown","","Unsatisfiable",0.006201
+result,"eq_large_02.p","Unknown","","Unsatisfiable",0.005361
+result,"eq_large_03.p","Unknown","","Unsatisfiable",0.006111
+result,"eq_large_04.p","Unknown","","Unsatisfiable",0.006256
+result,"eq_large_05.p","Unknown","","Unsatisfiable",0.005598
+result,"eq_large_06.p","Unknown","","Unsatisfiable",0.007074
+result,"eq_large_07.p","Unknown","","Unsatisfiable",0.005856
+result,"eq_large_08.p","Unknown","","Unsatisfiable",0.006822
+result,"eq_large_09.p","Unknown","","Unsatisfiable",0.005934
+result,"eq_large_10.p","Unknown","","Timeout",6.007273
+result,"eq_medium_01.p","Unknown","","Unsatisfiable",0.007074
+result,"eq_medium_02.p","Unknown","","Unsatisfiable",0.006227
+result,"eq_medium_03.p","Unknown","","Unsatisfiable",0.005735
+result,"eq_medium_04.p","Unknown","","Unsatisfiable",0.005970
+result,"eq_medium_05.p","Unknown","","Unsatisfiable",0.005790
+result,"eq_medium_06.p","Unknown","","Unsatisfiable",0.006243
+result,"eq_medium_07.p","Unknown","","Unsatisfiable",0.006457
+result,"eq_medium_08.p","Unknown","","Unsatisfiable",0.006215
+result,"eq_medium_09.p","Unknown","","Unsatisfiable",0.005834
+result,"eq_medium_10.p","Unknown","","Unsatisfiable",0.006208
+result,"eq_small_01.p","Unknown","","Unsatisfiable",0.005755
+result,"eq_small_02.p","Unknown","","Unsatisfiable",0.006751
+result,"eq_small_03.p","Unknown","","Unsatisfiable",0.007157
+result,"eq_small_04.p","Unknown","","Unsatisfiable",0.006467
+result,"eq_small_05.p","Unknown","","Unsatisfiable",0.007187
+result,"eq_small_06.p","Unknown","","Unsatisfiable",0.006013
+result,"eq_small_07.p","Unknown","","Unsatisfiable",0.005903
+result,"eq_small_08.p","Unknown","","Unsatisfiable",0.006343
+result,"eq_small_09.p","Unknown","","Unsatisfiable",0.006187
+result,"eq_small_10.p","Unknown","","Unsatisfiable",0.005957
+
+section,prover,scope,total,success,timeout,incomplete,unsound,error,avg_time_s
+prover_stats,"ip","Tous",30,"29 (96.7%)","1 (3.3%)","0 (0.0%)","0 (0.0%)","0 (0.0%)",0.206265
+prover_stats,"ip","Theorem/Unsatisfiable",0,"0 (0.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)",0.000000
+prover_stats,"ip","Theorem (FOF)",0,"0 (0.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)",0.000000
+prover_stats,"ip","Unsatisfiable (CNF)",0,"0 (0.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)","0 (0.0%)",0.000000
