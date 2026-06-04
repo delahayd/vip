@@ -1,0 +1,110 @@
+open Alcotest
+open Prover_lib
+open Types
+
+let var x = Var x
+let const c = Fun (c, [])
+let fun_ f args = Fun (f, args)
+
+let atom p args = { pred = p; args = args }
+let pos a = Pos a
+let neg a = Neg a
+
+let test_match_terms_1 () =
+  (* p(X) matches p(a) *)
+  let s = Match.match_terms (var "X") (const "a") StringMap.empty in
+  check string "X -> a" "a" (Pretty.string_of_term (StringMap.find "X" s))
+
+let test_match_terms_2 () =
+  (* p(a) does not match p(X) *)
+  try
+    let _ = Match.match_terms (const "a") (var "X") StringMap.empty in
+    fail "Should raise Not_matchable"
+  with Match.Not_matchable -> ()
+
+let test_match_terms_3 () =
+  (* f(X, X) matches f(a, a) *)
+  let s = Match.match_terms (fun_ "f" [var "X"; var "X"]) (fun_ "f" [const "a"; const "a"]) StringMap.empty in
+  check string "X -> a" "a" (Pretty.string_of_term (StringMap.find "X" s))
+
+let test_match_terms_4 () =
+  (* f(X, X) does not match f(a, b) *)
+  try
+    let _ = Match.match_terms (fun_ "f" [var "X"; var "X"]) (fun_ "f" [const "a"; const "b"]) StringMap.empty in
+    fail "Should raise Not_matchable"
+  with Match.Not_matchable -> ()
+
+let test_subsumes_1 () =
+  (* P(X) subsumes P(a) *)
+  let c1 = [ pos (atom "p" [var "X"]) ] in
+  let c2 = [ pos (atom "p" [const "a"]) ] in
+  check bool "subsumes" true (Clause.subsumes c1 c2)
+
+let test_subsumes_2 () =
+  (* P(a) does not subsume P(X) *)
+  let c1 = [ pos (atom "p" [const "a"]) ] in
+  let c2 = [ pos (atom "p" [var "X"]) ] in
+  check bool "not subsumes" false (Clause.subsumes c1 c2)
+
+let test_subsumes_3 () =
+  (* P(X) v Q(Y) subsumes P(a) v Q(b) v R(c) *)
+  let c1 = [ pos (atom "p" [var "X"]); pos (atom "q" [var "Y"]) ] in
+  let c2 = [ pos (atom "p" [const "a"]); pos (atom "q" [const "b"]); pos (atom "r" [const "c"]) ] in
+  check bool "subsumes" true (Clause.subsumes c1 c2)
+
+let test_subsumes_4 () =
+  (* P(X, X) does not subsume P(a, b) *)
+  let c1 = [ pos (atom "p" [var "X"; var "X"]) ] in
+  let c2 = [ pos (atom "p" [const "a"; const "b"]) ] in
+  check bool "not subsumes" false (Clause.subsumes c1 c2)
+
+let test_subsumes_5 () =
+  (* Subset: P(a) subsumes P(a) v Q(b) *)
+  let c1 = [ pos (atom "p" [const "a"]) ] in
+  let c2 = [ pos (atom "p" [const "a"]); pos (atom "q" [const "b"]) ] in
+  check bool "subsumes subset" true (Clause.subsumes c1 c2)
+
+let test_subsumes_resolution_1 () =
+  (* P(X) subsumption-resolves ~P(a) v Q(b) -> Q(b) *)
+  let c1 = [ pos (atom "p" [var "X"]) ] in
+  let c2 = [ neg (atom "p" [const "a"]); pos (atom "q" [const "b"]) ] in
+  match Clause.subsumption_resolution c1 c2 with
+  | Some res ->
+      let expected = [ pos (atom "q" [const "b"]) ] in
+      check string "resolved" (Pretty.string_of_clause expected) (Pretty.string_of_clause res)
+  | None -> fail "Should resolve"
+
+let test_subsumes_resolution_2 () =
+  (* P(a) v Q(b) subsumption-resolves ~P(a) v Q(b) v R(c) -> Q(b) v R(c) *)
+  let c1 = [ pos (atom "p" [const "a"]); pos (atom "q" [const "b"]) ] in
+  let c2 = [ neg (atom "p" [const "a"]); pos (atom "q" [const "b"]); pos (atom "r" [const "c"]) ] in
+  match Clause.subsumption_resolution c1 c2 with
+  | Some res ->
+      let expected = [ pos (atom "q" [const "b"]); pos (atom "r" [const "c"]) ] in
+      check string "resolved" (Pretty.string_of_clause expected) (Pretty.string_of_clause res)
+  | None -> fail "Should resolve"
+
+let () =
+  run "Match and Subsumption"
+    [
+      ("matching",
+       [
+         test_case "match var to const" `Quick test_match_terms_1;
+         test_case "no match const to var" `Quick test_match_terms_2;
+         test_case "match identical vars to identical consts" `Quick test_match_terms_3;
+         test_case "no match identical vars to diff consts" `Quick test_match_terms_4;
+       ]);
+      ("subsumption",
+       [
+         test_case "general subsumes specific" `Quick test_subsumes_1;
+         test_case "specific does not subsume general" `Quick test_subsumes_2;
+         test_case "general subset subsumes specific superset" `Quick test_subsumes_3;
+         test_case "identical vars enforce equality in subsumption" `Quick test_subsumes_4;
+         test_case "subset subsumes superset" `Quick test_subsumes_5;
+       ]);
+      ("subsumption_resolution",
+       [
+         test_case "unit subsumption resolution" `Quick test_subsumes_resolution_1;
+         test_case "multi-literal subsumption resolution" `Quick test_subsumes_resolution_2;
+       ])
+    ]

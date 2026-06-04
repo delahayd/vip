@@ -9,3 +9,7 @@
 (test
  (name test_unify)
  (libraries prover_lib alcotest))
+
+(test
+ (name test_match_subsume)
+ (libraries prover_lib alcotest))
