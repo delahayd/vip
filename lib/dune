@@ -13,6 +13,7 @@
   feature_vector
   discrimination_index
   term_index
+  legacy_resolution
   resolution
   tptp_parser
   tptp_lexer

@@ -104,21 +104,54 @@ let run_file ?(config = default_config) filename =
     in
 
     let flash_limits = {
-      Resolution.time_limit_s = Some (min flash_timeout total_timeout);
+      Legacy_resolution.time_limit_s = Some (min flash_timeout total_timeout);
       max_generated_clauses = config.max_generated_clauses;
     } in
 
     let flash_res =
       try
-        Resolution.run_resolution_sos
-          ~limits:flash_limits
-          ~expensive_simplifications:false
-          ~mode:config.inference_mode
-          ~axioms
-          ~support
-          ()
-
-      with Resolution.Timeout_hit ->
+        let l_res =
+          Legacy_resolution.run_resolution_sos
+            ~limits:flash_limits
+            ~mode:(match config.inference_mode with
+                   | Resolution.Unrestricted -> Legacy_resolution.Unrestricted
+                   | Resolution.Ordered -> Legacy_resolution.Ordered
+                   | Resolution.Ordered_with_fallback -> Legacy_resolution.Ordered_with_fallback)
+            ~axioms
+            ~support
+            ()
+        in
+        {
+          Resolution.stop_reason = (match l_res.stop_reason with
+            | Legacy_resolution.Refutation_found d ->
+                (* We only care that it's found, the empty clause details can be mapped simply *)
+                Resolution.Refutation_found {
+                  Resolution.id = d.id;
+                  parents = d.parents;
+                  rule = d.rule;
+                  clause_d = d.clause_d;
+                  is_active = false;
+                }
+            | Legacy_resolution.Saturation -> Resolution.Saturation
+            | Legacy_resolution.Time_limit -> Resolution.Time_limit
+            | Legacy_resolution.Clause_limit -> Resolution.Clause_limit
+          );
+          derivation = [];
+          stats = {
+            Resolution.generated_clauses = l_res.stats.generated_clauses;
+            processed_clauses = l_res.stats.processed_clauses;
+            resolution_inferences = l_res.stats.resolution_inferences;
+            factoring_inferences = l_res.stats.factoring_inferences;
+            equality_resolution_inferences = l_res.stats.equality_resolution_inferences;
+            equality_factoring_inferences = l_res.stats.equality_factoring_inferences;
+            superposition_inferences = l_res.stats.superposition_inferences;
+            demodulation_rewrites = l_res.stats.demodulation_rewrites;
+            subsumption_tests = l_res.stats.subsumption_tests;
+            subsumption_rejections = l_res.stats.subsumption_rejections;
+            wall_clock_s = l_res.stats.wall_clock_s;
+          };
+        }
+      with Legacy_resolution.Timeout_hit ->
         (* Stage 1 timed out, which is expected for hard problems *)
         {
           Resolution.stop_reason = Time_limit;
@@ -138,6 +171,7 @@ let run_file ?(config = default_config) filename =
           };
         }
     in
+
 
     let res =
       match flash_res.stop_reason with
