@@ -24,6 +24,7 @@ let config : Prover.config =
     inference_mode = Resolution.Ordered_with_fallback;
     tptp_dir = None;
     use_sos = true;
+    portfolio_mode = Prover.Legacy_then_modern;
   }
 
 

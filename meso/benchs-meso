@@ -8,6 +8,7 @@ TIME_LIMIT=""
 ROBUST_TIME_LIMIT=0
 MAX_CLAUSES=""
 MODE=""
+PORTFOLIO=""
 DIR=""
 HOME_DIR=""
 LOGS_DIR=""
@@ -25,6 +26,7 @@ Options:
   --robust-time-limit
   --max-clauses <nombre>
   --mode <mode>
+  --portfolio <legacy-modern|legacy-only|modern-only>
   --dir <répertoire>
   --home <répertoire>
   --logs <répertoire>
@@ -55,6 +57,11 @@ while [[ $# -gt 0 ]]; do
     --mode)
       [[ $# -ge 2 ]] || usage
       MODE="$2"
+      shift 2
+      ;;
+    --portfolio)
+      [[ $# -ge 2 ]] || usage
+      PORTFOLIO="$2"
       shift 2
       ;;
     --dir)
@@ -116,6 +123,7 @@ MAKE_ARGS=()
 [[ "$ROBUST_TIME_LIMIT" -eq 1 ]] && MAKE_ARGS+=("ROBUST_TIME_LIMIT=1")
 [[ -n "$MAX_CLAUSES" ]] && MAKE_ARGS+=("MAX_CLAUSES=$MAX_CLAUSES")
 [[ -n "$MODE" ]] && MAKE_ARGS+=("MODE=$MODE")
+[[ -n "$PORTFOLIO" ]] && MAKE_ARGS+=("PORTFOLIO=$PORTFOLIO")
 [[ -n "$DIR" ]] && MAKE_ARGS+=("DIR=$DIR")
 [[ -n "$HOME_DIR" ]] && MAKE_ARGS+=("HOME_DIR=$HOME_DIR")
 [[ -n "$LOGS_DIR" ]] && MAKE_ARGS+=("LOGS_DIR=$LOGS_DIR")

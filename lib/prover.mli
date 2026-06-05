@@ -10,6 +10,11 @@ type szs_status =
   | ResourceOut
   | InputError
 
+type portfolio_mode =
+  | Legacy_then_modern
+  | Legacy_only
+  | Modern_only
+
 type config = {
   time_limit_s : float option;
   max_generated_clauses : int option;
@@ -17,6 +22,7 @@ type config = {
   inference_mode : Resolution.inference_mode;
   tptp_dir : string option;
   use_sos : bool;
+  portfolio_mode : portfolio_mode;
 }
 
 type problem_info = {

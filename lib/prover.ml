@@ -12,6 +12,11 @@ type szs_status =
   | ResourceOut
   | InputError
 
+type portfolio_mode =
+  | Legacy_then_modern
+  | Legacy_only
+  | Modern_only
+
 type config = {
   time_limit_s : float option;
   max_generated_clauses : int option;
@@ -19,6 +24,7 @@ type config = {
   inference_mode : Resolution.inference_mode;
   tptp_dir : string option;
   use_sos : bool;
+  portfolio_mode : portfolio_mode;
 }
 
 type problem_info = {
@@ -42,6 +48,7 @@ let default_config = {
   inference_mode = Resolution.Ordered_with_fallback;
   tptp_dir = None;
   use_sos = true;
+  portfolio_mode = Legacy_then_modern;
 }
 
 let string_of_szs_status = function
@@ -134,75 +141,97 @@ let run_file ?(config = default_config) filename =
   in
 
   try
-    (* Portfolio Strategy: Stage 1 "Flash Mode" *)
-    if config.print_derivation then Printf.printf "%% Stage 1: Flash Mode (2s)\n%!";
-    let flash_timeout = 2.0 in
     let total_timeout =
       match config.time_limit_s with
       | Some t -> t
-      | None -> 6.0 (* Default to 6s as requested *)
+      | None -> 6.0
     in
 
-    let flash_limits = {
-      Legacy_resolution.time_limit_s = Some (min flash_timeout total_timeout);
-      max_generated_clauses = config.max_generated_clauses;
-    } in
+    let timeout_result wall_clock_s =
+      {
+        Resolution.stop_reason = Time_limit;
+        derivation = [];
+        stats = {
+          generated_clauses = 0;
+          processed_clauses = 0;
+          resolution_inferences = 0;
+          factoring_inferences = 0;
+          equality_resolution_inferences = 0;
+          equality_factoring_inferences = 0;
+          superposition_inferences = 0;
+          demodulation_rewrites = 0;
+          subsumption_tests = 0;
+          subsumption_rejections = 0;
+          wall_clock_s;
+        };
+      }
+    in
 
-    let flash_res =
+    let run_legacy ~time_limit_s =
+      let limits = {
+        Legacy_resolution.time_limit_s = Some time_limit_s;
+        max_generated_clauses = config.max_generated_clauses;
+      } in
       try
-        let l_res =
-          Legacy_resolution.run_resolution_sos
-            ~limits:flash_limits
-            ~mode:(resolution_mode_of_legacy config.inference_mode)
-            ~axioms
-            ~support
-            ()
-        in
-        result_of_legacy l_res
+        Legacy_resolution.run_resolution_sos
+          ~limits
+          ~mode:(resolution_mode_of_legacy config.inference_mode)
+          ~axioms
+          ~support
+          ()
+        |> result_of_legacy
       with Legacy_resolution.Timeout_hit ->
-        (* Stage 1 timed out, which is expected for hard problems *)
-        {
-          Resolution.stop_reason = Time_limit;
-          derivation = [];
-          stats = {
-            generated_clauses = 0;
-            processed_clauses = 0;
-            resolution_inferences = 0;
-            factoring_inferences = 0;
-            equality_resolution_inferences = 0;
-            equality_factoring_inferences = 0;
-            superposition_inferences = 0;
-            demodulation_rewrites = 0;
-            subsumption_tests = 0;
-            subsumption_rejections = 0;
-            wall_clock_s = flash_timeout;
-          };
-        }
+        timeout_result time_limit_s
     in
 
+    let run_modern ~time_limit_s =
+      let limits = {
+        Resolution.time_limit_s = Some time_limit_s;
+        max_generated_clauses = config.max_generated_clauses;
+      } in
+      Resolution.run_resolution_sos
+        ~limits
+        ~expensive_simplifications:true
+        ~mode:config.inference_mode
+        ~axioms
+        ~support
+        ()
+    in
 
     let res =
-      match flash_res.stop_reason with
-      | Refutation_found _ -> flash_res
-      | Saturation | Time_limit | Clause_limit ->
-          (* Stage 2 "Deep Mode" for the remaining time *)
-          let wall_s = flash_res.stats.wall_clock_s in
-          let remaining_time = total_timeout -. wall_s in
-          if remaining_time <= 0.1 then flash_res
-          else
-            let deep_limits = {
-              Resolution.time_limit_s = Some remaining_time;
-              max_generated_clauses = config.max_generated_clauses;
-            } in
-            if config.print_derivation then
-              Printf.printf "%% Stage 1 failed. Entering Stage 2: Deep Mode (%.2fs)\n%!" remaining_time;
-            Resolution.run_resolution_sos
-              ~limits:deep_limits
-              ~expensive_simplifications:true
-              ~mode:config.inference_mode
-              ~axioms
-              ~support
-              ()
+      match config.portfolio_mode with
+      | Legacy_only ->
+          if config.print_derivation then
+            Printf.printf "%% Stage 1: Legacy Only (%.2fs)
+%!" total_timeout;
+          run_legacy ~time_limit_s:total_timeout
+
+      | Modern_only ->
+          if config.print_derivation then
+            Printf.printf "%% Stage 1: Modern Only (%.2fs)
+%!" total_timeout;
+          run_modern ~time_limit_s:total_timeout
+
+      | Legacy_then_modern ->
+          let legacy_timeout = min 3.0 total_timeout in
+          if config.print_derivation then
+            Printf.printf "%% Stage 1: Legacy Mode (%.0fs)
+%!" legacy_timeout;
+          let legacy_res = run_legacy ~time_limit_s:legacy_timeout in
+          match legacy_res.stop_reason with
+          | Refutation_found _ -> legacy_res
+          | Saturation | Time_limit | Clause_limit ->
+              let wall_s = legacy_res.stats.wall_clock_s in
+              let remaining_time = total_timeout -. wall_s in
+              if remaining_time <= 0.1 then legacy_res
+              else begin
+                if config.print_derivation then
+                  Printf.printf
+                    "%% Stage 1 failed. Entering Stage 2: Deep Mode (%.2fs)
+%!"
+                    remaining_time;
+                run_modern ~time_limit_s:remaining_time
+              end
     in
 
     let empty_clause =

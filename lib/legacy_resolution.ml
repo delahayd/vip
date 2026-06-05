@@ -94,6 +94,50 @@ let literal_contains_equality = function
 let clause_contains_equality c =
   List.exists literal_contains_equality c
 
+(* Keep the May/main behavior local to the legacy engine.  The modern engine
+   intentionally uses the sounder Clause.simplify_clause/subsumes variants. *)
+let legacy_is_true_lit = function
+  | Pos { pred = "$true"; args = [] } -> true
+  | Neg { pred = "$false"; args = [] } -> true
+  | _ -> false
+
+let legacy_is_false_lit = function
+  | Pos { pred = "$false"; args = [] } -> true
+  | Neg { pred = "$true"; args = [] } -> true
+  | _ -> false
+
+let legacy_clause_is_tautology c =
+  let rec aux = function
+    | [] -> false
+    | x :: xs ->
+        List.exists
+          (fun y ->
+            match x, y with
+            | Pos a, Neg b
+            | Neg b, Pos a ->
+                a = b
+            | _ -> false)
+          xs
+        || aux xs
+  in
+  aux c
+
+let simplify_clause c =
+  if List.exists legacy_is_true_lit c then
+    None
+  else
+    let c =
+      c
+      |> List.filter (fun lit -> not (legacy_is_false_lit lit))
+      |> normalize_clause
+    in
+    if legacy_clause_is_tautology c then None else Some c
+
+let subsumes c1 c2 =
+  let c1 = normalize_clause c1 in
+  let c2 = normalize_clause c2 in
+  List.for_all (fun lit -> List.exists (( = ) lit) c2) c1
+
 let all_indices c =
   let rec aux i acc = function
     | [] -> List.rev acc

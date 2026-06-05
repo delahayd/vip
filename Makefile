@@ -4,6 +4,7 @@ FILE ?=
 #DIR ?= tests/integration
 DIR ?= bench/problems/TPTP-v9.2.1/Problems/SYN/
 MODE ?= ordered-fallback
+PORTFOLIO ?=
 TIME_LIMIT ?= 3
 ROBUST_TIME_LIMIT ?=
 MAX_CLAUSES ?=
@@ -22,6 +23,7 @@ define build_args
 $(if $(TIME_LIMIT),--time-limit $(TIME_LIMIT)) \
 $(if $(ROBUST_TIME_LIMIT),--robust-time-limit) \
 $(if $(MAX_CLAUSES),--max-clauses $(MAX_CLAUSES)) \
+$(if $(PORTFOLIO),--portfolio $(PORTFOLIO)) \
 $(if $(LOGS_DIR),--logs $(LOGS_DIR)) \
 $(if $(HOME_DIR),--home $(HOME_DIR)) \
 --mode $(MODE)

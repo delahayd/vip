@@ -5,7 +5,7 @@ type prover_kind =
 type prover = {
   name : string;
   kind : prover_kind;
-  cmd : string -> int -> int option -> string option -> string;
+  cmd : string -> int -> int option -> string option -> string option -> string;
   version_cmd : string;
 }
 
@@ -21,6 +21,7 @@ type config = {
   time_limit : int;
   max_clauses : int option;
   mode : string option;
+  portfolio : string option;
   debug : bool;
   only_ip : bool;
   casc_dir : string option;
@@ -44,7 +45,7 @@ let provers =
       name = "ip";
       kind = Ip;
       cmd =
-        (fun file timeout max_clauses mode ->
+        (fun file timeout max_clauses mode portfolio ->
           let max_clause_arg =
             match max_clauses with
             | None -> ""
@@ -55,6 +56,11 @@ let provers =
             | None -> ""
             | Some m -> Printf.sprintf " --mode %s" m
           in
+          let portfolio_arg =
+            match portfolio with
+            | None -> ""
+            | Some p -> Printf.sprintf " --portfolio %s" p
+          in
           let tptp_arg =
             try
               let tptp = Sys.getenv "TPTP" in
@@ -62,11 +68,12 @@ let provers =
             with Not_found -> ""
           in
           Printf.sprintf
-            "%s --time-limit %d%s%s%s %s"
+            "%s --time-limit %d%s%s%s%s %s"
             (Filename.quote (ip_binary ()))
             timeout
             max_clause_arg
             mode_arg
+            portfolio_arg
             tptp_arg
             file);
       version_cmd = "git rev-parse --short HEAD";
@@ -75,7 +82,7 @@ let provers =
       name = "vampire";
       kind = External;
       cmd =
-        (fun file timeout _max_clauses _mode ->
+        (fun file timeout _max_clauses _mode _portfolio ->
           Printf.sprintf "vampire --mode casc --time_limit %d %s" timeout file);
       version_cmd = "vampire --version";
     };
@@ -83,7 +90,7 @@ let provers =
       name = "e";
       kind = External;
       cmd =
-        (fun file timeout _max_clauses _mode ->
+        (fun file timeout _max_clauses _mode _portfolio ->
           Printf.sprintf "eprover --auto --cpu-limit=%d %s" timeout file);
       version_cmd = "eprover --version";
     };
@@ -91,7 +98,7 @@ let provers =
       name = "zenon";
       kind = External;
       cmd =
-	(fun file timeout _max_clauses _mode ->
+	(fun file timeout _max_clauses _mode _portfolio ->
 	  let tptp =
 	    try Sys.getenv "TPTP"
 	    with Not_found -> ""
@@ -163,7 +170,7 @@ let shell_quote s =
 
 let usage () =
   prerr_endline
-    "Usage: run_bench [--debug] [--onlyip] [--robust-time-limit] [--casc REP] [--logs DIR] [--dir DIR] [--home DIR] --time-limit SECONDS [--max-clauses N] [--mode MODE] [--size-limit GB]";
+    "Usage: run_bench [--debug] [--onlyip] [--robust-time-limit] [--casc REP] [--logs DIR] [--dir DIR] [--home DIR] --time-limit SECONDS [--max-clauses N] [--mode MODE] [--portfolio MODE] [--size-limit GB]";
   exit 2
 
 let parse_args () =
@@ -173,6 +180,7 @@ let parse_args () =
   let time_limit = ref None in
   let max_clauses = ref None in
   let mode = ref None in
+  let portfolio = ref None in
   let debug = ref false in
   let only_ip = ref false in
   let casc_dir = ref None in
@@ -228,6 +236,10 @@ let parse_args () =
           if i + 1 >= Array.length Sys.argv then usage ();
           mode := Some Sys.argv.(i + 1);
           loop (i + 2)
+      | "--portfolio" ->
+          if i + 1 >= Array.length Sys.argv then usage ();
+          portfolio := Some Sys.argv.(i + 1);
+          loop (i + 2)
       | "--size-limit" ->
           if i + 1 >= Array.length Sys.argv then usage ();
           let n =
@@ -256,6 +268,7 @@ let parse_args () =
     time_limit;
     max_clauses = !max_clauses;
     mode = !mode;
+    portfolio = !portfolio;
     debug = !debug;
     only_ip = !only_ip;
     casc_dir = !casc_dir;
@@ -499,7 +512,7 @@ let with_size_limit config cmd =
 
 let command_for_run config prover file =
   let base =
-    prover.cmd file config.time_limit config.max_clauses config.mode
+    prover.cmd file config.time_limit config.max_clauses config.mode config.portfolio
   in
   let with_robust_timeout =
     match prover.kind, config.robust_time_limit with
@@ -701,6 +714,11 @@ let write_metadata oc ~stamp ~config ~versions =
     match config.mode with
     | None -> Printf.fprintf oc "# mode,\n"
     | Some m -> Printf.fprintf oc "# mode,%s\n" (csv_escape m)
+  end;
+  begin
+    match config.portfolio with
+    | None -> Printf.fprintf oc "# portfolio,\n"
+    | Some m -> Printf.fprintf oc "# portfolio,%s\n" (csv_escape m)
   end;
   begin
     match config.casc_dir with
@@ -946,6 +964,13 @@ let write_html_header oc ~stamp ~config ~versions =
     | None -> Printf.fprintf oc "<tr><td>Mode</td><td></td></tr>"
     | Some m ->
         Printf.fprintf oc "<tr><td>Mode</td><td>%s</td></tr>" (html_escape m)
+  end;
+
+  begin
+    match config.portfolio with
+    | None -> Printf.fprintf oc "<tr><td>Portfolio</td><td></td></tr>"
+    | Some m ->
+        Printf.fprintf oc "<tr><td>Portfolio</td><td>%s</td></tr>" (html_escape m)
   end;
 
   begin

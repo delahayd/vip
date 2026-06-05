@@ -85,7 +85,7 @@ let play_timeout_safely () =
 
 let usage () =
   prerr_endline
-    "Usage: ip [--version] [--duke] [--proof] [--time-limit SECONDS] [--max-clauses N] [--mode MODE] [--tptp DIR] [--sos|--no-sos] FILE";
+    "Usage: ip [--version] [--duke] [--proof] [--time-limit SECONDS] [--max-clauses N] [--mode MODE] [--portfolio MODE] [--tptp DIR] [--sos|--no-sos] FILE";
   exit 2
 
 let mode_of_string = function
@@ -94,6 +94,14 @@ let mode_of_string = function
   | "ordered-fallback" -> Prover_lib.Resolution.Ordered_with_fallback
   | s ->
       prerr_endline ("Unknown mode: " ^ s);
+      usage ()
+
+let portfolio_of_string = function
+  | "legacy-modern" | "portfolio" -> Prover_lib.Prover.Legacy_then_modern
+  | "legacy-only" | "legacy" -> Prover_lib.Prover.Legacy_only
+  | "modern-only" | "modern" -> Prover_lib.Prover.Modern_only
+  | s ->
+      prerr_endline ("Unknown portfolio mode: " ^ s);
       usage ()
 
 let parse_args () =
@@ -106,6 +114,7 @@ let parse_args () =
   let duke = ref false in
   let tptp_dir = ref None in
   let use_sos = ref true in
+  let portfolio_mode = ref Prover_lib.Prover.Legacy_then_modern in
 
   let rec loop i =
     if i >= Array.length Sys.argv then ()
@@ -154,6 +163,11 @@ let parse_args () =
           inference_mode := mode_of_string Sys.argv.(i + 1);
           loop (i + 2)
 
+      | "--portfolio" ->
+          if i + 1 >= Array.length Sys.argv then usage ();
+          portfolio_mode := portfolio_of_string Sys.argv.(i + 1);
+          loop (i + 2)
+
       | "--tptp" ->
           if i + 1 >= Array.length Sys.argv then usage ();
           tptp_dir := Some Sys.argv.(i + 1);
@@ -192,6 +206,7 @@ let parse_args () =
               inference_mode = !inference_mode;
               tptp_dir = !tptp_dir;
               use_sos = !use_sos;
+              portfolio_mode = !portfolio_mode;
             },
             !duke )
 
