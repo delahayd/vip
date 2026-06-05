@@ -15,6 +15,16 @@ type portfolio_mode =
   | Legacy_only
   | Modern_only
 
+type engine_kind =
+  | Legacy_compat
+  | Modern_deep
+
+type portfolio_stage = {
+  stage_name : string;
+  engine : engine_kind;
+  time_limit_s : float;
+}
+
 type config = {
   time_limit_s : float option;
   max_generated_clauses : int option;

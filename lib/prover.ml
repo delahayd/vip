@@ -17,6 +17,16 @@ type portfolio_mode =
   | Legacy_only
   | Modern_only
 
+type engine_kind =
+  | Legacy_compat
+  | Modern_deep
+
+type portfolio_stage = {
+  stage_name : string;
+  engine : engine_kind;
+  time_limit_s : float;
+}
+
 type config = {
   time_limit_s : float option;
   max_generated_clauses : int option;
@@ -167,7 +177,7 @@ let run_file ?(config = default_config) filename =
       }
     in
 
-    let run_legacy ~time_limit_s =
+    let run_legacy_compat ~time_limit_s =
       let limits = {
         Legacy_resolution.time_limit_s = Some time_limit_s;
         max_generated_clauses = config.max_generated_clauses;
@@ -184,7 +194,7 @@ let run_file ?(config = default_config) filename =
         timeout_result time_limit_s
     in
 
-    let run_modern ~time_limit_s =
+    let run_modern_deep ~time_limit_s =
       let limits = {
         Resolution.time_limit_s = Some time_limit_s;
         max_generated_clauses = config.max_generated_clauses;
@@ -198,40 +208,58 @@ let run_file ?(config = default_config) filename =
         ()
     in
 
+    let run_stage stage =
+      if config.print_derivation then
+        Printf.printf
+          "%% Stage: %s (%.2fs)\n%!"
+          stage.stage_name
+          stage.time_limit_s;
+      match stage.engine with
+      | Legacy_compat -> run_legacy_compat ~time_limit_s:stage.time_limit_s
+      | Modern_deep -> run_modern_deep ~time_limit_s:stage.time_limit_s
+    in
+
+    let run_legacy_then_modern () =
+      let legacy_stage =
+        {
+          stage_name = "Legacy compatibility flash";
+          engine = Legacy_compat;
+          time_limit_s = min 3.0 total_timeout;
+        }
+      in
+      let legacy_res = run_stage legacy_stage in
+      match legacy_res.stop_reason with
+      | Refutation_found _ -> legacy_res
+      | Saturation | Time_limit | Clause_limit ->
+          let remaining_time = total_timeout -. legacy_res.stats.wall_clock_s in
+          if remaining_time <= 0.1 then legacy_res
+          else
+            run_stage
+              {
+                stage_name = "Modern deep search";
+                engine = Modern_deep;
+                time_limit_s = remaining_time;
+              }
+    in
+
     let res =
       match config.portfolio_mode with
       | Legacy_only ->
-          if config.print_derivation then
-            Printf.printf "%% Stage 1: Legacy Only (%.2fs)
-%!" total_timeout;
-          run_legacy ~time_limit_s:total_timeout
-
+          run_stage
+            {
+              stage_name = "Legacy compatibility only";
+              engine = Legacy_compat;
+              time_limit_s = total_timeout;
+            }
       | Modern_only ->
-          if config.print_derivation then
-            Printf.printf "%% Stage 1: Modern Only (%.2fs)
-%!" total_timeout;
-          run_modern ~time_limit_s:total_timeout
-
+          run_stage
+            {
+              stage_name = "Modern deep only";
+              engine = Modern_deep;
+              time_limit_s = total_timeout;
+            }
       | Legacy_then_modern ->
-          let legacy_timeout = min 3.0 total_timeout in
-          if config.print_derivation then
-            Printf.printf "%% Stage 1: Legacy Mode (%.0fs)
-%!" legacy_timeout;
-          let legacy_res = run_legacy ~time_limit_s:legacy_timeout in
-          match legacy_res.stop_reason with
-          | Refutation_found _ -> legacy_res
-          | Saturation | Time_limit | Clause_limit ->
-              let wall_s = legacy_res.stats.wall_clock_s in
-              let remaining_time = total_timeout -. wall_s in
-              if remaining_time <= 0.1 then legacy_res
-              else begin
-                if config.print_derivation then
-                  Printf.printf
-                    "%% Stage 1 failed. Entering Stage 2: Deep Mode (%.2fs)
-%!"
-                    remaining_time;
-                run_modern ~time_limit_s:remaining_time
-              end
+          run_legacy_then_modern ()
     in
 
     let empty_clause =
