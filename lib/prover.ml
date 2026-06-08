@@ -16,9 +16,11 @@ type portfolio_mode =
   | Legacy_then_modern
   | Legacy_only
   | Modern_only
+  | Modern_compat_only
 
 type engine_kind =
   | Legacy_compat
+  | Modern_compat_flash
   | Modern_deep
 
 type portfolio_stage = {
@@ -194,18 +196,33 @@ let run_file ?(config = default_config) filename =
         timeout_result time_limit_s
     in
 
-    let run_modern_deep ~time_limit_s =
+    let run_modern_resolution ~time_limit_s ~expensive_simplifications ~emulate_v1 =
       let limits = {
         Resolution.time_limit_s = Some time_limit_s;
         max_generated_clauses = config.max_generated_clauses;
       } in
       Resolution.run_resolution_sos
         ~limits
-        ~expensive_simplifications:true
+        ~expensive_simplifications
+        ~emulate_v1
         ~mode:config.inference_mode
         ~axioms
         ~support
         ()
+    in
+
+    let run_modern_compat_flash ~time_limit_s =
+      run_modern_resolution
+        ~time_limit_s
+        ~expensive_simplifications:false
+        ~emulate_v1:true
+    in
+
+    let run_modern_deep ~time_limit_s =
+      run_modern_resolution
+        ~time_limit_s
+        ~expensive_simplifications:true
+        ~emulate_v1:false
     in
 
     let run_stage stage =
@@ -216,6 +233,8 @@ let run_file ?(config = default_config) filename =
           stage.time_limit_s;
       match stage.engine with
       | Legacy_compat -> run_legacy_compat ~time_limit_s:stage.time_limit_s
+      | Modern_compat_flash ->
+          run_modern_compat_flash ~time_limit_s:stage.time_limit_s
       | Modern_deep -> run_modern_deep ~time_limit_s:stage.time_limit_s
     in
 
@@ -256,6 +275,13 @@ let run_file ?(config = default_config) filename =
             {
               stage_name = "Modern deep only";
               engine = Modern_deep;
+              time_limit_s = total_timeout;
+            }
+      | Modern_compat_only ->
+          run_stage
+            {
+              stage_name = "Modern compat flash only";
+              engine = Modern_compat_flash;
               time_limit_s = total_timeout;
             }
       | Legacy_then_modern ->

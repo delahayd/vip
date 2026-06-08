@@ -14,9 +14,11 @@ type portfolio_mode =
   | Legacy_then_modern
   | Legacy_only
   | Modern_only
+  | Modern_compat_only
 
 type engine_kind =
   | Legacy_compat
+  | Modern_compat_flash
   | Modern_deep
 
 type portfolio_stage = {

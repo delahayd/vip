@@ -100,6 +100,8 @@ let portfolio_of_string = function
   | "legacy-modern" | "portfolio" -> Prover_lib.Prover.Legacy_then_modern
   | "legacy-only" | "legacy" -> Prover_lib.Prover.Legacy_only
   | "modern-only" | "modern" -> Prover_lib.Prover.Modern_only
+  | "modern-compat-only" | "compat-only" | "compat" ->
+      Prover_lib.Prover.Modern_compat_only
   | s ->
       prerr_endline ("Unknown portfolio mode: " ^ s);
       usage ()
