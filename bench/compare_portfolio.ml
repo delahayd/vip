@@ -2,7 +2,7 @@ open Prover_lib
 
 let usage () =
   prerr_endline
-    "Usage: compare_portfolio --dir DIR --time-limit SECONDS [--tptp DIR] [--max-clauses N] [--mode MODE] [--limit N] [--out FILE]";
+    "Usage: compare_portfolio --dir DIR --time-limit SECONDS [--tptp DIR] [--max-clauses N] [--mode MODE] [--skip N] [--limit N] [--out FILE]";
   exit 2
 
 let is_problem_file f = Filename.check_suffix f ".p"
@@ -64,6 +64,7 @@ let () =
   let tptp_dir = ref None in
   let max_clauses = ref None in
   let mode = ref Resolution.Ordered_with_fallback in
+  let skip = ref 0 in
   let limit = ref None in
   let out = ref "bench/logs/portfolio_compare.csv" in
 
@@ -91,6 +92,11 @@ let () =
           if i + 1 >= Array.length Sys.argv then usage ();
           mode := mode_of_string Sys.argv.(i + 1);
           loop (i + 2)
+      | "--skip" ->
+          if i + 1 >= Array.length Sys.argv then usage ();
+          skip := int_of_string Sys.argv.(i + 1);
+          if !skip < 0 then usage ();
+          loop (i + 2)
       | "--limit" ->
           if i + 1 >= Array.length Sys.argv then usage ();
           limit := Some (int_of_string Sys.argv.(i + 1));
@@ -106,11 +112,13 @@ let () =
   let dir = match !dir with Some d -> d | None -> usage () in
   let time_limit = match !time_limit with Some t -> t | None -> usage () in
   let files = walk dir in
+  let files = files |> List.to_seq |> Seq.drop !skip in
   let files =
     match !limit with
     | None -> files
-    | Some n -> files |> List.to_seq |> Seq.take n |> List.of_seq
+    | Some n -> Seq.take n files
   in
+  let files = List.of_seq files in
 
   if not (Sys.file_exists "bench") then Unix.mkdir "bench" 0o755;
   if not (Sys.file_exists "bench/logs") then Unix.mkdir "bench/logs" 0o755;
@@ -135,8 +143,9 @@ let () =
   let only_legacy = ref 0 in
   let compat_gap = ref 0 in
   let total = List.length files in
-  Printf.eprintf "Comparing %d problem(s), time_limit=%.3fs per engine, output=%s\n%!"
+  Printf.eprintf "Comparing %d problem(s), skip=%d, time_limit=%.3fs per engine, output=%s\n%!"
     total
+    !skip
     time_limit
     !out;
   List.iteri
