@@ -220,17 +220,33 @@ let run_file ?(config = default_config) filename =
         timeout_result time_limit_s
     in
 
+    let literal_contains_equality = function
+      | Types.Pos { pred = "="; args = [ _; _ ] }
+      | Types.Neg { pred = "="; args = [ _; _ ] } -> true
+      | _ -> false
+    in
+    let clause_contains_equality c = List.exists literal_contains_equality c in
+    let equality_problem =
+      List.exists clause_contains_equality axioms
+      || List.exists clause_contains_equality support
+    in
+
+    let compat_mode () =
+      if equality_problem then Resolution.Unrestricted else config.inference_mode
+    in
+
     let run_modern_resolution ~time_limit_s ~expensive_simplifications ~emulate_v1 =
       let limits = {
         Resolution.time_limit_s = Some time_limit_s;
         max_generated_clauses = config.max_generated_clauses;
       } in
+      let mode = if emulate_v1 then compat_mode () else config.inference_mode in
       try
         Resolution.run_resolution_sos
           ~limits
           ~expensive_simplifications
           ~emulate_v1
-          ~mode:config.inference_mode
+          ~mode
           ~axioms
           ~support
           ()
