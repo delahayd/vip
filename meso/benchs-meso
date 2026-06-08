@@ -129,6 +129,22 @@ MAKE_ARGS=()
 [[ -n "$LOGS_DIR" ]] && MAKE_ARGS+=("LOGS_DIR=$LOGS_DIR")
 [[ -n "$CASC" ]] && MAKE_ARGS+=("CASC=$CASC")
 
+if [[ -z "$TPTP_DIR" && -n "$DIR" ]]; then
+  DIR_ABS="$(realpath "$DIR")"
+  DIR_PARENT="$(dirname "$DIR_ABS")"
+  DIR_GRANDPARENT="$(dirname "$DIR_PARENT")"
+  for candidate in "$DIR_ABS" "$DIR_PARENT" "$DIR_GRANDPARENT"; do
+    if [[ -d "$candidate/Axioms" ]]; then
+      TPTP_DIR="$candidate"
+      echo "[INFO] Auto-detected --tptp $TPTP_DIR from --dir $DIR" >&2
+      break
+    fi
+  done
+  if [[ -z "$TPTP_DIR" ]]; then
+    echo "[WARN] No --tptp provided and no Axioms directory found near --dir $DIR" >&2
+  fi
+fi
+
 LOCAL_IP_DIR=""
 if [[ "$LOCAL" -eq 1 ]]; then
   if [[ ! -d "ip" ]]; then
