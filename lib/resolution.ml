@@ -122,6 +122,8 @@ let selected_or_maximal_indices ~emulate_v1 c =
     else
       (* Efficient selection: pick only the first negative literal. *)
       [ List.hd negs ]
+  else if emulate_v1 then
+    Ordering.maximal_literal_indices c
   else
     all_indices c
 

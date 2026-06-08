@@ -225,14 +225,17 @@ let run_file ?(config = default_config) filename =
         Resolution.time_limit_s = Some time_limit_s;
         max_generated_clauses = config.max_generated_clauses;
       } in
-      Resolution.run_resolution_sos
-        ~limits
-        ~expensive_simplifications
-        ~emulate_v1
-        ~mode:config.inference_mode
-        ~axioms
-        ~support
-        ()
+      try
+        Resolution.run_resolution_sos
+          ~limits
+          ~expensive_simplifications
+          ~emulate_v1
+          ~mode:config.inference_mode
+          ~axioms
+          ~support
+          ()
+      with Resolution.Timeout_hit ->
+        timeout_result time_limit_s
     in
 
     let run_modern_compat_flash ~time_limit_s =
