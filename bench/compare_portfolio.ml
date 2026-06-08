@@ -177,8 +177,8 @@ let () =
         (legacy_ok && not modern_ok))
     files;
   close_out oc;
-  Printf.printf
-    "Compared %d problem(s). legacy_not_compat=%d legacy_not_modern=%d CSV written to: %s\n"
+  Printf.eprintf
+    "Compared %d problem(s). legacy_not_compat=%d legacy_not_modern=%d CSV written to: %s\n%!"
     (List.length files)
     !compat_gap
     !only_legacy

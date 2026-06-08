@@ -125,39 +125,63 @@ let result_of_legacy (l_res : Legacy_resolution.run_result) : Resolution.run_res
   }
 
 let run_file ?(config = default_config) filename =
-  let load_config =
-    match config.tptp_dir with
-    | None -> default_load_config
-    | Some d -> { include_paths = [ d ]; use_tptp_env = true }
+  let started_at = Unix.gettimeofday () in
+  let total_timeout =
+    match config.time_limit_s with
+    | Some t -> t
+    | None -> 6.0
   in
-  let parsed = load_problem ~config:load_config filename in
-  let part = partition_input_clauses parsed.inputs in
-
-  let axioms, support =
-    if config.use_sos then (part.axioms, part.support)
-    else ([], part.axioms @ part.support)
+  let elapsed () = Unix.gettimeofday () -. started_at in
+  let check_problem_timeout () =
+    match config.time_limit_s with
+    | Some _ when elapsed () >= total_timeout -> raise Clausify.Timeout_hit
+    | _ -> ()
   in
-
-  let timeout_outcome () =
+  let timeout_outcome ?(clause_count = 0) wall_clock_s =
     {
       status = Timeout;
       info = {
         file = Some filename;
-        clause_count = List.length axioms + List.length support;
+        clause_count;
         generated_clause_count = 0;
       };
       derivation = [];
       empty_clause = None;
-      resolution_stats = None;
+      resolution_stats =
+        Some
+          {
+            Resolution.generated_clauses = 0;
+            processed_clauses = 0;
+            resolution_inferences = 0;
+            factoring_inferences = 0;
+            equality_resolution_inferences = 0;
+            equality_factoring_inferences = 0;
+            superposition_inferences = 0;
+            demodulation_rewrites = 0;
+            subsumption_tests = 0;
+            subsumption_rejections = 0;
+            wall_clock_s;
+          };
     }
   in
 
   try
-    let total_timeout =
-      match config.time_limit_s with
-      | Some t -> t
-      | None -> 6.0
+    let load_config =
+      match config.tptp_dir with
+      | None -> default_load_config
+      | Some d -> { include_paths = [ d ]; use_tptp_env = true }
     in
+    let parsed = load_problem ~config:load_config filename in
+    check_problem_timeout ();
+    let part = partition_input_clauses ~check_timeout:check_problem_timeout parsed.inputs in
+
+    let axioms, support =
+      if config.use_sos then (part.axioms, part.support)
+      else ([], part.axioms @ part.support)
+    in
+    let clause_count = List.length axioms + List.length support in
+    let remaining_time () = max 0.0 (total_timeout -. elapsed ()) in
+    let stage_time requested = min requested (remaining_time ()) in
 
     let timeout_result wall_clock_s =
       {
@@ -231,11 +255,14 @@ let run_file ?(config = default_config) filename =
           "%% Stage: %s (%.2fs)\n%!"
           stage.stage_name
           stage.time_limit_s;
-      match stage.engine with
-      | Legacy_compat -> run_legacy_compat ~time_limit_s:stage.time_limit_s
-      | Modern_compat_flash ->
-          run_modern_compat_flash ~time_limit_s:stage.time_limit_s
-      | Modern_deep -> run_modern_deep ~time_limit_s:stage.time_limit_s
+      check_problem_timeout ();
+      if stage.time_limit_s <= 0.0 then timeout_result (elapsed ())
+      else
+        match stage.engine with
+        | Legacy_compat -> run_legacy_compat ~time_limit_s:stage.time_limit_s
+        | Modern_compat_flash ->
+            run_modern_compat_flash ~time_limit_s:stage.time_limit_s
+        | Modern_deep -> run_modern_deep ~time_limit_s:stage.time_limit_s
     in
 
     let run_legacy_then_modern () =
@@ -243,14 +270,14 @@ let run_file ?(config = default_config) filename =
         {
           stage_name = "Legacy compatibility flash";
           engine = Legacy_compat;
-          time_limit_s = min 3.0 total_timeout;
+          time_limit_s = stage_time 3.0;
         }
       in
       let legacy_res = run_stage legacy_stage in
       match legacy_res.stop_reason with
       | Refutation_found _ -> legacy_res
       | Saturation | Time_limit | Clause_limit ->
-          let remaining_time = total_timeout -. legacy_res.stats.wall_clock_s in
+          let remaining_time = remaining_time () in
           if remaining_time <= 0.1 then legacy_res
           else
             run_stage
@@ -268,21 +295,21 @@ let run_file ?(config = default_config) filename =
             {
               stage_name = "Legacy compatibility only";
               engine = Legacy_compat;
-              time_limit_s = total_timeout;
+              time_limit_s = stage_time total_timeout;
             }
       | Modern_only ->
           run_stage
             {
               stage_name = "Modern deep only";
               engine = Modern_deep;
-              time_limit_s = total_timeout;
+              time_limit_s = stage_time total_timeout;
             }
       | Modern_compat_only ->
           run_stage
             {
               stage_name = "Modern compat flash only";
               engine = Modern_compat_flash;
-              time_limit_s = total_timeout;
+              time_limit_s = stage_time total_timeout;
             }
       | Legacy_then_modern ->
           run_legacy_then_modern ()
@@ -298,7 +325,7 @@ let run_file ?(config = default_config) filename =
       status = infer_status_from_stop_reason res.stop_reason;
       info = {
         file = Some filename;
-        clause_count = List.length part.axioms + List.length part.support;
+        clause_count;
         generated_clause_count = res.stats.generated_clauses;
       };
       derivation = res.derivation;
@@ -306,9 +333,10 @@ let run_file ?(config = default_config) filename =
       resolution_stats = Some res.stats;
     }
   with
+  | Clausify.Timeout_hit
   | Resolution.Timeout_hit ->
       ignore (Unix.alarm 0);
-      timeout_outcome ()
+      timeout_outcome (elapsed ())
 
 let print_szs outcome =
   let name =

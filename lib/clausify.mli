@@ -12,7 +12,11 @@ type partitioned_clauses = {
   report : clausification_report;
 }
 
-val clausify_formula : formula -> clause list
-val clauses_of_input : annotated_input list -> clause list
-val clauses_of_input_with_report : annotated_input list -> clause list * clausification_report
-val partition_input_clauses : annotated_input list -> partitioned_clauses
+exception Timeout_hit
+
+val clausify_formula : ?check_timeout:(unit -> unit) -> formula -> clause list
+val clauses_of_input : ?check_timeout:(unit -> unit) -> annotated_input list -> clause list
+val clauses_of_input_with_report :
+  ?check_timeout:(unit -> unit) -> annotated_input list -> clause list * clausification_report
+val partition_input_clauses :
+  ?check_timeout:(unit -> unit) -> annotated_input list -> partitioned_clauses
