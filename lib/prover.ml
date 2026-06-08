@@ -292,12 +292,16 @@ let run_file ?(config = default_config) filename =
         | Modern_deep -> run_modern_deep ~time_limit_s:stage.time_limit_s
     in
 
+    let legacy_time_budget () =
+      stage_time (total_timeout *. 0.20)
+    in
+
     let run_legacy_then_modern () =
       let legacy_stage =
         {
           stage_name = "Legacy compatibility flash";
           engine = Legacy_compat;
-          time_limit_s = stage_time 3.0;
+          time_limit_s = legacy_time_budget ();
         }
       in
       let legacy_res = run_stage legacy_stage in
