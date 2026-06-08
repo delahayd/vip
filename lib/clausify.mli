@@ -14,6 +14,8 @@ type partitioned_clauses = {
 
 exception Timeout_hit
 
+val reset_fresh_state : unit -> unit
+
 val clausify_formula : ?check_timeout:(unit -> unit) -> formula -> clause list
 val clauses_of_input : ?check_timeout:(unit -> unit) -> annotated_input list -> clause list
 val clauses_of_input_with_report :

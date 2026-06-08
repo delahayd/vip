@@ -6,6 +6,7 @@ val compare_literal : literal -> literal -> int
 val normalize_clause : clause -> clause
 val canonicalize_clause_vars : clause -> clause
 val vars_of_clause : clause -> Types.StringSet.t
+val reset_fresh_counter : unit -> unit
 val rename_clause_apart : clause -> clause
 val complementary : literal -> literal -> bool
 val clause_is_tautology : clause -> bool

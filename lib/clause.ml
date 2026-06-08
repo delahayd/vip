@@ -127,6 +127,9 @@ let vars_of_clause c =
 
 let fresh_counter = ref 0
 
+let reset_fresh_counter () =
+  fresh_counter := 0
+
 let fresh_var base =
   incr fresh_counter;
   base ^ "_" ^ string_of_int !fresh_counter

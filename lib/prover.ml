@@ -125,6 +125,10 @@ let result_of_legacy (l_res : Legacy_resolution.run_result) : Resolution.run_res
   }
 
 let run_file ?(config = default_config) filename =
+  reset_fresh_state ();
+  Clause.reset_fresh_counter ();
+  Resolution.reset_id_counter ();
+  Legacy_resolution.reset_id_counter ();
   let started_at = Unix.gettimeofday () in
   let total_timeout =
     match config.time_limit_s with
@@ -255,10 +259,14 @@ let run_file ?(config = default_config) filename =
     in
 
     let run_modern_compat_flash ~time_limit_s =
+      let use_deep_compat =
+        ((not equality_problem) && clause_count >= 100)
+        || (equality_problem && clause_count > 5)
+      in
       run_modern_resolution
         ~time_limit_s
-        ~expensive_simplifications:false
-        ~emulate_v1:true
+        ~expensive_simplifications:use_deep_compat
+        ~emulate_v1:(not use_deep_compat)
     in
 
     let run_modern_deep ~time_limit_s =

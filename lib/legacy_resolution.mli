@@ -47,6 +47,8 @@ type run_result = {
 
 val default_limits : limits
 
+val reset_id_counter : unit -> unit
+
 val run_resolution_sos :
   ?limits:limits ->
   mode:inference_mode ->

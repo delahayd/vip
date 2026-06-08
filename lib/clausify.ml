@@ -29,6 +29,10 @@ let with_timeout_poll check_timeout f =
 let fresh_counter = ref 0
 let skolem_counter = ref 0
 
+let reset_fresh_state () =
+  fresh_counter := 0;
+  skolem_counter := 0
+
 let fresh_var base =
   incr fresh_counter;
   base ^ "_u" ^ string_of_int !fresh_counter

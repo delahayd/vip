@@ -67,6 +67,9 @@ let max_demodulation_steps_per_term = 10_000
 
 let id_counter = ref 0
 
+let reset_id_counter () =
+  id_counter := 0
+
 let next_id () =
   incr id_counter;
   !id_counter
