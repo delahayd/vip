@@ -293,7 +293,8 @@ let run_file ?(config = default_config) filename =
     in
 
     let legacy_time_budget () =
-      stage_time (total_timeout *. 0.20)
+      if total_timeout <= 10.0 then stage_time 3.0
+      else stage_time (total_timeout *. 0.20)
     in
 
     let run_legacy_then_modern () =
