@@ -39,6 +39,17 @@ let success = function
   | Prover.Theorem | Prover.Unsatisfiable -> true
   | _ -> false
 
+let short_problem_name root file =
+  let root =
+    if String.length root > 0 && root.[String.length root - 1] = Filename.dir_sep.[0]
+    then root
+    else root ^ Filename.dir_sep
+  in
+  let root_len = String.length root in
+  if String.length file >= root_len && String.sub file 0 root_len = root then
+    String.sub file root_len (String.length file - root_len)
+  else file
+
 let run_one ~base_config portfolio_mode file =
   let config = { base_config with Prover.portfolio_mode } in
   try Prover.run_file ~config file
@@ -118,12 +129,19 @@ let () =
 
   let oc = open_out !out in
   Printf.fprintf oc
-    "problem,legacy_status,modern_compat_status,modern_status,legacy_time,modern_compat_time,modern_time,legacy_only,compat_only,modern_only\n";
+    "problem,legacy_status,modern_compat_status,modern_status,legacy_time,modern_compat_time,modern_time,legacy_not_compat,compat_not_legacy,legacy_not_modern,modern_not_legacy\n";
+  flush oc;
 
   let only_legacy = ref 0 in
   let compat_gap = ref 0 in
-  List.iter
-    (fun file ->
+  let total = List.length files in
+  Printf.eprintf "Comparing %d problem(s), time_limit=%.3fs per engine, output=%s\n%!"
+    total
+    time_limit
+    !out;
+  List.iteri
+    (fun idx file ->
+      Printf.eprintf "[%d/%d] %s\n%!" (idx + 1) total (short_problem_name dir file);
       let legacy = run_one ~base_config Prover.Legacy_only file in
       let compat = run_one ~base_config Prover.Modern_compat_only file in
       let modern = run_one ~base_config Prover.Modern_only file in
@@ -137,7 +155,7 @@ let () =
       let modern_ok = success modern.status in
       if legacy_ok && not compat_ok then incr compat_gap;
       if legacy_ok && not modern_ok then incr only_legacy;
-      Printf.fprintf oc "%s,%s,%s,%s,%.6f,%.6f,%.6f,%b,%b,%b\n"
+      Printf.fprintf oc "%s,%s,%s,%s,%.6f,%.6f,%.6f,%b,%b,%b,%b\n"
         (csv_escape file)
         (csv_escape (status_string legacy.status))
         (csv_escape (status_string compat.status))
@@ -147,7 +165,16 @@ let () =
         (time modern)
         (legacy_ok && not compat_ok)
         (compat_ok && not legacy_ok)
-        (modern_ok && not legacy_ok))
+        (legacy_ok && not modern_ok)
+        (modern_ok && not legacy_ok);
+      flush oc;
+      Printf.eprintf
+        "      legacy=%s compat=%s modern=%s legacy_not_compat=%b legacy_not_modern=%b\n%!"
+        (status_string legacy.status)
+        (status_string compat.status)
+        (status_string modern.status)
+        (legacy_ok && not compat_ok)
+        (legacy_ok && not modern_ok))
     files;
   close_out oc;
   Printf.printf
