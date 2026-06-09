@@ -852,7 +852,8 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   in
   let avatar_keep_original = getenv_bool "IP_AVATAR_KEEP_ORIGINAL" true in
   let avatar_min_split_literals = getenv_int "IP_AVATAR_MIN_SPLIT" 4 in
-  let avatar_max_split_vars = getenv_int "IP_AVATAR_MAX_SPLIT_VARS" 64 in
+  (* Keep AVATAR deliberately tiny by default: larger budgets delay easy SYN proofs. *)
+  let avatar_max_split_vars = getenv_int "IP_AVATAR_MAX_SPLIT_VARS" 4 in
 
   let rec vars_of_term acc = function
     | Var v -> if List.exists (( = ) v) acc then acc else v :: acc
