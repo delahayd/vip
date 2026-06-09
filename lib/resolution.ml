@@ -747,6 +747,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let subsumption_rejections = ref 0 in
 
   let context_by_id : (int, context) Hashtbl.t = Hashtbl.create 4099 in
+  let split_var_by_clause : (string, split_var) Hashtbl.t = Hashtbl.create 257 in
   let sat = Prop_sat.create () in
   let sat_unsat = ref false in
 
@@ -851,7 +852,8 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     (not emulate_v1) && expensive_simplifications && getenv_bool "IP_AVATAR_SPLITTING" false
   in
   let avatar_keep_original = getenv_bool "IP_AVATAR_KEEP_ORIGINAL" true in
-  let avatar_min_split_literals = getenv_int "IP_AVATAR_MIN_SPLIT" 4 in
+  (* Split only larger clauses by default; small splits slowed down easy SYN proofs. *)
+  let avatar_min_split_literals = getenv_int "IP_AVATAR_MIN_SPLIT" 6 in
   (* Keep AVATAR deliberately tiny by default: larger budgets delay easy SYN proofs. *)
   let avatar_max_split_vars = getenv_int "IP_AVATAR_MAX_SPLIT_VARS" 4 in
 
@@ -890,6 +892,19 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   in
 
   let context_key ctx = string_of_context (normalize_context ctx) in
+
+  let split_component_key c = string_of_clause (normalize_clause c) in
+
+  let split_var_for_component c =
+    let key = split_component_key c in
+    match Hashtbl.find_opt split_var_by_clause key with
+    | Some v -> v
+    | None ->
+        let v = Prop_sat.new_var sat in
+        Hashtbl.add split_var_by_clause key v;
+        incr avatar_split_vars_used;
+        v
+  in
 
   let sat_add_clause clause =
     incr avatar_sat_clauses_added;
@@ -935,8 +950,15 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
           incr avatar_split_rejected_trivial;
           None
       | comps ->
-          let needed = List.length comps in
-          if !avatar_split_vars_used + needed > avatar_max_split_vars then begin
+          let new_needed =
+            comps
+            |> List.map split_component_key
+            |> List.sort_uniq String.compare
+            |> List.fold_left
+                 (fun acc key -> if Hashtbl.mem split_var_by_clause key then acc else acc + 1)
+                 0
+          in
+          if !avatar_split_vars_used + new_needed > avatar_max_split_vars then begin
             incr avatar_split_rejected_quota;
             None
           end else Some comps
@@ -1092,8 +1114,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
                     add_clause ~context ~allow_split:false ~parents ~rule:(rule ^ "/avatar_original") c
                   else None
                 in
-                let vars = List.map (fun _ -> Prop_sat.new_var sat) comps in
-                avatar_split_vars_used := !avatar_split_vars_used + List.length vars;
+                let vars = List.map split_var_for_component comps in
                 sat_add_clause (List.map neg_prop_lit context @ List.map (fun v -> PPos v) vars);
                 sat_unsat := not (Prop_sat.satisfiable sat []);
                 List.iter2
