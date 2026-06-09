@@ -197,24 +197,35 @@ module Prop_sat = struct
     Hashtbl.iter (fun k v -> Hashtbl.add copy k v) assign;
     copy
 
-  let satisfiable st assumptions =
+  let model st assumptions =
     let clauses = List.map (fun lit -> [ lit ]) assumptions @ !(st.clauses) in
     let vars = vars_of_clauses clauses in
     let rec search assign =
-      if not (propagate clauses assign) then false
+      if not (propagate clauses assign) then None
       else
         match List.find_opt (fun v -> not (Hashtbl.mem assign v)) vars with
-        | None -> true
+        | None -> Some assign
         | Some v ->
             let assign_true = copy_assign assign in
             Hashtbl.add assign_true v true;
-            if search assign_true then true
-            else
-              let assign_false = copy_assign assign in
-              Hashtbl.add assign_false v false;
-              search assign_false
+            (match search assign_true with
+             | Some _ as m -> m
+             | None ->
+                 let assign_false = copy_assign assign in
+                 Hashtbl.add assign_false v false;
+                 search assign_false)
     in
     search (Hashtbl.create 17)
+
+  let satisfiable st assumptions =
+    match model st assumptions with
+    | Some _ -> true
+    | None -> false
+
+  let lit_true_in_model assign lit =
+    match eval_lit assign lit with
+    | Some true -> true
+    | Some false | None -> false
 end
 
 let atom_of_literal = function
@@ -750,6 +761,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let split_var_by_clause : (string, split_var) Hashtbl.t = Hashtbl.create 257 in
   let sat = Prop_sat.create () in
   let sat_unsat = ref false in
+  let current_model : (split_var, bool) Hashtbl.t option ref = ref None in
 
   let avatar_split_vars_used = ref 0 in
   let avatar_split_attempts = ref 0 in
@@ -906,9 +918,24 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
         v
   in
 
+  let refresh_avatar_model () =
+    if avatar_enabled then begin
+      incr avatar_sat_solves;
+      match Prop_sat.model sat [] with
+      | Some model ->
+          current_model := Some model;
+          sat_unsat := false
+      | None ->
+          current_model := None;
+          sat_unsat := true;
+          incr avatar_sat_conflicts
+    end
+  in
+
   let sat_add_clause clause =
     incr avatar_sat_clauses_added;
-    Prop_sat.add_clause sat clause
+    Prop_sat.add_clause sat clause;
+    refresh_avatar_model ()
   in
 
   let sat_context_sat ctx =
@@ -922,10 +949,23 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     ok
   in
 
+  let avatar_context_enabled ctx =
+    let ctx = normalize_context ctx in
+    if ctx = [] || not avatar_enabled then true
+    else
+      match !current_model with
+      | None -> false
+      | Some model ->
+          List.for_all (Prop_sat.lit_true_in_model model) ctx
+  in
+
+  let derived_enabled d = avatar_context_enabled (context_of d) in
+
   let first_order_compatible d1 d2 =
     if not avatar_enabled then true
     else
-      let ok = sat_context_sat (context_of d1 @ context_of d2) in
+      let ctx = context_of d1 @ context_of d2 in
+      let ok = avatar_context_enabled ctx && sat_context_sat ctx in
       if not ok then incr avatar_filtered_inferences;
       ok
   in
@@ -1101,7 +1141,6 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
       | Some [] when context <> [] ->
           incr avatar_contextual_empty_conflicts;
           sat_add_clause (List.map neg_prop_lit context);
-          sat_unsat := not (Prop_sat.satisfiable sat []);
           None
       | Some c ->
           if allow_split && avatar_enabled then
@@ -1116,7 +1155,6 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
                 in
                 let vars = List.map split_var_for_component comps in
                 sat_add_clause (List.map neg_prop_lit context @ List.map (fun v -> PPos v) vars);
-                sat_unsat := not (Prop_sat.satisfiable sat []);
                 List.iter2
                   (fun comp var ->
                     ignore (add_clause ~context:(PPos var :: context) ~allow_split:false ~parents ~rule:(rule ^ "/avatar_component") comp))
@@ -1221,15 +1259,21 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
       match !passive with
       | [] -> None
       | entries ->
+          let enabled_entries =
+            if avatar_enabled then List.filter (fun e -> derived_enabled e.d) entries else entries
+          in
           let selected =
-            if expensive_simplifications then
-              (* Ratio 4:1 (Weight:Age) for given-clause selection in Deep mode *)
-              if !given_count mod 5 = 4 then select_by_age entries
-              else select_by_weight entries
-            else
-              (* Ratio 10:1 (Weight:Age) for given-clause selection in Flash mode *)
-              if !given_count mod 11 = 10 then select_by_age entries
-              else select_by_weight entries
+            match enabled_entries with
+            | [] -> None
+            | entries ->
+                if expensive_simplifications then
+                  (* Ratio 4:1 (Weight:Age) for given-clause selection in Deep mode *)
+                  if !given_count mod 5 = 4 then select_by_age entries
+                  else select_by_weight entries
+                else
+                  (* Ratio 10:1 (Weight:Age) for given-clause selection in Flash mode *)
+                  if !given_count mod 11 = 10 then select_by_age entries
+                  else select_by_weight entries
           in
           match selected with
           | None -> None
@@ -1313,7 +1357,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
         List.iter
           (fun d ->
             check_timeout ();
-            if Hashtbl.mem candidates_set d.id && d.id <> given.id then (
+            if Hashtbl.mem candidates_set d.id && d.id <> given.id && (not avatar_enabled || derived_enabled d) then (
               incr subsumption_tests;
               if context_subsumes (context_of given) (context_of d) && subsumes given.clause_d d.clause_d then
                 delete_derived d
@@ -1328,7 +1372,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
         List.iter
           (fun e ->
             check_timeout ();
-            if Hashtbl.mem candidates_set e.d.id && e.d.id <> given.id then (
+            if Hashtbl.mem candidates_set e.d.id && e.d.id <> given.id && (not avatar_enabled || derived_enabled e.d) then (
               incr subsumption_tests;
               if context_subsumes (context_of given) (context_of e.d) && subsumes given.clause_d e.d.clause_d then
                 delete_derived e.d
@@ -1364,7 +1408,8 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
             if e.Discrimination_index.clause_id <> given.id then
               match Hashtbl.find_opt all_by_id e.Discrimination_index.clause_id with
               | Some d ->
-                  if is_active_literal ~emulate_v1 mode d.clause_d e.Discrimination_index.lit_index then
+                  if (not avatar_enabled || derived_enabled d)
+                     && is_active_literal ~emulate_v1 mode d.clause_d e.Discrimination_index.lit_index then
                     Hashtbl.replace indexed_ids d.id ()
               | None -> ())
           entries)
@@ -1385,7 +1430,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
       List.fold_left
         (fun acc d ->
           check_timeout ();
-          if d.id <> given.id && not (Hashtbl.mem indexed_ids d.id) && first_order_compatible given d then
+          if d.id <> given.id && (not avatar_enabled || derived_enabled d) && not (Hashtbl.mem indexed_ids d.id) && first_order_compatible given d then
             d :: acc
           else
             acc)
