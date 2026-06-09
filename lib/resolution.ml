@@ -12,6 +12,14 @@ type inference_mode =
   | Ordered
   | Ordered_with_fallback
 
+type split_var = int
+
+type prop_lit =
+  | PPos of split_var
+  | PNeg of split_var
+
+type context = prop_lit list
+
 type derived = {
   id : int;
   parents : int list;
@@ -49,6 +57,27 @@ type stats = {
   demodulation_rewrites : int;
   subsumption_tests : int;
   subsumption_rejections : int;
+  avatar_enabled : bool;
+  avatar_keep_original : bool;
+  avatar_min_split_literals : int;
+  avatar_max_split_vars : int;
+  avatar_split_vars_used : int;
+  avatar_split_attempts : int;
+  avatar_successful_splits : int;
+  avatar_split_components : int;
+  avatar_split_rejected_disabled : int;
+  avatar_split_rejected_short : int;
+  avatar_split_rejected_equality : int;
+  avatar_split_rejected_nonground : int;
+  avatar_split_rejected_trivial : int;
+  avatar_split_rejected_quota : int;
+  avatar_contextual_empty_conflicts : int;
+  avatar_sat_clauses_added : int;
+  avatar_sat_solves : int;
+  avatar_sat_conflicts : int;
+  avatar_context_sat_tests : int;
+  avatar_context_sat_failures : int;
+  avatar_filtered_inferences : int;
   wall_clock_s : float;
 }
 
@@ -77,6 +106,116 @@ let next_id () =
 let option_exists f = function
   | Some x -> f x
   | None -> false
+
+let string_of_prop_lit = function
+  | PPos v -> "p" ^ string_of_int v
+  | PNeg v -> "~p" ^ string_of_int v
+
+let normalize_context ctx =
+  ctx |> List.sort_uniq compare
+
+let string_of_context ctx =
+  match normalize_context ctx with
+  | [] -> ""
+  | ctx -> String.concat "&" (List.map string_of_prop_lit ctx)
+
+let context_subsumes a b =
+  let a = normalize_context a in
+  let b = normalize_context b in
+  List.for_all (fun lit -> List.exists (( = ) lit) b) a
+
+let neg_prop_lit = function
+  | PPos v -> PNeg v
+  | PNeg v -> PPos v
+
+module Prop_sat = struct
+  type t = {
+    mutable next_var : int;
+    clauses : prop_lit list list ref;
+  }
+
+  let create () = { next_var = 0; clauses = ref [] }
+
+  let new_var st =
+    st.next_var <- st.next_var + 1;
+    st.next_var
+
+  let add_clause st clause =
+    st.clauses := normalize_context clause :: !(st.clauses)
+
+  let var_of_lit = function PPos v | PNeg v -> v
+  let sign_of_lit = function PPos _ -> true | PNeg _ -> false
+
+  let eval_lit assign lit =
+    match Hashtbl.find_opt assign (var_of_lit lit) with
+    | None -> None
+    | Some v -> Some (v = sign_of_lit lit)
+
+  let set_lit assign lit =
+    let var = var_of_lit lit in
+    let value = sign_of_lit lit in
+    match Hashtbl.find_opt assign var with
+    | None -> Hashtbl.add assign var value; true
+    | Some old -> old = value
+
+  let vars_of_clauses clauses =
+    clauses
+    |> List.concat
+    |> List.map var_of_lit
+    |> List.sort_uniq compare
+
+  let rec propagate clauses assign =
+    let changed = ref false in
+    let conflict = ref false in
+    List.iter
+      (fun clause ->
+        if not !conflict then begin
+          let satisfied = ref false in
+          let unassigned = ref [] in
+          List.iter
+            (fun lit ->
+              match eval_lit assign lit with
+              | Some true -> satisfied := true
+              | Some false -> ()
+              | None -> unassigned := lit :: !unassigned)
+            clause;
+          if not !satisfied then
+            match !unassigned with
+            | [] -> conflict := true
+            | [ lit ] ->
+                if set_lit assign lit then changed := true
+                else conflict := true
+            | _ -> ()
+        end)
+      clauses;
+    if !conflict then false
+    else if !changed then propagate clauses assign
+    else true
+
+  let copy_assign assign =
+    let copy = Hashtbl.create (Hashtbl.length assign) in
+    Hashtbl.iter (fun k v -> Hashtbl.add copy k v) assign;
+    copy
+
+  let satisfiable st assumptions =
+    let clauses = List.map (fun lit -> [ lit ]) assumptions @ !(st.clauses) in
+    let vars = vars_of_clauses clauses in
+    let rec search assign =
+      if not (propagate clauses assign) then false
+      else
+        match List.find_opt (fun v -> not (Hashtbl.mem assign v)) vars with
+        | None -> true
+        | Some v ->
+            let assign_true = copy_assign assign in
+            Hashtbl.add assign_true v true;
+            if search assign_true then true
+            else
+              let assign_false = copy_assign assign in
+              Hashtbl.add assign_false v false;
+              search assign_false
+    in
+    search (Hashtbl.create 17)
+end
 
 let atom_of_literal = function
   | Pos a | Neg a -> a
@@ -607,6 +746,28 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let subsumption_tests = ref 0 in
   let subsumption_rejections = ref 0 in
 
+  let context_by_id : (int, context) Hashtbl.t = Hashtbl.create 4099 in
+  let sat = Prop_sat.create () in
+  let sat_unsat = ref false in
+
+  let avatar_split_vars_used = ref 0 in
+  let avatar_split_attempts = ref 0 in
+  let avatar_successful_splits = ref 0 in
+  let avatar_split_components = ref 0 in
+  let avatar_split_rejected_disabled = ref 0 in
+  let avatar_split_rejected_short = ref 0 in
+  let avatar_split_rejected_equality = ref 0 in
+  let avatar_split_rejected_nonground = ref 0 in
+  let avatar_split_rejected_trivial = ref 0 in
+  let avatar_split_rejected_quota = ref 0 in
+  let avatar_contextual_empty_conflicts = ref 0 in
+  let avatar_sat_clauses_added = ref 0 in
+  let avatar_sat_solves = ref 0 in
+  let avatar_sat_conflicts = ref 0 in
+  let avatar_context_sat_tests = ref 0 in
+  let avatar_context_sat_failures = ref 0 in
+  let avatar_filtered_inferences = ref 0 in
+
   let next_passive_id = ref 0 in
   let given_count = ref 0 in
 
@@ -673,6 +834,113 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     clause_contains_equality c
   in
 
+  let getenv_bool name default =
+    match Sys.getenv_opt name with
+    | None | Some "" -> default
+    | Some "0" | Some "false" | Some "False" | Some "no" | Some "NO" -> false
+    | Some _ -> true
+  in
+
+  let getenv_int name default =
+    match Sys.getenv_opt name with
+    | None -> default
+    | Some s -> (try max 0 (int_of_string s) with Failure _ -> default)
+  in
+
+  let avatar_enabled =
+    (not emulate_v1) && expensive_simplifications && getenv_bool "IP_AVATAR_SPLITTING" false
+  in
+  let avatar_keep_original = getenv_bool "IP_AVATAR_KEEP_ORIGINAL" true in
+  let avatar_min_split_literals = getenv_int "IP_AVATAR_MIN_SPLIT" 4 in
+  let avatar_max_split_vars = getenv_int "IP_AVATAR_MAX_SPLIT_VARS" 64 in
+
+  let rec vars_of_term acc = function
+    | Var v -> if List.exists (( = ) v) acc then acc else v :: acc
+    | Fun (_, args) -> List.fold_left vars_of_term acc args
+  in
+  let vars_of_literal lit =
+    let atom = atom_of_literal lit in
+    List.fold_left vars_of_term [] atom.args |> List.sort_uniq String.compare
+  in
+  let literal_is_ground lit = vars_of_literal lit = [] in
+  let clause_is_ground c = List.for_all literal_is_ground c in
+
+  let disjoint xs ys =
+    not (List.exists (fun x -> List.exists (( = ) x) ys) xs)
+  in
+
+  let split_components c =
+    let rec add_component lit vars = function
+      | [] -> [ ([ lit ], vars) ]
+      | (lits, vs) :: rest ->
+          if disjoint vars vs then (lits, vs) :: add_component lit vars rest
+          else (lit :: lits, List.sort_uniq String.compare (vars @ vs)) :: rest
+    in
+    c
+    |> List.fold_left (fun acc lit -> add_component lit (vars_of_literal lit) acc) []
+    |> List.map (fun (lits, _) -> List.rev lits)
+    |> List.rev
+  in
+
+  let context_of d =
+    match Hashtbl.find_opt context_by_id d.id with
+    | None -> []
+    | Some ctx -> ctx
+  in
+
+  let context_key ctx = string_of_context (normalize_context ctx) in
+
+  let sat_add_clause clause =
+    incr avatar_sat_clauses_added;
+    Prop_sat.add_clause sat clause
+  in
+
+  let sat_context_sat ctx =
+    incr avatar_context_sat_tests;
+    incr avatar_sat_solves;
+    let ok = Prop_sat.satisfiable sat (normalize_context ctx) in
+    if not ok then begin
+      incr avatar_context_sat_failures;
+      incr avatar_sat_conflicts
+    end;
+    ok
+  in
+
+  let first_order_compatible d1 d2 =
+    if not avatar_enabled then true
+    else
+      let ok = sat_context_sat (context_of d1 @ context_of d2) in
+      if not ok then incr avatar_filtered_inferences;
+      ok
+  in
+
+  let should_split c =
+    incr avatar_split_attempts;
+    if not avatar_enabled then begin
+      incr avatar_split_rejected_disabled;
+      None
+    end else if List.length c < avatar_min_split_literals then begin
+      incr avatar_split_rejected_short;
+      None
+    end else if clause_has_equality c then begin
+      incr avatar_split_rejected_equality;
+      None
+    end else if not (clause_is_ground c) then begin
+      incr avatar_split_rejected_nonground;
+      None
+    end else
+      match split_components c with
+      | [] | [ _ ] ->
+          incr avatar_split_rejected_trivial;
+          None
+      | comps ->
+          let needed = List.length comps in
+          if !avatar_split_vars_used + needed > avatar_max_split_vars then begin
+            incr avatar_split_rejected_quota;
+            None
+          end else Some comps
+  in
+
   let clause_weight c =
     let len = List.length c in
     let base =
@@ -716,6 +984,27 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
         demodulation_rewrites = !demodulation_rewrites;
         subsumption_tests = !subsumption_tests;
         subsumption_rejections = !subsumption_rejections;
+        avatar_enabled;
+        avatar_keep_original;
+        avatar_min_split_literals;
+        avatar_max_split_vars;
+        avatar_split_vars_used = !avatar_split_vars_used;
+        avatar_split_attempts = !avatar_split_attempts;
+        avatar_successful_splits = !avatar_successful_splits;
+        avatar_split_components = !avatar_split_components;
+        avatar_split_rejected_disabled = !avatar_split_rejected_disabled;
+        avatar_split_rejected_short = !avatar_split_rejected_short;
+        avatar_split_rejected_equality = !avatar_split_rejected_equality;
+        avatar_split_rejected_nonground = !avatar_split_rejected_nonground;
+        avatar_split_rejected_trivial = !avatar_split_rejected_trivial;
+        avatar_split_rejected_quota = !avatar_split_rejected_quota;
+        avatar_contextual_empty_conflicts = !avatar_contextual_empty_conflicts;
+        avatar_sat_clauses_added = !avatar_sat_clauses_added;
+        avatar_sat_solves = !avatar_sat_solves;
+        avatar_sat_conflicts = !avatar_sat_conflicts;
+        avatar_context_sat_tests = !avatar_context_sat_tests;
+        avatar_context_sat_failures = !avatar_context_sat_failures;
+        avatar_filtered_inferences = !avatar_filtered_inferences;
         wall_clock_s = Unix.gettimeofday () -. start_t;
       };
     }
@@ -725,12 +1014,14 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     !active
   in
 
-  let is_subsumed_by ?(ignore_id = -1) _ c =
+  let is_subsumed_by ?(ignore_id = -1) ?(context = []) _ c =
+    let context = normalize_context context in
     if emulate_v1 then
       let c_norm = normalize_clause c in
       List.exists
         (fun d ->
           d.id <> ignore_id
+          && context_subsumes (context_of d) context
           && List.for_all (fun lit -> List.exists (( = ) lit) c_norm) (normalize_clause d.clause_d))
         (active_clauses ())
     else
@@ -744,7 +1035,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
             | Some d ->
                 check_timeout ();
                 incr subsumption_tests;
-                if subsumes d.clause_d c then true else aux tl
+                if context_subsumes (context_of d) context && subsumes d.clause_d c then true else aux tl
       in
       aux candidates
   in
@@ -752,16 +1043,18 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let delete_derived d =
     Hashtbl.remove all_by_id d.id;
     Feature_vector.remove fv_index d.id;
-    let key = string_of_clause d.clause_d in
-    Hashtbl.remove known key
+    let key = context_key (context_of d) ^ "|" ^ string_of_clause d.clause_d in
+    Hashtbl.remove known key;
+    Hashtbl.remove context_by_id d.id
   in
 
   let enqueue_passive d =
+    let context_penalty = if context_of d = [] then 0 else 8 in
     let entry =
       {
         passive_id = !next_passive_id;
         age = !next_passive_id;
-        weight = clause_weight d.clause_d;
+        weight = clause_weight d.clause_d + context_penalty;
         d;
       }
     in
@@ -770,9 +1063,10 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     Feature_vector.add fv_index d.clause_d d.id
   in
 
-  let add_clause ~parents ~rule c =
+  let rec add_clause ?(context = []) ?(allow_split = true) ~parents ~rule c =
     check_timeout ();
-    if clause_limit_exceeded () then None
+    let context = normalize_context context in
+    if clause_limit_exceeded () || !sat_unsat || (avatar_enabled && not (sat_context_sat context)) then None
     else
       let c, rewrites =
         try rewrite_clause ~check_timeout !demodulators c
@@ -781,22 +1075,50 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
       demodulation_rewrites := !demodulation_rewrites + rewrites;
       match simplify_clause c with
       | None -> None
+      | Some [] when context <> [] ->
+          incr avatar_contextual_empty_conflicts;
+          sat_add_clause (List.map neg_prop_lit context);
+          sat_unsat := not (Prop_sat.satisfiable sat []);
+          None
       | Some c ->
-          let key = string_of_clause c in
-          if Hashtbl.mem known key then None
-          else if is_subsumed_by (active_clauses ()) c then begin
-            incr subsumption_rejections;
-            None
-          end
-          else begin
-            incr generated;
-            let d = { id = next_id (); parents; rule; clause_d = c; is_active = false } in
-            Hashtbl.add known key d.id;
-            Hashtbl.replace all_by_id d.id d;
-            all := d :: !all;
-            enqueue_passive d;
-            Some d
-          end
+          if allow_split && avatar_enabled then
+            match should_split c with
+            | Some comps ->
+                incr avatar_successful_splits;
+                avatar_split_components := !avatar_split_components + List.length comps;
+                let original =
+                  if avatar_keep_original then
+                    add_clause ~context ~allow_split:false ~parents ~rule:(rule ^ "/avatar_original") c
+                  else None
+                in
+                let vars = List.map (fun _ -> Prop_sat.new_var sat) comps in
+                avatar_split_vars_used := !avatar_split_vars_used + List.length vars;
+                sat_add_clause (List.map neg_prop_lit context @ List.map (fun v -> PPos v) vars);
+                sat_unsat := not (Prop_sat.satisfiable sat []);
+                List.iter2
+                  (fun comp var ->
+                    ignore (add_clause ~context:(PPos var :: context) ~allow_split:false ~parents ~rule:(rule ^ "/avatar_component") comp))
+                  comps
+                  vars;
+                original
+            | None -> add_clause ~context ~allow_split:false ~parents ~rule c
+          else
+            let key = context_key context ^ "|" ^ string_of_clause c in
+            if Hashtbl.mem known key then None
+            else if is_subsumed_by ~context (active_clauses ()) c then begin
+              incr subsumption_rejections;
+              None
+            end
+            else begin
+              incr generated;
+              let d = { id = next_id (); parents; rule; clause_d = c; is_active = false } in
+              Hashtbl.add known key d.id;
+              Hashtbl.replace context_by_id d.id context;
+              Hashtbl.replace all_by_id d.id d;
+              all := d :: !all;
+              enqueue_passive d;
+              Some d
+            end
   in
 
   let simplify_selected d =
@@ -809,7 +1131,8 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     match simplify_clause c with
     | None -> None
     | Some c ->
-        if is_subsumed_by ~ignore_id:d.id (active_clauses ()) c then begin
+        let d_context = context_of d in
+        if is_subsumed_by ~ignore_id:d.id ~context:d_context (active_clauses ()) c then begin
           incr subsumption_rejections;
           None
         end
@@ -823,7 +1146,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
                   if id = d.id then try_sub_res c_curr tl
                   else
                     match Hashtbl.find_opt all_by_id id with
-                    | Some a when a.is_active ->
+                    | Some a when a.is_active && context_subsumes (context_of a) d_context ->
                         (match subsumption_resolution a.clause_d c_curr with
                          | Some c_new -> c_new
                          | None -> try_sub_res c_curr tl)
@@ -831,7 +1154,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
             in
             let c_final = try_sub_res c candidates in
 
-            if is_subsumed_by ~ignore_id:d.id (active_clauses ()) c_final then begin
+            if is_subsumed_by ~ignore_id:d.id ~context:d_context (active_clauses ()) c_final then begin
                incr subsumption_rejections;
                None
             end else
@@ -908,11 +1231,12 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
           with Rewrite_limit_hit -> (d.clause_d, 0)
         in
         if rewrites > 0 then begin
+          let d_context = context_of d in
           delete_derived d;
           match simplify_clause c' with
           | None -> ()
           | Some c_final ->
-              ignore (add_clause ~parents:[ d.id ] ~rule:"backward_demod" c_final)
+              ignore (add_clause ~context:d_context ~parents:[ d.id ] ~rule:"backward_demod" c_final)
         end
         else kept_active := d :: !kept_active)
       !active;
@@ -969,7 +1293,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
             check_timeout ();
             if Hashtbl.mem candidates_set d.id && d.id <> given.id then (
               incr subsumption_tests;
-              if subsumes given.clause_d d.clause_d then
+              if context_subsumes (context_of given) (context_of d) && subsumes given.clause_d d.clause_d then
                 delete_derived d
               else
                 kept_active := d :: !kept_active
@@ -984,7 +1308,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
             check_timeout ();
             if Hashtbl.mem candidates_set e.d.id && e.d.id <> given.id then (
               incr subsumption_tests;
-              if subsumes given.clause_d e.d.clause_d then
+              if context_subsumes (context_of given) (context_of e.d) && subsumes given.clause_d e.d.clause_d then
                 delete_derived e.d
               else
                 kept_passive := e :: !kept_passive
@@ -997,7 +1321,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let activate given =
     backward_subsume given;
     active := given :: !active;
-    register_demodulator given.clause_d;
+    if context_of given = [] then register_demodulator given.clause_d;
     index_active_clause given
   in
 
@@ -1028,7 +1352,8 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
       Hashtbl.fold
         (fun id () acc ->
           match Hashtbl.find_opt all_by_id id with
-          | Some d -> d :: acc
+          | Some d when first_order_compatible given d -> d :: acc
+          | Some _ -> acc
           | None -> acc)
         indexed_ids
         []
@@ -1038,7 +1363,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
       List.fold_left
         (fun acc d ->
           check_timeout ();
-          if d.id <> given.id && not (Hashtbl.mem indexed_ids d.id) then
+          if d.id <> given.id && not (Hashtbl.mem indexed_ids d.id) && first_order_compatible given d then
             d :: acc
           else
             acc)
@@ -1049,13 +1374,30 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     indexed @ fallback
   in
 
-  let add_generated ~parents ~rule c stop_reason =
+  let context_of_parent_ids parents =
+    parents
+    |> List.fold_left
+         (fun acc id ->
+           match Hashtbl.find_opt all_by_id id with
+           | None -> acc
+           | Some d -> context_of d @ acc)
+         []
+    |> normalize_context
+  in
+
+  let add_generated ?context ~parents ~rule c stop_reason =
     check_timeout ();
-    if !stop_reason = None then
-      match add_clause ~parents ~rule c with
+    if !stop_reason = None then begin
+      let context =
+        match context with
+        | None -> context_of_parent_ids parents
+        | Some ctx -> normalize_context ctx
+      in
+      match add_clause ~context ~parents ~rule c with
       | Some d when d.clause_d = [] ->
           stop_reason := Some (Refutation_found d)
       | _ -> ()
+    end
   in
 
   try
@@ -1085,7 +1427,9 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     while !stop_reason = None do
       check_timeout ();
 
-      if clause_limit_exceeded () then
+      if !sat_unsat then
+        stop_reason := Some (Refutation_found { id = next_id (); parents = []; rule = "avatar_sat_conflict"; clause_d = []; is_active = false })
+      else if clause_limit_exceeded () then
         stop_reason := Some Clause_limit
       else
         match select_given () with

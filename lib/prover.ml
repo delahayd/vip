@@ -120,6 +120,27 @@ let result_of_legacy (l_res : Legacy_resolution.run_result) : Resolution.run_res
         demodulation_rewrites = l_res.stats.demodulation_rewrites;
         subsumption_tests = l_res.stats.subsumption_tests;
         subsumption_rejections = l_res.stats.subsumption_rejections;
+        avatar_enabled = false;
+        avatar_keep_original = false;
+        avatar_min_split_literals = 0;
+        avatar_max_split_vars = 0;
+        avatar_split_vars_used = 0;
+        avatar_split_attempts = 0;
+        avatar_successful_splits = 0;
+        avatar_split_components = 0;
+        avatar_split_rejected_disabled = 0;
+        avatar_split_rejected_short = 0;
+        avatar_split_rejected_equality = 0;
+        avatar_split_rejected_nonground = 0;
+        avatar_split_rejected_trivial = 0;
+        avatar_split_rejected_quota = 0;
+        avatar_contextual_empty_conflicts = 0;
+        avatar_sat_clauses_added = 0;
+        avatar_sat_solves = 0;
+        avatar_sat_conflicts = 0;
+        avatar_context_sat_tests = 0;
+        avatar_context_sat_failures = 0;
+        avatar_filtered_inferences = 0;
         wall_clock_s = l_res.stats.wall_clock_s;
       };
   }
@@ -164,6 +185,27 @@ let run_file ?(config = default_config) filename =
             demodulation_rewrites = 0;
             subsumption_tests = 0;
             subsumption_rejections = 0;
+            avatar_enabled = false;
+            avatar_keep_original = false;
+            avatar_min_split_literals = 0;
+            avatar_max_split_vars = 0;
+            avatar_split_vars_used = 0;
+            avatar_split_attempts = 0;
+            avatar_successful_splits = 0;
+            avatar_split_components = 0;
+            avatar_split_rejected_disabled = 0;
+            avatar_split_rejected_short = 0;
+            avatar_split_rejected_equality = 0;
+            avatar_split_rejected_nonground = 0;
+            avatar_split_rejected_trivial = 0;
+            avatar_split_rejected_quota = 0;
+            avatar_contextual_empty_conflicts = 0;
+            avatar_sat_clauses_added = 0;
+            avatar_sat_solves = 0;
+            avatar_sat_conflicts = 0;
+            avatar_context_sat_tests = 0;
+            avatar_context_sat_failures = 0;
+            avatar_filtered_inferences = 0;
             wall_clock_s;
           };
     }
@@ -202,6 +244,27 @@ let run_file ?(config = default_config) filename =
           demodulation_rewrites = 0;
           subsumption_tests = 0;
           subsumption_rejections = 0;
+          avatar_enabled = false;
+          avatar_keep_original = false;
+          avatar_min_split_literals = 0;
+          avatar_max_split_vars = 0;
+          avatar_split_vars_used = 0;
+          avatar_split_attempts = 0;
+          avatar_successful_splits = 0;
+          avatar_split_components = 0;
+          avatar_split_rejected_disabled = 0;
+          avatar_split_rejected_short = 0;
+          avatar_split_rejected_equality = 0;
+          avatar_split_rejected_nonground = 0;
+          avatar_split_rejected_trivial = 0;
+          avatar_split_rejected_quota = 0;
+          avatar_contextual_empty_conflicts = 0;
+          avatar_sat_clauses_added = 0;
+          avatar_sat_solves = 0;
+          avatar_sat_conflicts = 0;
+          avatar_context_sat_tests = 0;
+          avatar_context_sat_failures = 0;
+          avatar_filtered_inferences = 0;
           wall_clock_s;
         };
       }
@@ -396,4 +459,11 @@ let print_szs outcome =
       Printf.printf "%% demodulation rewrites   : %d\n" s.demodulation_rewrites;
       Printf.printf "%% subsumption tests       : %d\n" s.subsumption_tests;
       Printf.printf "%% subsumption rejections  : %d\n" s.subsumption_rejections;
+      if s.avatar_enabled || s.avatar_successful_splits > 0 then begin
+        Printf.printf "%% avatar enabled          : %b\n" s.avatar_enabled;
+        Printf.printf "%% avatar successful splits: %d\n" s.avatar_successful_splits;
+        Printf.printf "%% avatar split vars       : %d/%d\n" s.avatar_split_vars_used s.avatar_max_split_vars;
+        Printf.printf "%% avatar filtered infer.  : %d\n" s.avatar_filtered_inferences;
+        Printf.printf "%% avatar sat conflicts    : %d\n" s.avatar_sat_conflicts
+      end;
       Printf.printf "%% wall clock seconds      : %.6f\n" s.wall_clock_s
