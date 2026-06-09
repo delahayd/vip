@@ -12,6 +12,7 @@ type szs_status =
 
 type portfolio_mode =
   | Legacy_then_modern
+  | Modern_then_legacy
   | Legacy_only
   | Modern_only
   | Modern_compat_only

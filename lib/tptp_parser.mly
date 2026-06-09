@@ -54,13 +54,17 @@ fof_entry:
   | KW_FOF LPAREN ann_name COMMA ann_role COMMA formula RPAREN DOT
       { Input_fof { name = $3; role = $5; formula = $7 } }
 
-ann_name:
+atomic_word:
   | IDENT { $1 }
+  | KW_INCLUDE { "include" }
+
+ann_name:
+  | atomic_word { $1 }
   | VAR { $1 }
   | QUOTED { $1 }
 
 ann_role:
-  | IDENT { $1 }
+  | atomic_word { $1 }
   | VAR { $1 }
   | QUOTED { $1 }
 
@@ -169,8 +173,8 @@ fof_symbol_tail:
       }
 
 symbol_app:
-  | IDENT { ($1, []) }
-  | IDENT LPAREN term_list RPAREN { ($1, $3) }
+  | atomic_word { ($1, []) }
+  | atomic_word LPAREN term_list RPAREN { ($1, $3) }
   | QUOTED { ($1, []) }
   | QUOTED LPAREN term_list RPAREN { ($1, $3) }
 

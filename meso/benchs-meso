@@ -26,7 +26,7 @@ Options:
   --robust-time-limit
   --max-clauses <nombre>
   --mode <mode>
-  --portfolio <legacy-modern|legacy-only|modern-only>
+  --portfolio <legacy-modern|modern-legacy|legacy-only|modern-only>
   --dir <répertoire>
   --home <répertoire>
   --logs <répertoire>

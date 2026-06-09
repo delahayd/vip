@@ -11,6 +11,11 @@ let test_parse_fof () =
   let xs = Tptp_frontend.parse_string s in
   check int "one item" 1 (List.length xs)
 
+let test_include_as_symbol () =
+  let s = "fof(f1, axiom, means(include, X) & concept2words_2(X, include))." in
+  let xs = Tptp_frontend.parse_string s in
+  check int "one item" 1 (List.length xs)
+
 let () =
   run "parser"
     [
@@ -18,5 +23,6 @@ let () =
        [
          test_case "parse cnf" `Quick test_parse_cnf;
          test_case "parse fof" `Quick test_parse_fof;
+         test_case "include as symbol" `Quick test_include_as_symbol;
        ]);
     ]

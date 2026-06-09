@@ -14,6 +14,7 @@ type szs_status =
 
 type portfolio_mode =
   | Legacy_then_modern
+  | Modern_then_legacy
   | Legacy_only
   | Modern_only
   | Modern_compat_only
@@ -383,8 +384,35 @@ let run_file ?(config = default_config) filename =
               }
     in
 
+    let run_modern_then_legacy () =
+      let legacy_budget = legacy_time_budget () in
+      let modern_budget = stage_time (max 0.0 (total_timeout -. legacy_budget)) in
+      let modern_res =
+        run_stage
+          {
+            stage_name = "Modern deep search";
+            engine = Modern_deep;
+            time_limit_s = modern_budget;
+          }
+      in
+      match modern_res.stop_reason with
+      | Refutation_found _ -> modern_res
+      | Saturation | Time_limit | Clause_limit ->
+          let remaining_time = remaining_time () in
+          if remaining_time <= 0.1 then modern_res
+          else
+            run_stage
+              {
+                stage_name = "Legacy compatibility fallback";
+                engine = Legacy_compat;
+                time_limit_s = remaining_time;
+              }
+    in
+
     let res =
       match config.portfolio_mode with
+      | Modern_then_legacy ->
+          run_modern_then_legacy ()
       | Legacy_only ->
           run_stage
             {

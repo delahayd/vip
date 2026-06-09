@@ -85,7 +85,7 @@ let play_timeout_safely () =
 
 let usage () =
   prerr_endline
-    "Usage: ip [--version] [--duke] [--proof] [--time-limit SECONDS] [--max-clauses N] [--mode MODE] [--portfolio MODE] [--tptp DIR] [--sos|--no-sos] FILE";
+    "Usage: ip [--version] [--duke] [--proof] [--time-limit SECONDS] [--max-clauses N] [--mode MODE] [--portfolio legacy-modern|modern-legacy|legacy-only|modern-only|modern-compat-only] [--tptp DIR] [--sos|--no-sos] FILE";
   exit 2
 
 let mode_of_string = function
@@ -98,6 +98,7 @@ let mode_of_string = function
 
 let portfolio_of_string = function
   | "legacy-modern" | "portfolio" -> Prover_lib.Prover.Legacy_then_modern
+  | "modern-legacy" | "modern-first" -> Prover_lib.Prover.Modern_then_legacy
   | "legacy-only" | "legacy" -> Prover_lib.Prover.Legacy_only
   | "modern-only" | "modern" -> Prover_lib.Prover.Modern_only
   | "modern-compat-only" | "compat-only" | "compat" ->
