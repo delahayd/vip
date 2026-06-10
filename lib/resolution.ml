@@ -762,6 +762,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let sat = Prop_sat.create () in
   let sat_unsat = ref false in
   let current_model : (split_var, bool) Hashtbl.t option ref = ref None in
+  let context_sat_cache : (string, bool) Hashtbl.t = Hashtbl.create 127 in
 
   let avatar_split_vars_used = ref 0 in
   let avatar_split_attempts = ref 0 in
@@ -864,6 +865,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     (not emulate_v1) && expensive_simplifications && getenv_bool "IP_AVATAR_SPLITTING" false
   in
   let avatar_keep_original = getenv_bool "IP_AVATAR_KEEP_ORIGINAL" true in
+  let avatar_ground_only = getenv_bool "IP_AVATAR_GROUND_ONLY" true in
   (* Split only larger clauses by default; small splits slowed down easy SYN proofs. *)
   let avatar_min_split_literals = getenv_int "IP_AVATAR_MIN_SPLIT" 6 in
   (* Keep AVATAR deliberately tiny by default: larger budgets delay easy SYN proofs. *)
@@ -934,19 +936,29 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
 
   let sat_add_clause clause =
     incr avatar_sat_clauses_added;
+    Hashtbl.clear context_sat_cache;
     Prop_sat.add_clause sat clause;
     refresh_avatar_model ()
   in
 
   let sat_context_sat ctx =
-    incr avatar_context_sat_tests;
-    incr avatar_sat_solves;
-    let ok = Prop_sat.satisfiable sat (normalize_context ctx) in
-    if not ok then begin
-      incr avatar_context_sat_failures;
-      incr avatar_sat_conflicts
-    end;
-    ok
+    let ctx = normalize_context ctx in
+    if ctx = [] then true
+    else begin
+      incr avatar_context_sat_tests;
+      let key = context_key ctx in
+      match Hashtbl.find_opt context_sat_cache key with
+      | Some ok -> ok
+      | None ->
+          incr avatar_sat_solves;
+          let ok = Prop_sat.satisfiable sat ctx in
+          Hashtbl.replace context_sat_cache key ok;
+          if not ok then begin
+            incr avatar_context_sat_failures;
+            incr avatar_sat_conflicts
+          end;
+          ok
+    end
   in
 
   let avatar_context_enabled ctx =
@@ -964,10 +976,12 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let first_order_compatible d1 d2 =
     if not avatar_enabled then true
     else
-      let ctx = context_of d1 @ context_of d2 in
-      let ok = avatar_context_enabled ctx && sat_context_sat ctx in
-      if not ok then incr avatar_filtered_inferences;
-      ok
+      let ctx = normalize_context (context_of d1 @ context_of d2) in
+      if ctx = [] then true
+      else
+        let ok = avatar_context_enabled ctx && sat_context_sat ctx in
+        if not ok then incr avatar_filtered_inferences;
+        ok
   in
 
   let should_split c =
@@ -981,7 +995,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     end else if clause_has_equality c then begin
       incr avatar_split_rejected_equality;
       None
-    end else if not (clause_is_ground c) then begin
+    end else if avatar_ground_only && not (clause_is_ground c) then begin
       incr avatar_split_rejected_nonground;
       None
     end else
@@ -1129,7 +1143,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let rec add_clause ?(context = []) ?(allow_split = true) ~parents ~rule c =
     check_timeout ();
     let context = normalize_context context in
-    if clause_limit_exceeded () || !sat_unsat || (avatar_enabled && not (sat_context_sat context)) then None
+    if clause_limit_exceeded () || !sat_unsat || (avatar_enabled && context <> [] && not (sat_context_sat context)) then None
     else
       let c, rewrites =
         try rewrite_clause ~check_timeout !demodulators c

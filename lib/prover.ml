@@ -489,8 +489,21 @@ let print_szs outcome =
       Printf.printf "%% subsumption rejections  : %d\n" s.subsumption_rejections;
       if s.avatar_enabled || s.avatar_successful_splits > 0 then begin
         Printf.printf "%% avatar enabled          : %b\n" s.avatar_enabled;
+        Printf.printf "%% avatar keep original    : %b\n" s.avatar_keep_original;
+        Printf.printf "%% avatar min split lits   : %d\n" s.avatar_min_split_literals;
         Printf.printf "%% avatar successful splits: %d\n" s.avatar_successful_splits;
         Printf.printf "%% avatar split vars       : %d/%d\n" s.avatar_split_vars_used s.avatar_max_split_vars;
+        Printf.printf "%% avatar split attempts   : %d\n" s.avatar_split_attempts;
+        Printf.printf "%% avatar split components : %d\n" s.avatar_split_components;
+        Printf.printf "%% avatar reject short     : %d\n" s.avatar_split_rejected_short;
+        Printf.printf "%% avatar reject equality  : %d\n" s.avatar_split_rejected_equality;
+        Printf.printf "%% avatar reject nonground : %d\n" s.avatar_split_rejected_nonground;
+        Printf.printf "%% avatar reject trivial   : %d\n" s.avatar_split_rejected_trivial;
+        Printf.printf "%% avatar reject quota     : %d\n" s.avatar_split_rejected_quota;
+        Printf.printf "%% avatar contextual empty : %d\n" s.avatar_contextual_empty_conflicts;
+        Printf.printf "%% avatar sat clauses      : %d\n" s.avatar_sat_clauses_added;
+        Printf.printf "%% avatar sat solves       : %d\n" s.avatar_sat_solves;
+        Printf.printf "%% avatar context failures : %d\n" s.avatar_context_sat_failures;
         Printf.printf "%% avatar filtered infer.  : %d\n" s.avatar_filtered_inferences;
         Printf.printf "%% avatar sat conflicts    : %d\n" s.avatar_sat_conflicts
       end;
