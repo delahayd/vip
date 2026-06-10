@@ -870,6 +870,8 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let avatar_min_split_literals = getenv_int "IP_AVATAR_MIN_SPLIT" 6 in
   (* Keep AVATAR deliberately tiny by default: larger budgets delay easy SYN proofs. *)
   let avatar_max_split_vars = getenv_int "IP_AVATAR_MAX_SPLIT_VARS" 4 in
+  (* Context clauses are useful, but they should not starve the classical path. *)
+  let avatar_context_penalty = getenv_int "IP_AVATAR_CONTEXT_PENALTY" 64 in
 
   let rec vars_of_term acc = function
     | Var v -> if List.exists (( = ) v) acc then acc else v :: acc
@@ -1126,7 +1128,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   in
 
   let enqueue_passive d =
-    let context_penalty = if context_of d = [] then 0 else 8 in
+    let context_penalty = if context_of d = [] then 0 else avatar_context_penalty in
     let entry =
       {
         passive_id = !next_passive_id;
