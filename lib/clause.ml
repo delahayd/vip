@@ -191,6 +191,79 @@ let simplify_clause c =
     in
     if clause_is_tautology c then None else Some c
 
+let vars_of_literal_list lit =
+  vars_of_literal StringSet.empty lit
+
+let var_literal_ownership c =
+  let owners = Hashtbl.create 17 in
+  List.iteri
+    (fun i lit ->
+      StringSet.iter
+        (fun v ->
+          match Hashtbl.find_opt owners v with
+          | None -> Hashtbl.add owners v i
+          | Some j when j = i -> ()
+          | Some _ -> Hashtbl.replace owners v (-1))
+        (vars_of_literal_list lit))
+    c;
+  owners
+
+let fast_condense_once c =
+  let len = List.length c in
+  if len <= 1 then None
+  else
+    let owners = var_literal_ownership c in
+    let rec try_deleted i =
+      if i >= len then None
+      else
+        let deleted = List.nth c i in
+        let deleted_vars = vars_of_literal_list deleted in
+        let rec try_instance j =
+          if j >= len then try_deleted (i + 1)
+          else if i = j then try_instance (j + 1)
+          else
+            let instance = List.nth c j in
+            match
+              try Some (Match.match_literals deleted instance StringMap.empty)
+              with Match.Not_matchable -> None
+            with
+            | None -> try_instance (j + 1)
+            | Some subst ->
+                let shared_vars_preserved =
+                  StringSet.for_all
+                    (fun v ->
+                      match Hashtbl.find_opt owners v with
+                      | Some owner when owner <> i ->
+                          begin
+                            match StringMap.find_opt v subst with
+                            | None -> true
+                            | Some (Var v') -> v = v'
+                            | Some _ -> false
+                          end
+                      | _ -> true)
+                    deleted_vars
+                in
+                if shared_vars_preserved then
+                  let kept = List.filteri (fun k _ -> k <> i) c in
+                  Some kept
+                else
+                  try_instance (j + 1)
+        in
+        try_instance 0
+    in
+    try_deleted 0
+
+let fast_condense_clause c =
+  let rec loop c =
+    match fast_condense_once c with
+    | None -> simplify_clause c
+    | Some c' ->
+        match simplify_clause c' with
+        | None -> None
+        | Some c' -> loop c'
+  in
+  loop c
+
 let subsumes c1 c2 =
   let n = List.length c1 in
   let m = List.length c2 in

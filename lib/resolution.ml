@@ -861,6 +861,34 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     | Some s -> (try max 0 (int_of_string s) with Failure _ -> default)
   in
 
+  let parse_aw_ratio name default_age default_weight =
+    match Sys.getenv_opt name with
+    | None | Some "" -> (default_age, default_weight)
+    | Some s ->
+        begin
+          match String.split_on_char ':' s with
+          | [ a; w ] ->
+              begin
+                try (max 0 (int_of_string a), max 0 (int_of_string w))
+                with Failure _ -> (default_age, default_weight)
+              end
+          | [ w ] ->
+              begin
+                try (default_age, max 0 (int_of_string w))
+                with Failure _ -> (default_age, default_weight)
+              end
+          | _ -> (default_age, default_weight)
+        end
+  in
+
+  let passive_age_ratio, passive_weight_ratio =
+    if expensive_simplifications then parse_aw_ratio "IP_PASSIVE_AW_RATIO" 1 10
+    else parse_aw_ratio "IP_PASSIVE_AW_RATIO" 1 10
+  in
+  let passive_age_ratio = if passive_age_ratio = 0 && passive_weight_ratio = 0 then 1 else passive_age_ratio in
+  let passive_weight_ratio = if passive_age_ratio = 0 && passive_weight_ratio = 0 then 1 else passive_weight_ratio in
+  let passive_balance = ref 0 in
+
   let avatar_enabled =
     (not emulate_v1) && expensive_simplifications && getenv_bool "IP_AVATAR_SPLITTING" false
   in
@@ -878,6 +906,15 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let avatar_max_component_percent = getenv_int "IP_AVATAR_MAX_COMPONENT_PERCENT" 80 in
   (* Context clauses are useful, but they should not starve the classical path. *)
   let avatar_context_penalty = getenv_int "IP_AVATAR_CONTEXT_PENALTY" 64 in
+  let fast_condensation_enabled =
+    (not emulate_v1) && expensive_simplifications && getenv_bool "IP_FAST_CONDENSATION" true
+  in
+  let forward_subsumption_resolution_enabled =
+    (not emulate_v1) && expensive_simplifications && getenv_bool "IP_FORWARD_SUBSUMPTION_RESOLUTION" true
+  in
+  let simplify_clause_modern c =
+    if fast_condensation_enabled then fast_condense_clause c else simplify_clause c
+  in
 
   let rec vars_of_term acc = function
     | Var v -> if List.exists (( = ) v) acc then acc else v :: acc
@@ -1171,7 +1208,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
         with Rewrite_limit_hit -> (c, 0)
       in
       demodulation_rewrites := !demodulation_rewrites + rewrites;
-      match simplify_clause c with
+      match simplify_clause_modern c with
       | None -> None
       | Some [] when context <> [] ->
           incr avatar_contextual_empty_conflicts;
@@ -1223,7 +1260,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
       with Rewrite_limit_hit -> (d.clause_d, 0)
     in
     demodulation_rewrites := !demodulation_rewrites + rewrites;
-    match simplify_clause c with
+    match simplify_clause_modern c with
     | None -> None
     | Some c ->
         let d_context = context_of d in
@@ -1232,26 +1269,37 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
           None
         end
         else begin
-          if expensive_simplifications then begin
-            (* Subsumption Resolution against active clauses using FVI for speed *)
-            let candidates = Feature_vector.find_subsuming_candidates fv_index c in
-            let rec try_sub_res c_curr = function
-              | [] -> c_curr
-              | id :: tl ->
-                  if id = d.id then try_sub_res c_curr tl
-                  else
-                    match Hashtbl.find_opt all_by_id id with
-                    | Some a when a.is_active && context_subsumes (context_of a) d_context ->
-                        (match subsumption_resolution a.clause_d c_curr with
-                         | Some c_new -> c_new
-                         | None -> try_sub_res c_curr tl)
-                    | _ -> try_sub_res c_curr tl
+          if forward_subsumption_resolution_enabled then begin
+            let rec reduce c_curr =
+              let candidates = Feature_vector.find_subsuming_candidates fv_index c_curr in
+              let rec first_reduction = function
+                | [] -> None
+                | id :: tl ->
+                    check_timeout ();
+                    if id = d.id then first_reduction tl
+                    else
+                      match Hashtbl.find_opt all_by_id id with
+                      | Some a when a.is_active && context_subsumes (context_of a) d_context ->
+                          begin
+                            match subsumption_resolution a.clause_d c_curr with
+                            | None -> first_reduction tl
+                            | Some c_new ->
+                                if List.length c_new < List.length c_curr then
+                                  simplify_clause_modern c_new
+                                else
+                                  first_reduction tl
+                          end
+                      | _ -> first_reduction tl
+              in
+              match first_reduction candidates with
+              | None -> c_curr
+              | Some c_next -> reduce c_next
             in
-            let c_final = try_sub_res c candidates in
+            let c_final = reduce c in
 
             if is_subsumed_by ~ignore_id:d.id ~context:d_context (active_clauses ()) c_final then begin
-               incr subsumption_rejections;
-               None
+              incr subsumption_rejections;
+              None
             end else
               let d' = { d with clause_d = c_final } in
               Hashtbl.replace all_by_id d'.id d';
@@ -1301,14 +1349,20 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
             match enabled_entries with
             | [] -> None
             | entries ->
-                if expensive_simplifications then
-                  (* Ratio 4:1 (Weight:Age) for given-clause selection in Deep mode *)
-                  if !given_count mod 5 = 4 then select_by_age entries
-                  else select_by_weight entries
-                else
-                  (* Ratio 10:1 (Weight:Age) for given-clause selection in Flash mode *)
-                  if !given_count mod 11 = 10 then select_by_age entries
-                  else select_by_weight entries
+                let select_weight =
+                    if passive_age_ratio = 0 then true
+                    else if passive_weight_ratio = 0 then false
+                    else if !passive_balance > 0 then true
+                    else if !passive_balance < 0 then false
+                    else passive_age_ratio <= passive_weight_ratio
+                  in
+                  if select_weight then begin
+                    passive_balance := !passive_balance - passive_age_ratio;
+                    select_by_weight entries
+                  end else begin
+                    passive_balance := !passive_balance + passive_weight_ratio;
+                    select_by_age entries
+                  end
           in
           match selected with
           | None -> None

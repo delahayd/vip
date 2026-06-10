@@ -114,6 +114,31 @@ let test_subsumes_resolution_2 () =
       check string "resolved" (Pretty.string_of_clause expected) (Pretty.string_of_clause res)
   | None -> fail "Should resolve"
 
+let test_fast_condensation_removes_instance_generalization () =
+  (* P(X) v P(a) -> P(a), because P(a) is an instance of P(X). *)
+  let c = [ pos (atom "p" [var "X"]); pos (atom "p" [const "a"]) ] in
+  match Clause.fast_condense_clause c with
+  | Some res ->
+      let expected = [ pos (atom "p" [const "a"]) ] in
+      check string "condensed" (Pretty.string_of_clause expected) (Pretty.string_of_clause res)
+  | None -> fail "Should keep a condensed clause"
+
+let test_fast_condensation_preserves_shared_vars () =
+  (* P(X) cannot be deleted using P(a) if X is shared with Q(X). *)
+  let c = [ pos (atom "p" [var "X"]); pos (atom "p" [const "a"]); pos (atom "q" [var "X"]) ] in
+  match Clause.fast_condense_clause c with
+  | Some res -> check string "unchanged" (Pretty.string_of_clause (Clause.normalize_clause c)) (Pretty.string_of_clause res)
+  | None -> fail "Should keep the non-tautological clause"
+
+let test_fast_condensation_allows_private_vars () =
+  (* Only Y is private to P(X,Y), so P(X,Y) can be deleted using P(X,a). *)
+  let c = [ pos (atom "p" [var "X"; var "Y"]); pos (atom "p" [var "X"; const "a"]); pos (atom "q" [var "X"]) ] in
+  match Clause.fast_condense_clause c with
+  | Some res ->
+      let expected = [ pos (atom "p" [var "X"; const "a"]); pos (atom "q" [var "X"]) ] in
+      check string "condensed private var" (Pretty.string_of_clause (Clause.normalize_clause expected)) (Pretty.string_of_clause res)
+  | None -> fail "Should keep a condensed clause"
+
 let () =
   run "Match and Subsumption"
     [
@@ -135,6 +160,12 @@ let () =
          test_case "subset subsumes superset" `Quick test_subsumes_5;
          test_case "subsumption is order independent" `Quick test_subsumes_order_independent;
          test_case "subsumption rejects multiplicity reduction" `Quick test_subsumes_multiplicity;
+       ]);
+      ("fast_condensation",
+       [
+         test_case "remove general literal with instance" `Quick test_fast_condensation_removes_instance_generalization;
+         test_case "preserve shared variables" `Quick test_fast_condensation_preserves_shared_vars;
+         test_case "allow private variable bindings" `Quick test_fast_condensation_allows_private_vars;
        ]);
       ("subsumption_resolution",
        [
