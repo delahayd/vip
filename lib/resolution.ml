@@ -866,6 +866,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   in
   let avatar_keep_original = getenv_bool "IP_AVATAR_KEEP_ORIGINAL" true in
   let avatar_ground_only = getenv_bool "IP_AVATAR_GROUND_ONLY" true in
+  let avatar_split_on_given = getenv_bool "IP_AVATAR_SPLIT_ON_GIVEN" false in
   (* Split only larger clauses by default; small splits slowed down easy SYN proofs. *)
   let avatar_min_split_literals = getenv_int "IP_AVATAR_MIN_SPLIT" 6 in
   (* Keep AVATAR deliberately tiny by default: larger budgets delay easy SYN proofs. *)
@@ -1177,7 +1178,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
           sat_add_clause (List.map neg_prop_lit context);
           None
       | Some c ->
-          if allow_split && avatar_enabled then
+          if allow_split && avatar_enabled && not avatar_split_on_given then
             match should_split c with
             | Some comps ->
                 incr avatar_successful_splits;
@@ -1546,6 +1547,20 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
                   if given.clause_d = [] then
                     stop_reason := Some (Refutation_found given)
                   else begin
+                    if avatar_enabled && avatar_split_on_given then begin
+                      match should_split given.clause_d with
+                      | None -> ()
+                      | Some comps ->
+                          incr avatar_successful_splits;
+                          avatar_split_components := !avatar_split_components + List.length comps;
+                          let vars = List.map split_var_for_component comps in
+                          sat_add_clause (List.map neg_prop_lit (context_of given) @ List.map (fun v -> PPos v) vars);
+                          List.iter2
+                            (fun comp var ->
+                              ignore (add_clause ~context:(PPos var :: context_of given) ~allow_split:false ~parents:[ given.id ] ~rule:"avatar_given_component" comp))
+                            comps
+                            vars
+                    end;
                     activate given;
 
                     List.iter

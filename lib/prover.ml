@@ -356,9 +356,18 @@ let run_file ?(config = default_config) filename =
         | Modern_deep -> run_modern_deep ~time_limit_s:stage.time_limit_s
     in
 
+    let getenv_float name default =
+      match Sys.getenv_opt name with
+      | None -> default
+      | Some s ->
+          (try max 0.0 (float_of_string s) with Failure _ -> default)
+    in
+
     let legacy_time_budget () =
-      if total_timeout <= 10.0 then stage_time 3.0
-      else stage_time (total_timeout *. 0.20)
+      if total_timeout <= 10.0 then
+        stage_time (getenv_float "IP_LEGACY_FLASH_SECONDS" 3.0)
+      else
+        stage_time (total_timeout *. getenv_float "IP_LEGACY_FLASH_FRACTION" 0.20)
     in
 
     let run_legacy_then_modern () =
