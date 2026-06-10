@@ -870,6 +870,11 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let avatar_min_split_literals = getenv_int "IP_AVATAR_MIN_SPLIT" 6 in
   (* Keep AVATAR deliberately tiny by default: larger budgets delay easy SYN proofs. *)
   let avatar_max_split_vars = getenv_int "IP_AVATAR_MAX_SPLIT_VARS" 4 in
+  let avatar_max_split_vars_per_clause =
+    let default_per_clause = max 2 (avatar_max_split_vars / 2) in
+    getenv_int "IP_AVATAR_MAX_SPLIT_VARS_PER_CLAUSE" default_per_clause
+  in
+  let avatar_max_component_percent = getenv_int "IP_AVATAR_MAX_COMPONENT_PERCENT" 80 in
   (* Context clauses are useful, but they should not starve the classical path. *)
   let avatar_context_penalty = getenv_int "IP_AVATAR_CONTEXT_PENALTY" 64 in
 
@@ -1006,6 +1011,13 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
           incr avatar_split_rejected_trivial;
           None
       | comps ->
+          let total_lits = List.length c in
+          let largest_component =
+            comps |> List.map List.length |> List.fold_left max 0
+          in
+          let too_unbalanced =
+            largest_component * 100 > total_lits * avatar_max_component_percent
+          in
           let new_needed =
             comps
             |> List.map split_component_key
@@ -1014,7 +1026,13 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
                  (fun acc key -> if Hashtbl.mem split_var_by_clause key then acc else acc + 1)
                  0
           in
-          if !avatar_split_vars_used + new_needed > avatar_max_split_vars then begin
+          if too_unbalanced then begin
+            incr avatar_split_rejected_trivial;
+            None
+          end else if new_needed > avatar_max_split_vars_per_clause then begin
+            incr avatar_split_rejected_quota;
+            None
+          end else if !avatar_split_vars_used + new_needed > avatar_max_split_vars then begin
             incr avatar_split_rejected_quota;
             None
           end else Some comps
