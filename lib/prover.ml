@@ -363,39 +363,89 @@ let run_file ?(config = default_config) filename =
           (try max 0.0 (float_of_string s) with Failure _ -> default)
     in
 
-    let legacy_time_budget () =
-      if total_timeout <= 10.0 then
-        stage_time (getenv_float "IP_LEGACY_FLASH_SECONDS" 3.0)
-      else
-        stage_time (total_timeout *. getenv_float "IP_LEGACY_FLASH_FRACTION" 0.20)
+    let getenv_int name default =
+      match Sys.getenv_opt name with
+      | None -> default
+      | Some s ->
+          (try max 0 (int_of_string s) with Failure _ -> default)
+    in
+
+    let getenv_float_opt name =
+      match Sys.getenv_opt name with
+      | None -> None
+      | Some s ->
+          (try Some (max 0.0 (float_of_string s)) with Failure _ -> None)
+    in
+
+    let clamp_fraction x =
+      if x < 0.0 then 0.0 else if x > 1.0 then 1.0 else x
+    in
+
+    let fraction_budget fraction =
+      stage_time (total_timeout *. clamp_fraction fraction)
     in
 
     let run_legacy_then_modern () =
-      let legacy_stage =
-        {
-          stage_name = "Legacy compatibility flash";
-          engine = Legacy_compat;
-          time_limit_s = legacy_time_budget ();
-        }
+      let size_threshold = getenv_int "IP_PORTFOLIO_SIZE_THRESHOLD" 85 in
+      let default_flash_fraction, default_modern_fraction =
+        if clause_count < size_threshold then
+          (getenv_float "IP_PORTFOLIO_SMALL_LEGACY_FRACTION" 0.50,
+           getenv_float "IP_PORTFOLIO_SMALL_MODERN_FRACTION" 0.50)
+        else
+          (getenv_float "IP_PORTFOLIO_LARGE_LEGACY_FLASH_FRACTION" 0.0,
+           getenv_float "IP_PORTFOLIO_LARGE_MODERN_FRACTION" 0.70)
       in
-      let legacy_res = run_stage legacy_stage in
+      let flash_fraction =
+        match getenv_float_opt "IP_PORTFOLIO_LEGACY_FLASH_FRACTION" with
+        | Some f -> f
+        | None -> default_flash_fraction
+      in
+      let modern_fraction =
+        match getenv_float_opt "IP_PORTFOLIO_MODERN_FRACTION" with
+        | Some f -> f
+        | None -> default_modern_fraction
+      in
+      let flash_budget = fraction_budget flash_fraction in
+      let modern_budget = fraction_budget modern_fraction in
+      let legacy_res =
+        run_stage
+          {
+            stage_name = "Legacy compatibility flash";
+            engine = Legacy_compat;
+            time_limit_s = flash_budget;
+          }
+      in
       match legacy_res.stop_reason with
       | Refutation_found _ -> legacy_res
       | Saturation | Time_limit | Clause_limit ->
-          let remaining_time = remaining_time () in
-          if remaining_time <= 0.1 then legacy_res
-          else
-            run_stage
-              {
-                stage_name = "Modern deep search";
-                engine = Modern_deep;
-                time_limit_s = remaining_time;
-              }
+          let modern_res =
+            let remaining_time = remaining_time () in
+            if remaining_time <= 0.1 then legacy_res
+            else
+              run_stage
+                {
+                  stage_name = "Modern deep search";
+                  engine = Modern_deep;
+                  time_limit_s = min modern_budget remaining_time;
+                }
+          in
+          match modern_res.stop_reason with
+          | Refutation_found _ -> modern_res
+          | Saturation | Time_limit | Clause_limit ->
+              let remaining_time = remaining_time () in
+              if remaining_time <= 0.1 then modern_res
+              else
+                run_stage
+                  {
+                    stage_name = "Legacy compatibility fallback";
+                    engine = Legacy_compat;
+                    time_limit_s = remaining_time;
+                  }
     in
 
     let run_modern_then_legacy () =
-      let legacy_budget = legacy_time_budget () in
-      let modern_budget = stage_time (max 0.0 (total_timeout -. legacy_budget)) in
+      let modern_fraction = getenv_float "IP_PORTFOLIO_MODERN_FIRST_FRACTION" 0.80 in
+      let modern_budget = fraction_budget modern_fraction in
       let modern_res =
         run_stage
           {
