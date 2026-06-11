@@ -146,6 +146,416 @@ let result_of_legacy (l_res : Legacy_resolution.run_result) : Resolution.run_res
       };
   }
 
+
+let getenv_bool name default =
+  match Sys.getenv_opt name with
+  | None -> default
+  | Some s ->
+      begin
+        match String.lowercase_ascii (String.trim s) with
+        | "1" | "true" | "yes" | "on" -> true
+        | "0" | "false" | "no" | "off" -> false
+        | _ -> default
+      end
+
+let getenv_int_global name default =
+  match Sys.getenv_opt name with
+  | None -> default
+  | Some s ->
+      (try max 0 (int_of_string s) with Failure _ -> default)
+
+let rec ground_term_key = function
+  | Types.Var _ -> None
+  | Types.Fun (f, []) -> Some f
+  | Types.Fun (f, args) ->
+      let rec aux acc = function
+        | [] -> Some (f ^ "(" ^ String.concat "," (List.rev acc) ^ ")")
+        | t :: tl ->
+            match ground_term_key t with
+            | None -> None
+            | Some k -> aux (k :: acc) tl
+      in
+      aux [] args
+
+let ground_atom_key (a : Types.atom) =
+  match a.args with
+  | [] -> Some a.pred
+  | args ->
+      let rec aux acc = function
+        | [] -> Some (a.pred ^ "(" ^ String.concat "," (List.rev acc) ^ ")")
+        | t :: tl ->
+            match ground_term_key t with
+            | None -> None
+            | Some k -> aux (k :: acc) tl
+      in
+      aux [] args
+
+let ground_literal_key = function
+  | Types.Pos { pred = "="; _ } | Types.Neg { pred = "="; _ } -> None
+  | Types.Pos a -> Option.map (fun k -> k, true) (ground_atom_key a)
+  | Types.Neg a -> Option.map (fun k -> k, false) (ground_atom_key a)
+
+let empty_resolution_stats wall_clock_s =
+  {
+    Resolution.generated_clauses = 0;
+    processed_clauses = 0;
+    resolution_inferences = 0;
+    factoring_inferences = 0;
+    equality_resolution_inferences = 0;
+    equality_factoring_inferences = 0;
+    superposition_inferences = 0;
+    demodulation_rewrites = 0;
+    subsumption_tests = 0;
+    subsumption_rejections = 0;
+    avatar_enabled = false;
+    avatar_keep_original = false;
+    avatar_min_split_literals = 0;
+    avatar_max_split_vars = 0;
+    avatar_split_vars_used = 0;
+    avatar_split_attempts = 0;
+    avatar_successful_splits = 0;
+    avatar_split_components = 0;
+    avatar_split_rejected_disabled = 0;
+    avatar_split_rejected_short = 0;
+    avatar_split_rejected_equality = 0;
+    avatar_split_rejected_nonground = 0;
+    avatar_split_rejected_trivial = 0;
+    avatar_split_rejected_quota = 0;
+    avatar_contextual_empty_conflicts = 0;
+    avatar_sat_clauses_added = 0;
+    avatar_sat_solves = 0;
+    avatar_sat_conflicts = 0;
+    avatar_context_sat_tests = 0;
+    avatar_context_sat_failures = 0;
+    avatar_filtered_inferences = 0;
+    wall_clock_s;
+  }
+
+let ground_sat_unsat clauses =
+  let ids = Hashtbl.create 257 in
+  let prop_ids = Hashtbl.create 64 in
+  let next_id = ref 0 in
+  let id_of_key key =
+    match Hashtbl.find_opt ids key with
+    | Some id -> id
+    | None ->
+        incr next_id;
+        Hashtbl.add ids key !next_id;
+        if not (String.contains key '(') then Hashtbl.add prop_ids !next_id true;
+        !next_id
+  in
+  let encode_lit lit =
+    match ground_literal_key lit with
+    | None -> None
+    | Some (key, positive) ->
+        let id = id_of_key key in
+        Some (if positive then id else -id)
+  in
+  let encode_clause c =
+    let rec aux acc = function
+      | [] -> Some (List.sort_uniq compare acc)
+      | lit :: tl ->
+          match encode_lit lit with
+          | None -> None
+          | Some i -> aux (i :: acc) tl
+    in
+    match aux [] c with
+    | None -> None
+    | Some lits ->
+        let sorted = List.sort_uniq compare lits in
+        if List.exists (fun lit -> List.exists (( = ) (-lit)) sorted) sorted then
+          Some []
+        else
+          Some sorted
+  in
+  let rec encode acc = function
+    | [] -> Some (List.rev acc)
+    | c :: tl ->
+        match encode_clause c with
+        | None -> None
+        | Some [] -> encode acc tl
+        | Some c' -> encode (c' :: acc) tl
+  in
+  let dpll_array var_count prop_var clauses =
+    let assignment = Array.make (var_count + 1) 0 in
+    let trail = ref [] in
+    let assign lit =
+      let v = abs lit in
+      let value = if lit > 0 then 1 else -1 in
+      match assignment.(v) with
+      | 0 ->
+          assignment.(v) <- value;
+          trail := v :: !trail;
+          true
+      | old -> old = value
+    in
+    let undo mark =
+      let rec aux n =
+        if n <= mark then ()
+        else
+          match !trail with
+          | [] -> ()
+          | v :: tl ->
+              assignment.(v) <- 0;
+              trail := tl;
+              aux (n - 1)
+      in
+      aux (List.length !trail)
+    in
+    let lit_value lit =
+      let v = abs lit in
+      match assignment.(v) with
+      | 0 -> 0
+      | value -> if (lit > 0 && value = 1) || (lit < 0 && value = -1) then 1 else -1
+    in
+    let assign_pure_literals () =
+      let masks = Array.make (var_count + 1) 0 in
+      Array.iter
+        (fun clause ->
+          let clause_satisfied = Array.exists (fun lit -> lit_value lit = 1) clause in
+          if not clause_satisfied then
+            Array.iter
+              (fun lit ->
+                let v = abs lit in
+                if assignment.(v) = 0 then
+                  let mask = if lit > 0 then 1 else 2 in
+                  masks.(v) <- masks.(v) lor mask)
+              clause)
+        clauses;
+      let changed = ref false in
+      let ok = ref true in
+      for v = 1 to var_count do
+        if !ok && assignment.(v) = 0 then
+          match masks.(v) with
+          | 1 -> if assign v then changed := true else ok := false
+          | 2 -> if assign (-v) then changed := true else ok := false
+          | _ -> ()
+      done;
+      (!ok, !changed)
+    in
+    let propagate () =
+      let changed = ref true in
+      let ok = ref true in
+      while !ok && !changed do
+        changed := false;
+        Array.iter
+          (fun clause ->
+            if !ok then begin
+              let satisfied = ref false in
+              let unassigned = ref 0 in
+              let last_unassigned = ref 0 in
+              Array.iter
+                (fun lit ->
+                  match lit_value lit with
+                  | 1 -> satisfied := true
+                  | 0 -> incr unassigned; last_unassigned := lit
+                  | _ -> ())
+                clause;
+              if not !satisfied then
+                if !unassigned = 0 then ok := false
+                else if !unassigned = 1 then
+                  if assign !last_unassigned then changed := true else ok := false
+            end)
+          clauses;
+        if !ok && not !changed then
+          let pure_ok, pure_changed = assign_pure_literals () in
+          ok := pure_ok;
+          changed := pure_changed
+      done;
+      !ok
+    in
+    let all_satisfied () =
+      Array.for_all
+        (fun clause -> Array.exists (fun lit -> lit_value lit = 1) clause)
+        clauses
+    in
+    let choose_lit_array () =
+      let counts = Array.make (var_count + 1) (0, 0) in
+      Array.iter
+        (fun clause ->
+          let clause_satisfied = Array.exists (fun lit -> lit_value lit = 1) clause in
+          if not clause_satisfied then
+            Array.iter
+              (fun lit ->
+                let v = abs lit in
+                if assignment.(v) = 0 then
+                  let pos, neg = counts.(v) in
+                  if lit > 0 then counts.(v) <- (pos + 1, neg)
+                  else counts.(v) <- (pos, neg + 1))
+              clause)
+        clauses;
+      let best = ref None in
+      for v = 1 to var_count do
+        if assignment.(v) = 0 then
+          let pos, neg = counts.(v) in
+          let score = pos + neg + if prop_var.(v) then 1_000_000 else 0 in
+          if score > 0 then
+            match !best with
+            | None -> best := Some (v, pos, neg, score)
+            | Some (_, _, _, best_score) when score > best_score ->
+                best := Some (v, pos, neg, score)
+            | _ -> ()
+      done;
+      match !best with
+      | None -> None
+      | Some (v, pos, neg, _) -> Some (if pos >= neg then v else -v)
+    in
+    let rec search () =
+      if not (propagate ()) then false
+      else if all_satisfied () then true
+      else
+        match choose_lit_array () with
+        | None -> true
+        | Some lit ->
+            let mark = List.length !trail in
+            let left = assign lit && search () in
+            if left then true
+            else begin
+              undo mark;
+              let right = assign (-lit) && search () in
+              if right then true else (undo mark; false)
+            end
+    in
+    search ()
+  in
+  let debug = getenv_bool "IP_GROUND_SAT_DEBUG" false in
+  if debug then Printf.eprintf "[ground-sat] encoding clauses\n%!";
+  match encode [] clauses with
+  | None -> None
+  | Some clauses ->
+      if debug then
+        Printf.eprintf "[ground-sat] encoded clauses=%d vars=%d, solving\n%!"
+          (List.length clauses)
+          !next_id;
+      let prop_var = Array.make (!next_id + 1) false in
+      Hashtbl.iter (fun id _ -> if id <= !next_id then prop_var.(id) <- true) prop_ids;
+      let clauses = Array.of_list (List.map Array.of_list clauses) in
+      Some (not (dpll_array !next_id prop_var clauses))
+
+let rec term_is_epr = function
+  | Types.Var _ -> true
+  | Types.Fun (_, []) -> true
+  | Types.Fun (_, _) -> false
+
+let atom_is_epr (a : Types.atom) = List.for_all term_is_epr a.args
+
+let literal_is_epr = function
+  | Types.Pos { pred = "="; _ } | Types.Neg { pred = "="; _ } -> false
+  | Types.Pos a | Types.Neg a -> atom_is_epr a
+
+let rec vars_of_term acc = function
+  | Types.Var v -> Types.StringSet.add v acc
+  | Types.Fun (_, args) -> List.fold_left vars_of_term acc args
+
+let vars_of_atom acc (a : Types.atom) =
+  List.fold_left vars_of_term acc a.args
+
+let vars_of_literal acc = function
+  | Types.Pos a | Types.Neg a -> vars_of_atom acc a
+
+let vars_of_clause c =
+  c
+  |> List.fold_left vars_of_literal Types.StringSet.empty
+  |> Types.StringSet.elements
+
+let rec constants_of_term acc = function
+  | Types.Var _ -> acc
+  | Types.Fun (f, []) -> Types.StringSet.add f acc
+  | Types.Fun (_, args) -> List.fold_left constants_of_term acc args
+
+let constants_of_atom acc (a : Types.atom) =
+  List.fold_left constants_of_term acc a.args
+
+let constants_of_literal acc = function
+  | Types.Pos a | Types.Neg a -> constants_of_atom acc a
+
+let constants_of_clauses clauses =
+  clauses
+  |> List.fold_left (fun acc c -> List.fold_left constants_of_literal acc c) Types.StringSet.empty
+  |> Types.StringSet.elements
+
+let pow_capped base exp cap =
+  let rec aux acc n =
+    if n = 0 then Some acc
+    else if base <> 0 && acc > cap / base then None
+    else aux (acc * base) (n - 1)
+  in
+  aux 1 exp
+
+let rec substitute_term subst = function
+  | Types.Var v ->
+      begin
+        match Types.StringMap.find_opt v subst with
+        | Some t -> t
+        | None -> Types.Var v
+      end
+  | Types.Fun (f, args) -> Types.Fun (f, List.map (substitute_term subst) args)
+
+let substitute_atom subst (a : Types.atom) =
+  { a with Types.args = List.map (substitute_term subst) a.args }
+
+let substitute_literal subst = function
+  | Types.Pos a -> Types.Pos (substitute_atom subst a)
+  | Types.Neg a -> Types.Neg (substitute_atom subst a)
+
+let substitute_clause subst c = List.map (substitute_literal subst) c
+
+let epr_ground_instances ~max_instances clauses =
+  if not (List.for_all (List.for_all literal_is_epr) clauses) then None
+  else
+    let constants = constants_of_clauses clauses in
+    let constants = if constants = [] then [ "epr_default" ] else constants in
+    let constants = List.map (fun c -> Types.Fun (c, [])) constants in
+    let base = List.length constants in
+    let total = ref 0 in
+    let clause_vars = List.map vars_of_clause clauses in
+    let add_count vars =
+      match pow_capped base (List.length vars) (max_instances - !total) with
+      | None -> false
+      | Some n -> total := !total + n; !total <= max_instances
+    in
+    if not (List.for_all add_count clause_vars) then None
+    else
+      let rec assignments vars =
+        match vars with
+        | [] -> [ Types.StringMap.empty ]
+        | v :: tl ->
+            let tails = assignments tl in
+            List.concat
+              (List.map
+                 (fun const ->
+                   List.map
+                     (fun subst -> Types.StringMap.add v const subst)
+                     tails)
+                 constants)
+      in
+      let grounded =
+        List.concat
+          (List.map2
+             (fun c vars ->
+               List.map (fun subst -> substitute_clause subst c) (assignments vars))
+             clauses
+             clause_vars)
+      in
+      Some grounded
+
+let epr_ground_sat_unsat ~max_instances clauses =
+  let debug = getenv_bool "IP_GROUND_SAT_DEBUG" false in
+  if debug then
+    Printf.eprintf "[ground-sat] attempting epr grounding, max_instances=%d\n%!" max_instances;
+  match epr_ground_instances ~max_instances clauses with
+  | None ->
+      if debug then Printf.eprintf "[ground-sat] epr grounding skipped\n%!";
+      None
+  | Some grounded ->
+      if debug then
+        Printf.eprintf "[ground-sat] grounded clauses=%d, entering dpll\n%!" (List.length grounded);
+      let res = ground_sat_unsat grounded in
+      if debug then
+        Printf.eprintf "[ground-sat] dpll result=%s\n%!"
+          (match res with None -> "ineligible" | Some true -> "unsat" | Some false -> "sat");
+      res
+
 let run_file ?(config = default_config) filename =
   reset_fresh_state ();
   Clause.reset_fresh_counter ();
@@ -468,7 +878,46 @@ let run_file ?(config = default_config) filename =
               }
     in
 
+    let ground_sat_result () =
+      let empty = {
+        Resolution.id = -1;
+        parents = [];
+        rule = "ground_sat_prefilter";
+        clause_d = [];
+        is_active = true;
+      } in
+      {
+        Resolution.stop_reason = Refutation_found empty;
+        derivation = [ empty ];
+        stats = empty_resolution_stats (elapsed ());
+      }
+    in
+
+    let ground_sat_prefilter_result =
+      let enabled = getenv_bool "IP_GROUND_SAT_PREFILTER" false in
+      let max_clauses = getenv_int_global "IP_GROUND_SAT_MAX_CLAUSES" 5000 in
+      if enabled && clause_count <= max_clauses then
+        let clauses = axioms @ support in
+        let max_ground_instances =
+          getenv_int_global "IP_GROUND_SAT_MAX_INSTANCES" 300000
+        in
+        match ground_sat_unsat clauses with
+        | Some true -> Some (ground_sat_result ())
+        | Some false -> None
+        | None ->
+            begin
+              match epr_ground_sat_unsat ~max_instances:max_ground_instances clauses with
+              | Some true -> Some (ground_sat_result ())
+              | Some false | None -> None
+            end
+      else
+        None
+    in
+
     let res =
+      match ground_sat_prefilter_result with
+      | Some res -> res
+      | None ->
       match config.portfolio_mode with
       | Modern_then_legacy ->
           run_modern_then_legacy ()
