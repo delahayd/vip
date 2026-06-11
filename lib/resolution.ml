@@ -913,8 +913,15 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let fast_condensation_enabled =
     (not emulate_v1) && expensive_simplifications && getenv_bool "IP_FAST_CONDENSATION" true
   in
+  let initial_clause_count = List.length axioms + List.length support in
+  let full_condensation_max_input_clauses =
+    getenv_int "IP_FULL_CONDENSATION_MAX_INPUT_CLAUSES" 32
+  in
   let full_condensation_enabled =
-    (not emulate_v1) && expensive_simplifications && getenv_bool "IP_FULL_CONDENSATION" false
+    (not emulate_v1)
+    && expensive_simplifications
+    && getenv_bool "IP_FULL_CONDENSATION" false
+    && initial_clause_count <= full_condensation_max_input_clauses
   in
   let contextual_literal_cutting_enabled =
     (not emulate_v1) && expensive_simplifications && getenv_bool "IP_CONTEXTUAL_LITERAL_CUTTING" false

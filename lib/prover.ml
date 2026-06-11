@@ -799,11 +799,11 @@ let run_file ?(config = default_config) filename =
       let size_threshold = getenv_int "IP_PORTFOLIO_SIZE_THRESHOLD" 85 in
       let default_flash_fraction, default_modern_fraction =
         if clause_count < size_threshold then
-          (getenv_float "IP_PORTFOLIO_SMALL_LEGACY_FRACTION" 0.50,
-           getenv_float "IP_PORTFOLIO_SMALL_MODERN_FRACTION" 0.50)
+          (getenv_float "IP_PORTFOLIO_SMALL_LEGACY_FRACTION" 0.15,
+           getenv_float "IP_PORTFOLIO_SMALL_MODERN_FRACTION" 0.85)
         else
           (getenv_float "IP_PORTFOLIO_LARGE_LEGACY_FLASH_FRACTION" 0.0,
-           getenv_float "IP_PORTFOLIO_LARGE_MODERN_FRACTION" 0.70)
+           getenv_float "IP_PORTFOLIO_LARGE_MODERN_FRACTION" 1.0)
       in
       let flash_fraction =
         match getenv_float_opt "IP_PORTFOLIO_LEGACY_FLASH_FRACTION" with
