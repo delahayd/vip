@@ -139,6 +139,24 @@ let test_fast_condensation_allows_private_vars () =
       check string "condensed private var" (Pretty.string_of_clause (Clause.normalize_clause expected)) (Pretty.string_of_clause res)
   | None -> fail "Should keep a condensed clause"
 
+let test_full_condensation_applies_substitution_to_whole_clause () =
+  (* Fast condensation cannot delete P(X) or Q(X) independently because X is
+     shared, but full condensation can instantiate the whole clause. *)
+  let c = [ pos (atom "p" [var "X"]); pos (atom "q" [var "X"]); pos (atom "p" [const "a"]); pos (atom "q" [const "a"]) ] in
+  match Clause.full_condense_clause c with
+  | Some res ->
+      let expected = [ pos (atom "p" [const "a"]); pos (atom "q" [const "a"]) ] in
+      check string "full condensed" (Pretty.string_of_clause (Clause.normalize_clause expected)) (Pretty.string_of_clause res)
+  | None -> fail "Should keep a condensed clause"
+
+let test_full_condensation_rejects_cyclic_substitution () =
+  (* Matching P(X) against P(f(X)) would create X -> f(X), which must not be
+     applied because it would make substitution application diverge. *)
+  let c = [ pos (atom "p" [var "X"]); pos (atom "p" [fun_ "f" [var "X"]]) ] in
+  match Clause.full_condense_clause c with
+  | Some res -> check string "unchanged cyclic" (Pretty.string_of_clause (Clause.normalize_clause c)) (Pretty.string_of_clause res)
+  | None -> fail "Should keep the non-tautological clause"
+
 let () =
   run "Match and Subsumption"
     [
@@ -166,6 +184,11 @@ let () =
          test_case "remove general literal with instance" `Quick test_fast_condensation_removes_instance_generalization;
          test_case "preserve shared variables" `Quick test_fast_condensation_preserves_shared_vars;
          test_case "allow private variable bindings" `Quick test_fast_condensation_allows_private_vars;
+       ]);
+      ("full_condensation",
+       [
+         test_case "instantiate whole clause" `Quick test_full_condensation_applies_substitution_to_whole_clause;
+         test_case "reject cyclic substitution" `Quick test_full_condensation_rejects_cyclic_substitution;
        ]);
       ("subsumption_resolution",
        [

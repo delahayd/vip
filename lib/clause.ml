@@ -289,6 +289,69 @@ let subsumes c1 c2 =
     in
     try_match_subset StringMap.empty c2 c1
 
+let literal_is_equality = function
+  | Pos { pred = "="; _ } | Neg { pred = "="; _ } -> true
+  | _ -> false
+
+let subst_is_acyclic subst =
+  let rec term_ok seen = function
+    | Var v ->
+        if List.exists (( = ) v) seen then false
+        else
+          begin
+            match StringMap.find_opt v subst with
+            | None -> true
+            | Some t -> term_ok (v :: seen) t
+          end
+    | Fun (_, args) -> List.for_all (term_ok seen) args
+  in
+  StringMap.for_all (fun v t -> term_ok [ v ] t) subst
+
+let full_condense_once c =
+  let len = List.length c in
+  let equality_lits = List.fold_left (fun n lit -> if literal_is_equality lit then n + 1 else n) 0 c in
+  if len <= 1 || len > 8 || equality_lits > 3 then None
+  else
+    let rec try_source i =
+      if i >= len then None
+      else
+        let source = List.nth c i in
+        let rec try_target j =
+          if j >= len then try_source (i + 1)
+          else if i = j then try_target (j + 1)
+          else
+            let target = List.nth c j in
+            match
+              try Some (Match.match_literals source target StringMap.empty)
+              with Match.Not_matchable -> None
+            with
+            | None -> try_target (j + 1)
+            | Some subst ->
+                if not (subst_is_acyclic subst) then try_target (j + 1)
+                else
+                  let candidate = normalize_clause (apply_subst_clause subst c) in
+                  if List.length candidate < len && subsumes candidate c then
+                    Some candidate
+                  else
+                    try_target (j + 1)
+        in
+        try_target 0
+    in
+    try_source 0
+
+let full_condense_clause c =
+  let rec loop rounds c =
+    if rounds <= 0 then simplify_clause c
+    else
+      match full_condense_once c with
+      | None -> simplify_clause c
+      | Some c' ->
+          match simplify_clause c' with
+          | None -> None
+          | Some c' -> loop (rounds - 1) c'
+  in
+  loop 8 c
+
 let subsumption_resolution c1 c2 =
   let n = List.length c1 in
   let m = List.length c2 in

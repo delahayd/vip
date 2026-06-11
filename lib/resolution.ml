@@ -231,6 +231,10 @@ end
 let atom_of_literal = function
   | Pos a | Neg a -> a
 
+let negate_literal = function
+  | Pos a -> Neg a
+  | Neg a -> Pos a
+
 let sign = function
   | Pos _ -> true
   | Neg _ -> false
@@ -909,11 +913,19 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let fast_condensation_enabled =
     (not emulate_v1) && expensive_simplifications && getenv_bool "IP_FAST_CONDENSATION" true
   in
+  let full_condensation_enabled =
+    (not emulate_v1) && expensive_simplifications && getenv_bool "IP_FULL_CONDENSATION" false
+  in
+  let contextual_literal_cutting_enabled =
+    (not emulate_v1) && expensive_simplifications && getenv_bool "IP_CONTEXTUAL_LITERAL_CUTTING" false
+  in
   let forward_subsumption_resolution_enabled =
     (not emulate_v1) && expensive_simplifications && getenv_bool "IP_FORWARD_SUBSUMPTION_RESOLUTION" true
   in
   let simplify_clause_modern c =
-    if fast_condensation_enabled then fast_condense_clause c else simplify_clause c
+    if full_condensation_enabled then full_condense_clause c
+    else if fast_condensation_enabled then fast_condense_clause c
+    else simplify_clause c
   in
 
   let rec vars_of_term acc = function
@@ -1270,8 +1282,34 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
         end
         else begin
           if forward_subsumption_resolution_enabled then begin
+            let contextual_candidates c_curr =
+              if not contextual_literal_cutting_enabled then []
+              else
+                let len = List.length c_curr in
+                let eqs = List.fold_left (fun n lit -> if literal_contains_equality lit then n + 1 else n) 0 c_curr in
+                if len <= 1 || len > 8 || eqs > 3 then []
+                else
+                  c_curr
+                  |> List.mapi (fun i lit -> i, lit)
+                  |> List.fold_left
+                       (fun acc (i, lit) ->
+                         check_timeout ();
+                         let test_clause = List.mapi (fun j lit' -> if i = j then negate_literal lit else lit') c_curr in
+                         Feature_vector.find_subsuming_candidates fv_index test_clause @ acc)
+                       []
+            in
+            let unique_ids ids =
+              let seen = Hashtbl.create 17 in
+              List.filter
+                (fun id ->
+                  if Hashtbl.mem seen id then false
+                  else begin Hashtbl.add seen id (); true end)
+                ids
+            in
             let rec reduce c_curr =
-              let candidates = Feature_vector.find_subsuming_candidates fv_index c_curr in
+              let candidates =
+                unique_ids (Feature_vector.find_subsuming_candidates fv_index c_curr @ contextual_candidates c_curr)
+              in
               let rec first_reduction = function
                 | [] -> None
                 | id :: tl ->
