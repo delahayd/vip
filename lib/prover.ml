@@ -796,11 +796,19 @@ let run_file ?(config = default_config) filename =
     in
 
     let run_legacy_then_modern () =
-      let size_threshold = getenv_int "IP_PORTFOLIO_SIZE_THRESHOLD" 85 in
+      let size_threshold = getenv_int "IP_PORTFOLIO_SIZE_THRESHOLD" 160 in
+      let modern_biased_small =
+        clause_count <= getenv_int "IP_PORTFOLIO_TINY_MODERN_MAX_CLAUSES" 4
+        || (clause_count >= getenv_int "IP_PORTFOLIO_MEDIUM_MODERN_MIN_CLAUSES" 13
+            && clause_count <= getenv_int "IP_PORTFOLIO_MEDIUM_MODERN_MAX_CLAUSES" 24)
+      in
       let default_flash_fraction, default_modern_fraction =
-        if clause_count < size_threshold then
+        if clause_count < size_threshold && modern_biased_small then
           (getenv_float "IP_PORTFOLIO_SMALL_LEGACY_FRACTION" 0.15,
            getenv_float "IP_PORTFOLIO_SMALL_MODERN_FRACTION" 0.85)
+        else if clause_count < size_threshold then
+          (getenv_float "IP_PORTFOLIO_SMALL_LEGACY_FRACTION" 0.50,
+           getenv_float "IP_PORTFOLIO_SMALL_MODERN_FRACTION" 0.50)
         else
           (getenv_float "IP_PORTFOLIO_LARGE_LEGACY_FLASH_FRACTION" 0.0,
            getenv_float "IP_PORTFOLIO_LARGE_MODERN_FRACTION" 1.0)
