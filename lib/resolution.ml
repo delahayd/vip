@@ -889,8 +889,8 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
 
   let passive_selection =
     match Sys.getenv_opt "IP_PASSIVE_SELECTION" with
-    | Some s -> String.lowercase_ascii (String.trim s)
-    | None ->
+    | Some s when String.trim s <> "" -> String.lowercase_ascii (String.trim s)
+    | Some _ | None ->
         let syn_min = getenv_int "IP_PASSIVE_SYN_MIN_CLAUSES" 40 in
         let syn_max = getenv_int "IP_PASSIVE_SYN_MAX_CLAUSES" 60 in
         if (not emulate_v1) && expensive_simplifications

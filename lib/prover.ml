@@ -18,6 +18,7 @@ type portfolio_mode =
   | Legacy_only
   | Modern_only
   | Modern_compat_only
+  | Scheduled_portfolio
 
 type engine_kind =
   | Legacy_compat
@@ -861,6 +862,145 @@ let run_file ?(config = default_config) filename =
                   }
     in
 
+    let with_env name value f =
+      let old = Sys.getenv_opt name in
+      Option.iter (fun v -> Unix.putenv name v) value;
+      Fun.protect
+        ~finally:(fun () ->
+          match old with
+          | Some v -> Unix.putenv name v
+          | None -> Unix.putenv name "")
+        f
+    in
+
+    let with_envs bindings f =
+      let rec loop bindings =
+        match bindings with
+        | [] -> f ()
+        | (name, value) :: tl -> with_env name value (fun () -> loop tl)
+      in
+      loop bindings
+    in
+
+    let run_profile_stage ~stage_name ~engine ~fraction ?(env = []) () =
+      let budget = fraction_budget fraction in
+      if budget <= 0.05 then timeout_result (elapsed ())
+      else with_envs env (fun () -> run_stage { stage_name; engine; time_limit_s = budget })
+    in
+
+    let run_schedule stages =
+      let rec loop last = function
+        | [] -> last
+        | run :: tl ->
+            let remaining = remaining_time () in
+            if remaining <= 0.1 then last
+            else
+              let res = run () in
+              match res.stop_reason with
+              | Refutation_found _ -> res
+              | Saturation | Time_limit | Clause_limit -> loop res tl
+      in
+      match stages with
+      | [] -> timeout_result (elapsed ())
+      | run :: tl -> loop (run ()) tl
+    in
+
+    let run_scheduled_portfolio () =
+      let size_threshold = getenv_int "IP_PORTFOLIO_SIZE_THRESHOLD" 160 in
+      let modern_biased_small =
+        clause_count <= getenv_int "IP_PORTFOLIO_TINY_MODERN_MAX_CLAUSES" 4
+        || (clause_count >= getenv_int "IP_PORTFOLIO_MEDIUM_MODERN_MIN_CLAUSES" 13
+            && clause_count <= getenv_int "IP_PORTFOLIO_MEDIUM_MODERN_MAX_CLAUSES" 24)
+      in
+      let syn_min = getenv_int "IP_PASSIVE_SYN_MIN_CLAUSES" 40 in
+      let syn_max = getenv_int "IP_PASSIVE_SYN_MAX_CLAUSES" 60 in
+      let syn_shaped = clause_count >= syn_min && clause_count <= syn_max in
+      let legacy_stage fraction =
+        fun () ->
+          run_profile_stage
+            ~stage_name:"Portfolio legacy flash"
+            ~engine:Legacy_compat
+            ~fraction
+            ()
+      in
+      let modern_stage name selection fraction =
+        fun () ->
+          run_profile_stage
+            ~stage_name:name
+            ~engine:Modern_deep
+            ~fraction
+            ~env:[ "IP_PASSIVE_SELECTION", Some selection ]
+            ()
+      in
+      let legacy_only_small =
+        clause_count > getenv_int "IP_PORTFOLIO_TINY_MODERN_MAX_CLAUSES" 4
+        && clause_count < getenv_int "IP_PORTFOLIO_LEGACY_ONLY_SMALL_MAX_CLAUSES" 13
+      in
+      let stages =
+        if clause_count < size_threshold && legacy_only_small then
+          [
+            legacy_stage (getenv_float "IP_PORTFOLIO_SCHEDULE_SMALL_LEGACY_FRACTION" 1.0);
+            modern_stage
+              "Portfolio modern classic"
+              "classic"
+              (getenv_float "IP_PORTFOLIO_SCHEDULE_CLASSIC_FRACTION" 1.0);
+          ]
+        else if clause_count < size_threshold && modern_biased_small then
+          [
+            legacy_stage (getenv_float "IP_PORTFOLIO_SCHEDULE_TINY_LEGACY_FRACTION" 0.05);
+            modern_stage
+              "Portfolio modern classic"
+              "classic"
+              (getenv_float "IP_PORTFOLIO_SCHEDULE_TINY_CLASSIC_FRACTION" 0.95);
+            modern_stage
+              "Portfolio modern short"
+              "short"
+              (getenv_float "IP_PORTFOLIO_SCHEDULE_SHORT_FRACTION" 1.0);
+          ]
+        else if clause_count < size_threshold && syn_shaped then
+          [
+            legacy_stage (getenv_float "IP_PORTFOLIO_SCHEDULE_LEGACY_FRACTION" 0.65);
+            modern_stage
+              "Portfolio modern SYN selection"
+              "syn"
+              (getenv_float "IP_PORTFOLIO_SCHEDULE_SYN_FRACTION" 1.0);
+            modern_stage
+              "Portfolio modern classic"
+              "classic"
+              (getenv_float "IP_PORTFOLIO_SCHEDULE_CLASSIC_FRACTION" 1.0);
+          ]
+        else if clause_count < size_threshold then
+          [
+            legacy_stage (getenv_float "IP_PORTFOLIO_SCHEDULE_LEGACY_FRACTION" 0.65);
+            modern_stage
+              "Portfolio modern classic"
+              "classic"
+              (getenv_float "IP_PORTFOLIO_SCHEDULE_CLASSIC_FRACTION" 1.0);
+            modern_stage
+              "Portfolio modern short"
+              "short"
+              (getenv_float "IP_PORTFOLIO_SCHEDULE_SHORT_FRACTION" 1.0);
+          ]
+        else
+          [
+            modern_stage
+              "Portfolio modern classic"
+              "classic"
+              (getenv_float "IP_PORTFOLIO_SCHEDULE_LARGE_CLASSIC_FRACTION" 0.60);
+            modern_stage
+              "Portfolio modern SYN selection"
+              "syn"
+              (getenv_float "IP_PORTFOLIO_SCHEDULE_LARGE_SYN_FRACTION" 0.30);
+            modern_stage
+              "Portfolio modern short"
+              "short"
+              (getenv_float "IP_PORTFOLIO_SCHEDULE_SHORT_FRACTION" 1.0);
+            legacy_stage (getenv_float "IP_PORTFOLIO_SCHEDULE_LARGE_LEGACY_FRACTION" 0.05);
+          ]
+      in
+      run_schedule stages
+    in
+
     let run_modern_then_legacy () =
       let modern_fraction = getenv_float "IP_PORTFOLIO_MODERN_FIRST_FRACTION" 0.80 in
       let modern_budget = fraction_budget modern_fraction in
@@ -950,6 +1090,8 @@ let run_file ?(config = default_config) filename =
               engine = Modern_compat_flash;
               time_limit_s = stage_time total_timeout;
             }
+      | Scheduled_portfolio ->
+          run_scheduled_portfolio ()
       | Legacy_then_modern ->
           run_legacy_then_modern ()
     in

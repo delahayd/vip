@@ -16,6 +16,7 @@ type portfolio_mode =
   | Legacy_only
   | Modern_only
   | Modern_compat_only
+  | Scheduled_portfolio
 
 type engine_kind =
   | Legacy_compat
