@@ -709,6 +709,62 @@ let run_file ?(config = default_config) filename =
       List.exists clause_contains_equality axioms
       || List.exists clause_contains_equality support
     in
+    let literal_is_negative = function
+      | Types.Neg _ -> true
+      | Types.Pos _ -> false
+    in
+    let term_size =
+      let rec aux = function
+        | Types.Var _ -> 1
+        | Types.Fun (_, args) ->
+            1 + List.fold_left (fun acc t -> acc + aux t) 0 args
+      in
+      aux
+    in
+    let literal_term_size = function
+      | Types.Pos a | Types.Neg a ->
+          List.fold_left (fun acc t -> acc + term_size t) 1 a.args
+    in
+    let all_clauses = axioms @ support in
+    let total_literals =
+      List.fold_left (fun acc c -> acc + List.length c) 0 all_clauses
+    in
+    let negative_literals =
+      List.fold_left
+        (fun acc c ->
+          acc
+          + List.fold_left
+              (fun n lit -> if literal_is_negative lit then n + 1 else n)
+              0
+              c)
+        0
+        all_clauses
+    in
+    let unit_clauses =
+      List.fold_left (fun acc c -> if List.length c = 1 then acc + 1 else acc) 0 all_clauses
+    in
+    let total_term_size =
+      List.fold_left
+        (fun acc c -> acc + List.fold_left (fun n lit -> n + literal_term_size lit) 0 c)
+        0
+        all_clauses
+    in
+    let avg_clause_len =
+      if clause_count = 0 then 0.0
+      else float_of_int total_literals /. float_of_int clause_count
+    in
+    let avg_literal_term_size =
+      if total_literals = 0 then 0.0
+      else float_of_int total_term_size /. float_of_int total_literals
+    in
+    let negative_ratio =
+      if total_literals = 0 then 0.0
+      else float_of_int negative_literals /. float_of_int total_literals
+    in
+    let unit_ratio =
+      if clause_count = 0 then 0.0
+      else float_of_int unit_clauses /. float_of_int clause_count
+    in
 
     let compat_mode () =
       if equality_problem then Resolution.Unrestricted else config.inference_mode
@@ -915,6 +971,20 @@ let run_file ?(config = default_config) filename =
       let syn_min = getenv_int "IP_PASSIVE_SYN_MIN_CLAUSES" 40 in
       let syn_max = getenv_int "IP_PASSIVE_SYN_MAX_CLAUSES" 60 in
       let syn_shaped = clause_count >= syn_min && clause_count <= syn_max in
+      let legacy_sensitive_small =
+        clause_count > getenv_int "IP_PORTFOLIO_TINY_MODERN_MAX_CLAUSES" 4
+        && clause_count < getenv_int "IP_PORTFOLIO_LEGACY_ONLY_SMALL_MAX_CLAUSES" 13
+      in
+      let unit_heavy =
+        unit_ratio >= getenv_float "IP_PORTFOLIO_UNIT_HEAVY_RATIO" 0.55
+      in
+      let negative_heavy =
+        negative_ratio >= getenv_float "IP_PORTFOLIO_NEGATIVE_HEAVY_RATIO" 0.65
+      in
+      let term_heavy =
+        equality_problem
+        || avg_literal_term_size >= getenv_float "IP_PORTFOLIO_TERM_HEAVY_AVG" 6.0
+      in
       let legacy_stage fraction =
         fun () ->
           run_profile_stage
@@ -932,73 +1002,92 @@ let run_file ?(config = default_config) filename =
             ~env:[ "IP_PASSIVE_SELECTION", Some selection ]
             ()
       in
-      let legacy_only_small =
-        clause_count > getenv_int "IP_PORTFOLIO_TINY_MODERN_MAX_CLAUSES" 4
-        && clause_count < getenv_int "IP_PORTFOLIO_LEGACY_ONLY_SMALL_MAX_CLAUSES" 13
-      in
+      let fallback_stable () = fun () -> run_legacy_then_modern () in
       let stages =
-        if clause_count < size_threshold && legacy_only_small then
+        if term_heavy then
           [
-            legacy_stage (getenv_float "IP_PORTFOLIO_SCHEDULE_SMALL_LEGACY_FRACTION" 1.0);
             modern_stage
               "Portfolio modern classic"
               "classic"
-              (getenv_float "IP_PORTFOLIO_SCHEDULE_CLASSIC_FRACTION" 1.0);
-          ]
-        else if clause_count < size_threshold && modern_biased_small then
-          [
-            legacy_stage (getenv_float "IP_PORTFOLIO_SCHEDULE_TINY_LEGACY_FRACTION" 0.05);
+              (getenv_float "IP_PORTFOLIO_SCHEDULE_TERM_CLASSIC_FRACTION" 0.55);
             modern_stage
-              "Portfolio modern classic"
-              "classic"
-              (getenv_float "IP_PORTFOLIO_SCHEDULE_TINY_CLASSIC_FRACTION" 0.95);
-            modern_stage
-              "Portfolio modern short"
-              "short"
-              (getenv_float "IP_PORTFOLIO_SCHEDULE_SHORT_FRACTION" 1.0);
+              "Portfolio modern weight"
+              "weight"
+              (getenv_float "IP_PORTFOLIO_SCHEDULE_TERM_WEIGHT_FRACTION" 0.25);
+            fallback_stable ();
           ]
         else if clause_count < size_threshold && syn_shaped then
           [
-            legacy_stage (getenv_float "IP_PORTFOLIO_SCHEDULE_LEGACY_FRACTION" 0.65);
             modern_stage
               "Portfolio modern SYN selection"
               "syn"
-              (getenv_float "IP_PORTFOLIO_SCHEDULE_SYN_FRACTION" 1.0);
+              (getenv_float "IP_PORTFOLIO_SCHEDULE_SYN_FRACTION" 0.65);
             modern_stage
               "Portfolio modern classic"
               "classic"
-              (getenv_float "IP_PORTFOLIO_SCHEDULE_CLASSIC_FRACTION" 1.0);
+              (getenv_float "IP_PORTFOLIO_SCHEDULE_CLASSIC_FRACTION" 0.20);
+            fallback_stable ();
           ]
-        else if clause_count < size_threshold then
+        else if unit_heavy || negative_heavy then
           [
-            legacy_stage (getenv_float "IP_PORTFOLIO_SCHEDULE_LEGACY_FRACTION" 0.65);
-            modern_stage
-              "Portfolio modern classic"
-              "classic"
-              (getenv_float "IP_PORTFOLIO_SCHEDULE_CLASSIC_FRACTION" 1.0);
             modern_stage
               "Portfolio modern short"
               "short"
-              (getenv_float "IP_PORTFOLIO_SCHEDULE_SHORT_FRACTION" 1.0);
+              (getenv_float "IP_PORTFOLIO_SCHEDULE_UNIT_SHORT_FRACTION" 0.55);
+            modern_stage
+              "Portfolio modern classic"
+              "classic"
+              (getenv_float "IP_PORTFOLIO_SCHEDULE_UNIT_CLASSIC_FRACTION" 0.25);
+            fallback_stable ();
+          ]
+        else if clause_count < size_threshold then
+          [
+            legacy_stage (getenv_float "IP_PORTFOLIO_SCHEDULE_LEGACY_FRACTION" 0.20);
+            modern_stage
+              "Portfolio modern classic"
+              "classic"
+              (getenv_float "IP_PORTFOLIO_SCHEDULE_CLASSIC_FRACTION" 0.50);
+            modern_stage
+              "Portfolio modern short"
+              "short"
+              (getenv_float "IP_PORTFOLIO_SCHEDULE_SHORT_FRACTION" 0.15);
+            fallback_stable ();
           ]
         else
           [
             modern_stage
               "Portfolio modern classic"
               "classic"
-              (getenv_float "IP_PORTFOLIO_SCHEDULE_LARGE_CLASSIC_FRACTION" 0.60);
+              (getenv_float "IP_PORTFOLIO_SCHEDULE_LARGE_CLASSIC_FRACTION" 0.45);
             modern_stage
               "Portfolio modern SYN selection"
               "syn"
-              (getenv_float "IP_PORTFOLIO_SCHEDULE_LARGE_SYN_FRACTION" 0.30);
+              (getenv_float "IP_PORTFOLIO_SCHEDULE_LARGE_SYN_FRACTION" 0.20);
             modern_stage
               "Portfolio modern short"
               "short"
-              (getenv_float "IP_PORTFOLIO_SCHEDULE_SHORT_FRACTION" 1.0);
+              (getenv_float "IP_PORTFOLIO_SCHEDULE_SHORT_FRACTION" 0.15);
             legacy_stage (getenv_float "IP_PORTFOLIO_SCHEDULE_LARGE_LEGACY_FRACTION" 0.05);
+            fallback_stable ();
           ]
       in
-      run_schedule stages
+      if config.print_derivation then
+        Printf.printf
+          "%% Portfolio profile: clauses=%d literals=%d avg_clause_len=%.2f avg_lit_term=%.2f unit_ratio=%.2f negative_ratio=%.2f equality=%b legacy_sensitive=%b modern_biased=%b syn_shaped=%b\n%!"
+          clause_count
+          total_literals
+          avg_clause_len
+          avg_literal_term_size
+          unit_ratio
+          negative_ratio
+          equality_problem
+          legacy_sensitive_small
+          modern_biased_small
+          syn_shaped;
+      if clause_count < size_threshold && (legacy_sensitive_small || modern_biased_small) then
+        run_legacy_then_modern ()
+      else
+        run_schedule stages
     in
 
     let run_modern_then_legacy () =
