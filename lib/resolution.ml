@@ -885,6 +885,21 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
         end
   in
 
+  let initial_clause_count = List.length axioms + List.length support in
+
+  let passive_selection =
+    match Sys.getenv_opt "IP_PASSIVE_SELECTION" with
+    | Some s -> String.lowercase_ascii (String.trim s)
+    | None ->
+        let syn_min = getenv_int "IP_PASSIVE_SYN_MIN_CLAUSES" 40 in
+        let syn_max = getenv_int "IP_PASSIVE_SYN_MAX_CLAUSES" 60 in
+        if (not emulate_v1) && expensive_simplifications
+           && initial_clause_count >= syn_min && initial_clause_count <= syn_max then
+          "syn"
+        else
+          "classic"
+  in
+
   let passive_age_ratio, passive_weight_ratio =
     if expensive_simplifications then parse_aw_ratio "IP_PASSIVE_AW_RATIO" 1 10
     else parse_aw_ratio "IP_PASSIVE_AW_RATIO" 1 10
@@ -913,7 +928,6 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let fast_condensation_enabled =
     (not emulate_v1) && expensive_simplifications && getenv_bool "IP_FAST_CONDENSATION" true
   in
-  let initial_clause_count = List.length axioms + List.length support in
   let full_condensation_max_input_clauses =
     getenv_int "IP_FULL_CONDENSATION_MAX_INPUT_CLAUSES" 32
   in
@@ -1377,6 +1391,46 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
       None entries
   in
 
+  let rec term_vars acc = function
+    | Var v -> if List.exists (( = ) v) acc then acc else v :: acc
+    | Fun (_, args) -> List.fold_left term_vars acc args
+  in
+
+  let literal_vars acc lit =
+    List.fold_left term_vars acc (atom_of_literal lit).args
+  in
+
+  let clause_var_count c =
+    List.length (List.fold_left literal_vars [] c)
+  in
+
+  let scored_passive_score mode e =
+    let c = e.d.clause_d in
+    let len = List.length c in
+    let vars = clause_var_count c in
+    let age_relief = e.age / 32 in
+    match mode with
+    | "short" -> (len * 100) + e.weight + (vars * 8) - age_relief
+    | "syn" ->
+        let negative_bonus = if clause_has_negative c then 12 else 0 in
+        let unit_bonus = if len = 1 then 32 else 0 in
+        (len * 80) + e.weight + (vars * 12) - negative_bonus - unit_bonus - age_relief
+    | "weight" -> e.weight - age_relief
+    | _ -> e.weight - age_relief
+  in
+
+  let select_by_scored mode entries =
+    List.fold_left
+      (fun best e ->
+        match best with
+        | None -> Some e
+        | Some b ->
+            let se = scored_passive_score mode e in
+            let sb = scored_passive_score mode b in
+            if se < sb || (se = sb && e.age < b.age) then Some e else best)
+      None entries
+  in
+
   let remove_passive_entry selected =
     passive :=
       List.filter (fun e -> e.passive_id <> selected.passive_id) !passive
@@ -1393,6 +1447,8 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
           let selected =
             match enabled_entries with
             | [] -> None
+            | entries when passive_selection <> "classic" ->
+                select_by_scored passive_selection entries
             | entries ->
                 let select_weight =
                     if passive_age_ratio = 0 then true

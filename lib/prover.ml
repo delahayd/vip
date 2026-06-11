@@ -804,8 +804,8 @@ let run_file ?(config = default_config) filename =
       in
       let default_flash_fraction, default_modern_fraction =
         if clause_count < size_threshold && modern_biased_small then
-          (getenv_float "IP_PORTFOLIO_SMALL_LEGACY_FRACTION" 0.15,
-           getenv_float "IP_PORTFOLIO_SMALL_MODERN_FRACTION" 0.85)
+          (getenv_float "IP_PORTFOLIO_SMALL_LEGACY_FRACTION" 0.05,
+           getenv_float "IP_PORTFOLIO_SMALL_MODERN_FRACTION" 0.95)
         else if clause_count < size_threshold then
           (getenv_float "IP_PORTFOLIO_SMALL_LEGACY_FRACTION" 0.50,
            getenv_float "IP_PORTFOLIO_SMALL_MODERN_FRACTION" 0.50)
