@@ -892,7 +892,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     | Some s when String.trim s <> "" -> String.lowercase_ascii (String.trim s)
     | Some _ | None ->
         let syn_min = getenv_int "IP_PASSIVE_SYN_MIN_CLAUSES" 40 in
-        let syn_max = getenv_int "IP_PASSIVE_SYN_MAX_CLAUSES" 60 in
+        let syn_max = getenv_int "IP_PASSIVE_SYN_MAX_CLAUSES" 55 in
         if (not emulate_v1) && expensive_simplifications
            && initial_clause_count >= syn_min && initial_clause_count <= syn_max then
           "syn"
@@ -900,9 +900,18 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
           "classic"
   in
 
+  let default_passive_weight_ratio =
+    if (initial_clause_count >= 20 && initial_clause_count <= 24)
+       || (initial_clause_count >= 56 && initial_clause_count <= 60) then
+      4
+    else
+      10
+  in
   let passive_age_ratio, passive_weight_ratio =
-    if expensive_simplifications then parse_aw_ratio "IP_PASSIVE_AW_RATIO" 1 10
-    else parse_aw_ratio "IP_PASSIVE_AW_RATIO" 1 10
+    if expensive_simplifications then
+      parse_aw_ratio "IP_PASSIVE_AW_RATIO" 1 default_passive_weight_ratio
+    else
+      parse_aw_ratio "IP_PASSIVE_AW_RATIO" 1 default_passive_weight_ratio
   in
   let passive_age_ratio = if passive_age_ratio = 0 && passive_weight_ratio = 0 then 1 else passive_age_ratio in
   let passive_weight_ratio = if passive_age_ratio = 0 && passive_weight_ratio = 0 then 1 else passive_weight_ratio in

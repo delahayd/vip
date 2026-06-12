@@ -856,11 +856,17 @@ let run_file ?(config = default_config) filename =
       let size_threshold = getenv_int "IP_PORTFOLIO_SIZE_THRESHOLD" 160 in
       let modern_biased_small =
         clause_count <= getenv_int "IP_PORTFOLIO_TINY_MODERN_MAX_CLAUSES" 4
-        || (clause_count >= getenv_int "IP_PORTFOLIO_MEDIUM_MODERN_MIN_CLAUSES" 13
-            && clause_count <= getenv_int "IP_PORTFOLIO_MEDIUM_MODERN_MAX_CLAUSES" 24)
+        || ((clause_count >= getenv_int "IP_PORTFOLIO_MEDIUM_MODERN_MIN_CLAUSES" 13
+             && clause_count <= getenv_int "IP_PORTFOLIO_MEDIUM_MODERN_MAX_CLAUSES" 24)
+            && not (clause_count >= getenv_int "IP_PORTFOLIO_MEDIUM_LEGACY_MIN_CLAUSES" 18
+                    && clause_count <= getenv_int "IP_PORTFOLIO_MEDIUM_LEGACY_MAX_CLAUSES" 20))
       in
+      let modern_only_threshold = getenv_int "IP_PORTFOLIO_MODERN_ONLY_MIN_CLAUSES" 80 in
       let default_flash_fraction, default_modern_fraction =
-        if clause_count < size_threshold && modern_biased_small then
+        if clause_count >= modern_only_threshold then
+          (getenv_float "IP_PORTFOLIO_LARGE_LEGACY_FLASH_FRACTION" 0.0,
+           getenv_float "IP_PORTFOLIO_LARGE_MODERN_FRACTION" 1.0)
+        else if clause_count < size_threshold && modern_biased_small then
           (getenv_float "IP_PORTFOLIO_SMALL_LEGACY_FRACTION" 0.05,
            getenv_float "IP_PORTFOLIO_SMALL_MODERN_FRACTION" 0.95)
         else if clause_count < size_threshold then
@@ -965,11 +971,13 @@ let run_file ?(config = default_config) filename =
       let size_threshold = getenv_int "IP_PORTFOLIO_SIZE_THRESHOLD" 160 in
       let modern_biased_small =
         clause_count <= getenv_int "IP_PORTFOLIO_TINY_MODERN_MAX_CLAUSES" 4
-        || (clause_count >= getenv_int "IP_PORTFOLIO_MEDIUM_MODERN_MIN_CLAUSES" 13
-            && clause_count <= getenv_int "IP_PORTFOLIO_MEDIUM_MODERN_MAX_CLAUSES" 24)
+        || ((clause_count >= getenv_int "IP_PORTFOLIO_MEDIUM_MODERN_MIN_CLAUSES" 13
+             && clause_count <= getenv_int "IP_PORTFOLIO_MEDIUM_MODERN_MAX_CLAUSES" 24)
+            && not (clause_count >= getenv_int "IP_PORTFOLIO_MEDIUM_LEGACY_MIN_CLAUSES" 18
+                    && clause_count <= getenv_int "IP_PORTFOLIO_MEDIUM_LEGACY_MAX_CLAUSES" 20))
       in
       let syn_min = getenv_int "IP_PASSIVE_SYN_MIN_CLAUSES" 40 in
-      let syn_max = getenv_int "IP_PASSIVE_SYN_MAX_CLAUSES" 60 in
+      let syn_max = getenv_int "IP_PASSIVE_SYN_MAX_CLAUSES" 55 in
       let syn_shaped = clause_count >= syn_min && clause_count <= syn_max in
       let legacy_sensitive_small =
         clause_count > getenv_int "IP_PORTFOLIO_TINY_MODERN_MAX_CLAUSES" 4
