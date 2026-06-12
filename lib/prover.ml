@@ -559,6 +559,139 @@ let epr_ground_sat_unsat ~max_instances clauses =
           (match res with None -> "ineligible" | Some true -> "unsat" | Some false -> "sat");
       res
 
+let rec add_term_symbols acc = function
+  | Types.Var _ -> acc
+  | Types.Fun (f, args) ->
+      List.fold_left add_term_symbols (Types.StringSet.add ("f:" ^ f) acc) args
+
+let add_atom_symbols acc (a : Types.atom) =
+  List.fold_left add_term_symbols (Types.StringSet.add ("p:" ^ a.pred) acc) a.args
+
+let add_literal_symbols acc = function
+  | Types.Pos a | Types.Neg a -> add_atom_symbols acc a
+
+let clause_symbols c =
+  List.fold_left add_literal_symbols Types.StringSet.empty c
+
+let clauses_symbols clauses =
+  List.fold_left
+    (fun acc c -> Types.StringSet.union acc (clause_symbols c))
+    Types.StringSet.empty
+    clauses
+
+let select_axioms_sine ~check_timeout ~support axioms =
+  if not (getenv_bool "IP_AXIOM_SELECTION" false) then
+    axioms
+  else
+    let min_axioms = getenv_int_global "IP_AXIOM_SELECTION_MIN_AXIOMS" 100 in
+    if List.length axioms < min_axioms then
+      axioms
+    else
+      let default_rounds = if support = [] then 1 else 6 in
+      let max_rounds = getenv_int_global "IP_AXIOM_SELECTION_ROUNDS" default_rounds in
+      let max_axioms =
+        match Sys.getenv_opt "IP_AXIOM_SELECTION_MAX_AXIOMS" with
+        | None -> 300
+        | Some s -> (try max 0 (int_of_string s) with Failure _ -> 300)
+      in
+      let axiom_infos =
+        axioms
+        |> List.mapi (fun i c -> (i, c, clause_symbols c))
+      in
+      let symbol_counts = Hashtbl.create 1024 in
+      List.iter
+        (fun (_i, _c, syms) ->
+          check_timeout ();
+          Types.StringSet.iter
+            (fun s ->
+              let n = Option.value (Hashtbl.find_opt symbol_counts s) ~default:0 in
+              Hashtbl.replace symbol_counts s (n + 1))
+            syms)
+        axiom_infos;
+      let symbol_frequency s =
+        Option.value (Hashtbl.find_opt symbol_counts s) ~default:0
+      in
+      let max_symbol_freq =
+        getenv_int_global "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ" 128
+      in
+      let selectable_symbols syms =
+        Types.StringSet.filter
+          (fun s ->
+            let freq = symbol_frequency s in
+            (freq = 0 || freq <= max_symbol_freq) && not (String.equal s "p:="))
+          syms
+      in
+      let rare_seed_symbols () =
+        let max_freq = getenv_int_global "IP_AXIOM_SELECTION_RARE_MAX_FREQ" 2 in
+        let max_seeds = getenv_int_global "IP_AXIOM_SELECTION_RARE_MAX_SYMBOLS" 64 in
+        let candidates =
+          Hashtbl.fold
+            (fun s n acc ->
+              if n <= max_freq && not (String.equal s "p:=") then (n, s) :: acc
+              else acc)
+            symbol_counts
+            []
+          |> List.sort compare
+        in
+        let rec take n acc = function
+          | [] -> acc
+          | _ when n <= 0 -> acc
+          | (_freq, s) :: tl -> take (n - 1) (Types.StringSet.add s acc) tl
+        in
+        take max_seeds Types.StringSet.empty candidates
+      in
+      let initial_symbols =
+        if support = [] then rare_seed_symbols ()
+        else selectable_symbols (clauses_symbols support)
+      in
+      let selected = Hashtbl.create (List.length axioms) in
+      let selected_symbols = ref initial_symbols in
+      let selected_count = ref 0 in
+      let add_axiom i syms =
+        if not (Hashtbl.mem selected i) && !selected_count < max_axioms then begin
+          Hashtbl.add selected i ();
+          incr selected_count;
+          selected_symbols :=
+            Types.StringSet.union !selected_symbols (selectable_symbols syms);
+          true
+        end else
+          false
+      in
+      let relevant syms =
+        not (Types.StringSet.is_empty (Types.StringSet.inter syms !selected_symbols))
+      in
+      let rec rounds n =
+        check_timeout ();
+        if n <= 0 then ()
+        else
+          let changed = ref false in
+          List.iter
+            (fun (i, _c, syms) ->
+              check_timeout ();
+              if relevant syms && add_axiom i syms then changed := true)
+            axiom_infos;
+          if !changed then rounds (n - 1)
+      in
+      if Types.StringSet.is_empty initial_symbols then
+        axioms
+      else begin
+        rounds max_rounds;
+        if getenv_bool "IP_AXIOM_SELECTION_DEBUG" false then
+          Printf.eprintf
+            "[axiom-selection] axioms=%d selected=%d support=%d rounds=%d seed_symbols=%d\n%!"
+            (List.length axioms)
+            !selected_count
+            (List.length support)
+            max_rounds
+            (Types.StringSet.cardinal initial_symbols);
+        if !selected_count = 0 then
+          axioms
+        else
+          axiom_infos
+          |> List.filter_map
+               (fun (i, c, _syms) -> if Hashtbl.mem selected i then Some c else None)
+      end
+
 let run_file ?(config = default_config) filename =
   reset_fresh_state ();
   Clause.reset_fresh_counter ();
@@ -635,9 +768,15 @@ let run_file ?(config = default_config) filename =
     check_problem_timeout ();
     let part = partition_input_clauses ~check_timeout:check_problem_timeout parsed.inputs in
 
-    let axioms, support =
+    let raw_axioms, support =
       if config.use_sos then (part.axioms, part.support)
       else ([], part.axioms @ part.support)
+    in
+    let axioms =
+      select_axioms_sine
+        ~check_timeout:check_problem_timeout
+        ~support
+        raw_axioms
     in
     let clause_count = List.length axioms + List.length support in
     let remaining_time () = max 0.0 (total_timeout -. elapsed ()) in
