@@ -18,12 +18,14 @@ type portfolio_mode =
   | Legacy_only
   | Modern_only
   | Modern_compat_only
+  | Feq_modern
   | Scheduled_portfolio
 
 type engine_kind =
   | Legacy_compat
   | Modern_compat_flash
   | Modern_deep
+  | Modern_feq
 
 type portfolio_stage = {
   stage_name : string;
@@ -770,12 +772,16 @@ let run_file ?(config = default_config) filename =
       if equality_problem then Resolution.Unrestricted else config.inference_mode
     in
 
-    let run_modern_resolution ~time_limit_s ~expensive_simplifications ~emulate_v1 =
+    let run_modern_resolution ?mode_override ~time_limit_s ~expensive_simplifications ~emulate_v1 () =
       let limits = {
         Resolution.time_limit_s = Some time_limit_s;
         max_generated_clauses = config.max_generated_clauses;
       } in
-      let mode = if emulate_v1 then compat_mode () else config.inference_mode in
+      let mode =
+        match mode_override with
+        | Some mode -> mode
+        | None -> if emulate_v1 then compat_mode () else config.inference_mode
+      in
       try
         Resolution.run_resolution_sos
           ~limits
@@ -798,6 +804,7 @@ let run_file ?(config = default_config) filename =
         ~time_limit_s
         ~expensive_simplifications:use_deep_compat
         ~emulate_v1:(not use_deep_compat)
+        ()
     in
 
     let run_modern_deep ~time_limit_s =
@@ -805,6 +812,16 @@ let run_file ?(config = default_config) filename =
         ~time_limit_s
         ~expensive_simplifications:true
         ~emulate_v1:false
+        ()
+    in
+
+    let run_modern_feq ~time_limit_s =
+      run_modern_resolution
+        ~mode_override:Resolution.Unrestricted
+        ~time_limit_s
+        ~expensive_simplifications:true
+        ~emulate_v1:false
+        ()
     in
 
     let run_stage stage =
@@ -821,6 +838,7 @@ let run_file ?(config = default_config) filename =
         | Modern_compat_flash ->
             run_modern_compat_flash ~time_limit_s:stage.time_limit_s
         | Modern_deep -> run_modern_deep ~time_limit_s:stage.time_limit_s
+        | Modern_feq -> run_modern_feq ~time_limit_s:stage.time_limit_s
     in
 
     let getenv_float name default =
@@ -953,6 +971,7 @@ let run_file ?(config = default_config) filename =
     let run_schedule stages =
       let rec loop last = function
         | [] -> last
+        | _ when (match last.stop_reason with Refutation_found _ -> true | _ -> false) -> last
         | run :: tl ->
             let remaining = remaining_time () in
             if remaining <= 0.1 then last
@@ -1098,6 +1117,52 @@ let run_file ?(config = default_config) filename =
         run_schedule stages
     in
 
+    let run_feq_modern () =
+      if not equality_problem then
+        run_legacy_then_modern ()
+      else
+        let aw_ratio =
+          match Sys.getenv_opt "IP_FEQ_PASSIVE_AW_RATIO" with
+          | Some s when String.trim s <> "" -> s
+          | _ -> "1:4"
+        in
+        let feq_stage name selection fraction =
+          fun () ->
+            run_profile_stage
+              ~stage_name:name
+              ~engine:Modern_feq
+              ~fraction
+              ~env:
+                [
+                  ("IP_PASSIVE_SELECTION", Some selection);
+                  ("IP_PASSIVE_AW_RATIO", Some aw_ratio);
+                  ("IP_FORWARD_SUBSUMPTION_RESOLUTION", Some "1");
+                ]
+              ()
+        in
+        run_schedule
+          [
+            (fun () ->
+              run_profile_stage
+                ~stage_name:"FEQ legacy flash"
+                ~engine:Legacy_compat
+                ~fraction:(getenv_float "IP_FEQ_LEGACY_FLASH_FRACTION" 0.20)
+                ());
+            feq_stage
+              "FEQ unrestricted classic"
+              "classic"
+              (getenv_float "IP_FEQ_CLASSIC_FRACTION" 0.52);
+            feq_stage
+              "FEQ unrestricted weight"
+              "weight"
+              (getenv_float "IP_FEQ_WEIGHT_FRACTION" 0.20);
+            feq_stage
+              "FEQ unrestricted equality"
+              "equality"
+              (getenv_float "IP_FEQ_EQUALITY_FRACTION" 0.20);
+          ]
+    in
+
     let run_modern_then_legacy () =
       let modern_fraction = getenv_float "IP_PORTFOLIO_MODERN_FIRST_FRACTION" 0.80 in
       let modern_budget = fraction_budget modern_fraction in
@@ -1166,6 +1231,8 @@ let run_file ?(config = default_config) filename =
       match config.portfolio_mode with
       | Modern_then_legacy ->
           run_modern_then_legacy ()
+      | Feq_modern ->
+          run_feq_modern ()
       | Legacy_only ->
           run_stage
             {

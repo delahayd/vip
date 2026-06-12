@@ -16,12 +16,14 @@ type portfolio_mode =
   | Legacy_only
   | Modern_only
   | Modern_compat_only
+  | Feq_modern
   | Scheduled_portfolio
 
 type engine_kind =
   | Legacy_compat
   | Modern_compat_flash
   | Modern_deep
+  | Modern_feq
 
 type portfolio_stage = {
   stage_name : string;

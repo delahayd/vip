@@ -852,6 +852,29 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     clause_contains_equality c
   in
 
+  let equality_literal_count c =
+    List.fold_left
+      (fun n lit -> if literal_contains_equality lit then n + 1 else n)
+      0
+      c
+  in
+
+  let negative_equality_count c =
+    List.fold_left
+      (fun n lit ->
+        match lit with
+        | Neg { pred = "="; args = [ _; _ ] } -> n + 1
+        | _ -> n)
+      0
+      c
+  in
+
+  let unit_positive_equality c =
+    match c with
+    | [ Pos { pred = "="; args = [ _; _ ] } ] -> true
+    | _ -> false
+  in
+
   let getenv_bool name default =
     match Sys.getenv_opt name with
     | None | Some "" -> default
@@ -1424,6 +1447,15 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
         let negative_bonus = if clause_has_negative c then 12 else 0 in
         let unit_bonus = if len = 1 then 32 else 0 in
         (len * 80) + e.weight + (vars * 12) - negative_bonus - unit_bonus - age_relief
+    | "equality" ->
+        let eqs = equality_literal_count c in
+        let neg_eqs = negative_equality_count c in
+        let unit_eq_bonus = if unit_positive_equality c then 96 else 0 in
+        let eq_bonus = min 48 (eqs * 14) in
+        let neg_eq_bonus = min 36 (neg_eqs * 18) in
+        let mixed_penalty = if eqs = 0 then 40 else 0 in
+        (len * 70) + e.weight + (vars * 10) + mixed_penalty
+        - unit_eq_bonus - eq_bonus - neg_eq_bonus - age_relief
     | "weight" -> e.weight - age_relief
     | _ -> e.weight - age_relief
   in

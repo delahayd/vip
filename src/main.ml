@@ -85,7 +85,7 @@ let play_timeout_safely () =
 
 let usage () =
   prerr_endline
-    "Usage: ip [--version] [--duke] [--proof] [--time-limit SECONDS] [--max-clauses N] [--mode MODE] [--portfolio legacy-modern|modern-legacy|legacy-only|modern-only|modern-compat-only|scheduled] [--tptp DIR] [--sos|--no-sos] FILE";
+    "Usage: ip [--version] [--duke] [--proof] [--time-limit SECONDS] [--max-clauses N] [--mode MODE] [--portfolio legacy-modern|modern-legacy|legacy-only|modern-only|modern-compat-only|scheduled|feq-modern] [--tptp DIR] [--sos|--no-sos] FILE";
   exit 2
 
 let mode_of_string = function
@@ -104,6 +104,8 @@ let portfolio_of_string = function
   | "modern-only" | "modern" -> Prover_lib.Prover.Modern_only
   | "modern-compat-only" | "compat-only" | "compat" ->
       Prover_lib.Prover.Modern_compat_only
+  | "feq-modern" | "feq" | "equality" ->
+      Prover_lib.Prover.Feq_modern
   | s ->
       prerr_endline ("Unknown portfolio mode: " ^ s);
       usage ()
