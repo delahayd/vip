@@ -10,6 +10,10 @@
  (name compare_portfolio)
  (libraries prover_lib unix))
 
+(executable
+ (name profile_problems)
+ (libraries prover_lib unix))
+
 (rule
  (alias runtest)
  (deps (glob_files_rec %{project_root}/bench/problems/*.p))

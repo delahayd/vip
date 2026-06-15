@@ -54,7 +54,19 @@ let run_one ~base_config portfolio_mode file =
   let config = { base_config with Prover.portfolio_mode } in
   try Prover.run_file ~config file
   with exn ->
-    let info = { Prover.file = Some file; clause_count = 0; generated_clause_count = 0 } in
+    let info = {
+      Prover.file = Some file;
+      clause_count = 0;
+      generated_clause_count = 0;
+      profile = "unknown";
+      raw_clause_count = 0;
+      equality_literals = 0;
+      equality_literal_ratio = 0.0;
+      avg_literal_term_size = 0.0;
+      unit_ratio = 0.0;
+      negative_ratio = 0.0;
+      axiom_selection_enabled = false;
+    } in
     let _ = exn in
     { Prover.status = InputError; info; derivation = []; empty_clause = None; resolution_stats = None }
 

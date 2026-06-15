@@ -12,6 +12,14 @@ type prover = {
 type result = {
   status : string;
   time_s : float;
+  profile : string;
+  raw_clause_count : int option;
+  equality_literals : int option;
+  equality_literal_ratio : float option;
+  avg_literal_term_size : float option;
+  unit_ratio : float option;
+  negative_ratio : float option;
+  axiom_selection_enabled : bool option;
 }
 
 type config = {
@@ -450,6 +458,48 @@ let extract_status output =
       else
         "Unknown"
 
+let parse_prefixed_line prefix output =
+  let lines = String.split_on_char '\n' output in
+  lines
+  |> List.find_opt (fun l -> starts_with l prefix)
+  |> Option.map (fun l ->
+       String.sub l (String.length prefix) (String.length l - String.length prefix)
+       |> String.trim)
+
+let parse_int_prefixed prefix output =
+  match parse_prefixed_line prefix output with
+  | None -> None
+  | Some s -> (try Some (int_of_string s) with Failure _ -> None)
+
+let parse_float_prefixed prefix output =
+  match parse_prefixed_line prefix output with
+  | None -> None
+  | Some s -> (try Some (float_of_string s) with Failure _ -> None)
+
+let parse_bool_prefixed prefix output =
+  match parse_prefixed_line prefix output with
+  | None -> None
+  | Some s ->
+      begin
+        match String.lowercase_ascii s with
+        | "true" -> Some true
+        | "false" -> Some false
+        | _ -> None
+      end
+
+let profile_info_of_output output =
+  let profile =
+    Option.value (parse_prefixed_line "% profile                 : " output) ~default:""
+  in
+  ( profile,
+    parse_int_prefixed "% raw clauses             : " output,
+    parse_int_prefixed "% equality literals       : " output,
+    parse_float_prefixed "% equality literal ratio  : " output,
+    parse_float_prefixed "% avg literal term size   : " output,
+    parse_float_prefixed "% unit ratio              : " output,
+    parse_float_prefixed "% negative ratio          : " output,
+    parse_bool_prefixed "% axiom selection         : " output )
+
 let expected_unsat_like = function
   | "Theorem" | "Unsatisfiable" | "ContradictoryAxioms" -> true
   | _ -> false
@@ -533,6 +583,17 @@ let run_prover config prover file =
   let time_s = Unix.gettimeofday () -. t0 in
   let code = exit_code_of_status status in
   let parsed_status = extract_status output in
+  let ( profile,
+        raw_clause_count,
+        equality_literals,
+        equality_literal_ratio,
+        avg_literal_term_size,
+        unit_ratio,
+        negative_ratio,
+        axiom_selection_enabled ) =
+    if prover.kind = Ip then profile_info_of_output output
+    else ("", None, None, None, None, None, None, None)
+  in
 
   let robust_timeout_hit =
     prover.kind = Ip
@@ -556,7 +617,18 @@ let run_prover config prover file =
       "\n[DEBUG] Error on %s with %s\nCommand: %s\nExit code: %d\nOutput:\n%s\n%!"
       file prover.name cmd code output;
 
-  { status = status_str; time_s }
+  {
+    status = status_str;
+    time_s;
+    profile;
+    raw_clause_count;
+    equality_literals;
+    equality_literal_ratio;
+    avg_literal_term_size;
+    unit_ratio;
+    negative_ratio;
+    axiom_selection_enabled;
+  }
 
 let read_problem_expected_status file =
   try
@@ -653,6 +725,58 @@ let result_time name results =
   | Some r -> r.time_s
   | None -> 0.0
 
+let result_profile name results =
+  match List.assoc_opt name results with
+  | Some r -> r.profile
+  | None -> ""
+
+let result_raw_clause_count name results =
+  match List.assoc_opt name results with
+  | Some r -> r.raw_clause_count
+  | None -> None
+
+let result_equality_literals name results =
+  match List.assoc_opt name results with
+  | Some r -> r.equality_literals
+  | None -> None
+
+let result_equality_literal_ratio name results =
+  match List.assoc_opt name results with
+  | Some r -> r.equality_literal_ratio
+  | None -> None
+
+let result_avg_literal_term_size name results =
+  match List.assoc_opt name results with
+  | Some r -> r.avg_literal_term_size
+  | None -> None
+
+let result_unit_ratio name results =
+  match List.assoc_opt name results with
+  | Some r -> r.unit_ratio
+  | None -> None
+
+let result_negative_ratio name results =
+  match List.assoc_opt name results with
+  | Some r -> r.negative_ratio
+  | None -> None
+
+let result_axiom_selection_enabled name results =
+  match List.assoc_opt name results with
+  | Some r -> r.axiom_selection_enabled
+  | None -> None
+
+let csv_int_opt = function
+  | None -> ""
+  | Some n -> string_of_int n
+
+let csv_float_opt = function
+  | None -> ""
+  | Some x -> Printf.sprintf "%.6f" x
+
+let csv_bool_opt = function
+  | None -> ""
+  | Some b -> string_of_bool b
+
 let percent count total =
   if total = 0 then 0.0
   else 100.0 *. float_of_int count /. float_of_int total
@@ -735,29 +859,45 @@ let write_metadata oc ~stamp ~config ~versions =
 let write_results_header oc config =
   if config.only_ip then
     Printf.fprintf oc
-      "section,problem,expected_status,rating,ip,ip_time_s\n%!"
+      "section,problem,expected_status,rating,ip,ip_time_s,ip_profile,ip_axiom_selection,ip_raw_clauses,ip_equality_literals,ip_equality_ratio,ip_avg_term,ip_unit_ratio,ip_negative_ratio\n%!"
   else
     Printf.fprintf oc
-      "section,problem,expected_status,rating,ip,ip_time_s,vampire,vampire_time_s,e,e_time_s,zenon,zenon_time_s\n%!"
+      "section,problem,expected_status,rating,ip,ip_time_s,ip_profile,ip_axiom_selection,ip_raw_clauses,ip_equality_literals,ip_equality_ratio,ip_avg_term,ip_unit_ratio,ip_negative_ratio,vampire,vampire_time_s,e,e_time_s,zenon,zenon_time_s\n%!"
 
 let write_result_row oc config row =
   let problem_name = displayed_problem config row.problem in
   if config.only_ip then
     Printf.fprintf oc
-      "result,%s,%s,%s,%s,%.6f\n%!"
+      "result,%s,%s,%s,%s,%.6f,%s,%s,%s,%s,%s,%s,%s,%s\n%!"
       (csv_escape problem_name)
       (csv_escape row.expected_status)
       (csv_escape row.rating)
       (csv_escape (result_status "ip" row.results))
       (result_time "ip" row.results)
+      (csv_escape (result_profile "ip" row.results))
+      (csv_escape (csv_bool_opt (result_axiom_selection_enabled "ip" row.results)))
+      (csv_escape (csv_int_opt (result_raw_clause_count "ip" row.results)))
+      (csv_escape (csv_int_opt (result_equality_literals "ip" row.results)))
+      (csv_escape (csv_float_opt (result_equality_literal_ratio "ip" row.results)))
+      (csv_escape (csv_float_opt (result_avg_literal_term_size "ip" row.results)))
+      (csv_escape (csv_float_opt (result_unit_ratio "ip" row.results)))
+      (csv_escape (csv_float_opt (result_negative_ratio "ip" row.results)))
   else
     Printf.fprintf oc
-      "result,%s,%s,%s,%s,%.6f,%s,%.6f,%s,%.6f,%s,%.6f\n%!"
+      "result,%s,%s,%s,%s,%.6f,%s,%s,%s,%s,%s,%s,%s,%s,%s,%.6f,%s,%.6f,%s,%.6f\n%!"
       (csv_escape problem_name)
       (csv_escape row.expected_status)
       (csv_escape row.rating)
       (csv_escape (result_status "ip" row.results))
       (result_time "ip" row.results)
+      (csv_escape (result_profile "ip" row.results))
+      (csv_escape (csv_bool_opt (result_axiom_selection_enabled "ip" row.results)))
+      (csv_escape (csv_int_opt (result_raw_clause_count "ip" row.results)))
+      (csv_escape (csv_int_opt (result_equality_literals "ip" row.results)))
+      (csv_escape (csv_float_opt (result_equality_literal_ratio "ip" row.results)))
+      (csv_escape (csv_float_opt (result_avg_literal_term_size "ip" row.results)))
+      (csv_escape (csv_float_opt (result_unit_ratio "ip" row.results)))
+      (csv_escape (csv_float_opt (result_negative_ratio "ip" row.results)))
       (csv_escape (result_status "vampire" row.results))
       (result_time "vampire" row.results)
       (csv_escape (result_status "e" row.results))
@@ -993,15 +1133,29 @@ let write_html_header oc ~stamp ~config ~versions =
     Printf.fprintf oc
       "</table><h2>Résultats</h2>\
        <table><tr>\
-       <th>Problème</th><th>Status attendu</th><th>Rating</th><th>ip</th>\
+       <th>Problème</th><th>Status attendu</th><th>Rating</th><th>ip</th><th>Profil</th>\
        </tr>%!"
   else
     Printf.fprintf oc
       "</table><h2>Résultats</h2>\
        <table><tr>\
        <th>Problème</th><th>Status attendu</th><th>Rating</th>\
-       <th>ip</th><th>Vampire</th><th>E</th><th>Zenon</th>\
+       <th>ip</th><th>Profil</th><th>Vampire</th><th>E</th><th>Zenon</th>\
        </tr>%!"
+
+let html_profile_cell results =
+  let profile = result_profile "ip" results in
+  let axiom_selection = csv_bool_opt (result_axiom_selection_enabled "ip" results) in
+  let raw_clauses = csv_int_opt (result_raw_clause_count "ip" results) in
+  let eq_ratio = csv_float_opt (result_equality_literal_ratio "ip" results) in
+  let avg_term = csv_float_opt (result_avg_literal_term_size "ip" results) in
+  Printf.sprintf
+    "<td class=\"meta\">%s<br/><small>axioms=%s raw=%s eq=%s term=%s</small></td>"
+    (html_escape profile)
+    (html_escape axiom_selection)
+    (html_escape raw_clauses)
+    (html_escape eq_ratio)
+    (html_escape avg_term)
 
 let write_html_row oc config row =
   let problem_name = displayed_problem config row.problem in
@@ -1013,22 +1167,24 @@ let write_html_row oc config row =
   in
   if config.only_ip then
     Printf.fprintf oc
-      "<tr><td>%s</td><td class=\"meta\">%s</td><td class=\"meta\">%s</td>%s</tr>\n%!"
+      "<tr><td>%s</td><td class=\"meta\">%s</td><td class=\"meta\">%s</td>%s%s</tr>\n%!"
       problem_link
       (html_escape row.expected_status)
       (html_escape row.rating)
       (html_status_cell row.expected_status
          (result_status "ip" row.results)
          (result_time "ip" row.results))
+      (html_profile_cell row.results)
   else
     Printf.fprintf oc
-      "<tr><td>%s</td><td class=\"meta\">%s</td><td class=\"meta\">%s</td>%s%s%s%s</tr>\n%!"
+      "<tr><td>%s</td><td class=\"meta\">%s</td><td class=\"meta\">%s</td>%s%s%s%s%s</tr>\n%!"
       problem_link
       (html_escape row.expected_status)
       (html_escape row.rating)
       (html_status_cell row.expected_status
          (result_status "ip" row.results)
          (result_time "ip" row.results))
+      (html_profile_cell row.results)
       (html_status_cell row.expected_status
          (result_status "vampire" row.results)
          (result_time "vampire" row.results))
@@ -1207,7 +1363,18 @@ let () =
                           file
                           prover.name
                           (Printexc.to_string exn);
-                      { status = "Error"; time_s = 0.0 }
+                      {
+                        status = "Error";
+                        time_s = 0.0;
+                        profile = "";
+                        raw_clause_count = None;
+                        equality_literals = None;
+                        equality_literal_ratio = None;
+                        avg_literal_term_size = None;
+                        unit_ratio = None;
+                        negative_ratio = None;
+                        axiom_selection_enabled = None;
+                      }
                   in
                   prover.name, r)
                 active

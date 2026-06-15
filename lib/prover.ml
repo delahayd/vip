@@ -47,6 +47,14 @@ type problem_info = {
   file : string option;
   clause_count : int;
   generated_clause_count : int;
+  profile : string;
+  raw_clause_count : int;
+  equality_literals : int;
+  equality_literal_ratio : float;
+  avg_literal_term_size : float;
+  unit_ratio : float;
+  negative_ratio : float;
+  axiom_selection_enabled : bool;
 }
 
 type outcome = {
@@ -728,6 +736,14 @@ let run_file ?(config = default_config) filename =
         file = Some filename;
         clause_count;
         generated_clause_count = 0;
+        profile = "unknown";
+        raw_clause_count = clause_count;
+        equality_literals = 0;
+        equality_literal_ratio = 0.0;
+        avg_literal_term_size = 0.0;
+        unit_ratio = 0.0;
+        negative_ratio = 0.0;
+        axiom_selection_enabled = false;
       };
       derivation = [];
       empty_clause = None;
@@ -1498,6 +1514,14 @@ let run_file ?(config = default_config) filename =
         file = Some filename;
         clause_count;
         generated_clause_count = res.stats.generated_clauses;
+        profile = string_of_problem_profile problem_profile;
+        raw_clause_count;
+        equality_literals;
+        equality_literal_ratio;
+        avg_literal_term_size;
+        unit_ratio;
+        negative_ratio;
+        axiom_selection_enabled;
       };
       derivation = res.derivation;
       empty_clause;
@@ -1520,6 +1544,14 @@ let print_szs outcome =
     "%% SZS status %s for %s\n"
     (string_of_szs_status outcome.status)
     name;
+  Printf.printf "%% profile                 : %s\n" outcome.info.profile;
+  Printf.printf "%% raw clauses             : %d\n" outcome.info.raw_clause_count;
+  Printf.printf "%% equality literals       : %d\n" outcome.info.equality_literals;
+  Printf.printf "%% equality literal ratio  : %.6f\n" outcome.info.equality_literal_ratio;
+  Printf.printf "%% avg literal term size   : %.6f\n" outcome.info.avg_literal_term_size;
+  Printf.printf "%% unit ratio              : %.6f\n" outcome.info.unit_ratio;
+  Printf.printf "%% negative ratio          : %.6f\n" outcome.info.negative_ratio;
+  Printf.printf "%% axiom selection         : %b\n" outcome.info.axiom_selection_enabled;
 
   match outcome.resolution_stats with
   | None -> ()

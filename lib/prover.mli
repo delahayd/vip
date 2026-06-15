@@ -45,6 +45,14 @@ type problem_info = {
   file : string option;
   clause_count : int;
   generated_clause_count : int;
+  profile : string;
+  raw_clause_count : int;
+  equality_literals : int;
+  equality_literal_ratio : float;
+  avg_literal_term_size : float;
+  unit_ratio : float;
+  negative_ratio : float;
+  axiom_selection_enabled : bool;
 }
 
 type outcome = {
