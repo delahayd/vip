@@ -1203,6 +1203,12 @@ let run_file ?(config = default_config) filename =
       else with_envs env (fun () -> run_stage { stage_name; engine; time_limit_s = budget })
     in
 
+    let run_remaining_stage ~stage_name ~engine ?(env = []) () =
+      let budget = remaining_time () in
+      if budget <= 0.1 then timeout_result (elapsed ())
+      else with_envs env (fun () -> run_stage { stage_name; engine; time_limit_s = budget })
+    in
+
     let run_schedule stages =
       let rec loop last = function
         | [] -> last
@@ -1354,8 +1360,90 @@ let run_file ?(config = default_config) filename =
 
     let run_feq_modern () =
       let force_feq_schedule = getenv_bool "IP_FEQ_MODERN_ALL" false in
+      let modern_general_stage name selection fraction =
+        fun () ->
+          run_profile_stage
+            ~stage_name:name
+            ~engine:Modern_deep
+            ~fraction
+            ~env:[ "IP_PASSIVE_SELECTION", Some selection ]
+            ()
+      in
+      let legacy_general_stage name fraction =
+        fun () ->
+          run_profile_stage
+            ~stage_name:name
+            ~engine:Legacy_compat
+            ~fraction
+            ()
+      in
+      let legacy_remaining_stage name =
+        fun () ->
+          run_remaining_stage
+            ~stage_name:name
+            ~engine:Legacy_compat
+            ()
+      in
+      let run_general_modern () =
+        match problem_profile with
+        | Large_general ->
+            run_schedule
+              [
+                modern_general_stage
+                  "General large modern classic"
+                  "classic"
+                  (getenv_float "IP_GENERAL_LARGE_CLASSIC_FRACTION" 0.50);
+                modern_general_stage
+                  "General large modern short"
+                  "short"
+                  (getenv_float "IP_GENERAL_LARGE_SHORT_FRACTION" 0.20);
+                modern_general_stage
+                  "General large modern weight"
+                  "weight"
+                  (getenv_float "IP_GENERAL_LARGE_WEIGHT_FRACTION" 0.10);
+                legacy_remaining_stage "General large legacy fallback";
+              ]
+        | Non_equality ->
+            run_schedule
+              [
+                legacy_general_stage
+                  "General legacy probe"
+                  (getenv_float "IP_GENERAL_LEGACY_FLASH_FRACTION" 0.25);
+                modern_general_stage
+                  "General modern classic"
+                  "classic"
+                  (getenv_float "IP_GENERAL_CLASSIC_FRACTION" 0.35);
+                modern_general_stage
+                  "General modern short"
+                  "short"
+                  (getenv_float "IP_GENERAL_SHORT_FRACTION" 0.20);
+                modern_general_stage
+                  "General modern weight"
+                  "weight"
+                  (getenv_float "IP_GENERAL_WEIGHT_FRACTION" 0.10);
+                legacy_remaining_stage "General legacy fallback";
+              ]
+        | Equality_light ->
+            run_schedule
+              [
+                legacy_general_stage
+                  "Equality-light legacy flash"
+                  (getenv_float "IP_EQUALITY_LIGHT_LEGACY_FLASH_FRACTION" 0.05);
+                modern_general_stage
+                  "Equality-light modern classic"
+                  "classic"
+                  (getenv_float "IP_EQUALITY_LIGHT_CLASSIC_FRACTION" 0.65);
+                modern_general_stage
+                  "Equality-light modern weight"
+                  "weight"
+                  (getenv_float "IP_EQUALITY_LIGHT_WEIGHT_FRACTION" 0.15);
+                legacy_remaining_stage "Equality-light legacy fallback";
+              ]
+        | Equality_heavy ->
+            run_legacy_then_modern ()
+      in
       if (not force_feq_schedule) && problem_profile <> Equality_heavy then
-        run_legacy_then_modern ()
+        run_general_modern ()
       else
         let aw_ratio =
           match Sys.getenv_opt "IP_FEQ_PASSIVE_AW_RATIO" with
