@@ -579,6 +579,18 @@ let clauses_symbols clauses =
     Types.StringSet.empty
     clauses
 
+type problem_profile =
+  | Equality_heavy
+  | Equality_light
+  | Non_equality
+  | Large_general
+
+let string_of_problem_profile = function
+  | Equality_heavy -> "equality-heavy"
+  | Equality_light -> "equality-light"
+  | Non_equality -> "non-equality"
+  | Large_general -> "large-general"
+
 let select_axioms_sine ~enabled ~check_timeout ~support axioms =
   if not enabled then
     axioms
@@ -772,21 +784,113 @@ let run_file ?(config = default_config) filename =
       if config.use_sos then (part.axioms, part.support)
       else ([], part.axioms @ part.support)
     in
-    let filename_has_component component =
-      let normalized = String.map (function '\\' -> '/' | c -> c) filename in
-      let needle = "/" ^ component ^ "/" in
-      let len = String.length normalized in
-      let nlen = String.length needle in
-      let rec search i =
-        i + nlen <= len
-        && (String.sub normalized i nlen = needle || search (i + 1))
-      in
-      search 0
+    let literal_contains_equality = function
+      | Types.Pos { pred = "="; args = [ _; _ ] }
+      | Types.Neg { pred = "="; args = [ _; _ ] } -> true
+      | _ -> false
     in
-    let feq_problem_path = filename_has_component "FEQ" in
+    let literal_is_negative = function
+      | Types.Neg _ -> true
+      | Types.Pos _ -> false
+    in
+    let term_size =
+      let rec aux = function
+        | Types.Var _ -> 1
+        | Types.Fun (_, args) ->
+            1 + List.fold_left (fun acc t -> acc + aux t) 0 args
+      in
+      aux
+    in
+    let literal_term_size = function
+      | Types.Pos a | Types.Neg a ->
+          List.fold_left (fun acc t -> acc + term_size t) 1 a.args
+    in
+    let clause_stats clauses =
+      let clause_count = List.length clauses in
+      let total_literals =
+        List.fold_left (fun acc c -> acc + List.length c) 0 clauses
+      in
+      let equality_literals =
+        List.fold_left
+          (fun acc c ->
+            acc
+            + List.fold_left
+                (fun n lit -> if literal_contains_equality lit then n + 1 else n)
+                0
+                c)
+          0
+          clauses
+      in
+      let negative_literals =
+        List.fold_left
+          (fun acc c ->
+            acc
+            + List.fold_left
+                (fun n lit -> if literal_is_negative lit then n + 1 else n)
+                0
+                c)
+          0
+          clauses
+      in
+      let unit_clauses =
+        List.fold_left (fun acc c -> if List.length c = 1 then acc + 1 else acc) 0 clauses
+      in
+      let total_term_size =
+        List.fold_left
+          (fun acc c ->
+            acc + List.fold_left (fun n lit -> n + literal_term_size lit) 0 c)
+          0
+          clauses
+      in
+      let ratio n d =
+        if d = 0 then 0.0 else float_of_int n /. float_of_int d
+      in
+      let avg_clause_len = ratio total_literals clause_count in
+      let avg_literal_term_size = ratio total_term_size total_literals in
+      let equality_literal_ratio = ratio equality_literals total_literals in
+      let negative_ratio = ratio negative_literals total_literals in
+      let unit_ratio = ratio unit_clauses clause_count in
+      ( clause_count,
+        total_literals,
+        equality_literals,
+        equality_literal_ratio,
+        avg_clause_len,
+        avg_literal_term_size,
+        negative_ratio,
+        unit_ratio )
+    in
+    let raw_all_clauses = raw_axioms @ support in
+    let ( raw_clause_count,
+          _raw_total_literals,
+          raw_equality_literals,
+          raw_equality_literal_ratio,
+          _raw_avg_clause_len,
+          raw_avg_literal_term_size,
+          _raw_negative_ratio,
+          _raw_unit_ratio ) =
+      clause_stats raw_all_clauses
+    in
+    let raw_equality_problem = raw_equality_literals > 0 in
+    let equality_heavy =
+      raw_equality_literals >= getenv_int_global "IP_PROFILE_EQ_HEAVY_MIN_LITERALS" 4
+      && raw_equality_literal_ratio
+         >= (match Sys.getenv_opt "IP_PROFILE_EQ_HEAVY_MIN_RATIO" with
+             | Some s -> (try float_of_string s with Failure _ -> 0.12)
+             | None -> 0.12)
+      && raw_avg_literal_term_size
+         >= (match Sys.getenv_opt "IP_PROFILE_EQ_HEAVY_MIN_AVG_TERM" with
+             | Some s -> (try float_of_string s with Failure _ -> 3.5)
+             | None -> 3.5)
+    in
+    let problem_profile =
+      if equality_heavy then Equality_heavy
+      else if raw_equality_problem then Equality_light
+      else if raw_clause_count >= getenv_int_global "IP_PROFILE_LARGE_MIN_CLAUSES" 500 then Large_general
+      else Non_equality
+    in
     let axiom_selection_enabled =
       getenv_bool "IP_AXIOM_SELECTION" false
-      && (feq_problem_path || getenv_bool "IP_AXIOM_SELECTION_ALL" false)
+      && (problem_profile = Equality_heavy || getenv_bool "IP_AXIOM_SELECTION_ALL" false)
     in
     let axioms =
       select_axioms_sine
@@ -857,72 +961,31 @@ let run_file ?(config = default_config) filename =
         timeout_result time_limit_s
     in
 
-    let literal_contains_equality = function
-      | Types.Pos { pred = "="; args = [ _; _ ] }
-      | Types.Neg { pred = "="; args = [ _; _ ] } -> true
-      | _ -> false
-    in
-    let clause_contains_equality c = List.exists literal_contains_equality c in
-    let equality_problem =
-      List.exists clause_contains_equality axioms
-      || List.exists clause_contains_equality support
-    in
-    let literal_is_negative = function
-      | Types.Neg _ -> true
-      | Types.Pos _ -> false
-    in
-    let term_size =
-      let rec aux = function
-        | Types.Var _ -> 1
-        | Types.Fun (_, args) ->
-            1 + List.fold_left (fun acc t -> acc + aux t) 0 args
-      in
-      aux
-    in
-    let literal_term_size = function
-      | Types.Pos a | Types.Neg a ->
-          List.fold_left (fun acc t -> acc + term_size t) 1 a.args
-    in
     let all_clauses = axioms @ support in
-    let total_literals =
-      List.fold_left (fun acc c -> acc + List.length c) 0 all_clauses
+    let ( _clause_count,
+          total_literals,
+          equality_literals,
+          equality_literal_ratio,
+          avg_clause_len,
+          avg_literal_term_size,
+          negative_ratio,
+          unit_ratio ) =
+      clause_stats all_clauses
     in
-    let negative_literals =
-      List.fold_left
-        (fun acc c ->
-          acc
-          + List.fold_left
-              (fun n lit -> if literal_is_negative lit then n + 1 else n)
-              0
-              c)
-        0
-        all_clauses
-    in
-    let unit_clauses =
-      List.fold_left (fun acc c -> if List.length c = 1 then acc + 1 else acc) 0 all_clauses
-    in
-    let total_term_size =
-      List.fold_left
-        (fun acc c -> acc + List.fold_left (fun n lit -> n + literal_term_size lit) 0 c)
-        0
-        all_clauses
-    in
-    let avg_clause_len =
-      if clause_count = 0 then 0.0
-      else float_of_int total_literals /. float_of_int clause_count
-    in
-    let avg_literal_term_size =
-      if total_literals = 0 then 0.0
-      else float_of_int total_term_size /. float_of_int total_literals
-    in
-    let negative_ratio =
-      if total_literals = 0 then 0.0
-      else float_of_int negative_literals /. float_of_int total_literals
-    in
-    let unit_ratio =
-      if clause_count = 0 then 0.0
-      else float_of_int unit_clauses /. float_of_int clause_count
-    in
+    let equality_problem = equality_literals > 0 in
+    if getenv_bool "IP_PROFILE_DEBUG" false then
+      Printf.eprintf
+        "[profile] profile=%s raw_clauses=%d clauses=%d literals=%d eq_literals=%d eq_ratio=%.3f avg_term=%.2f unit_ratio=%.2f negative_ratio=%.2f axiom_selection=%b\n%!"
+        (string_of_problem_profile problem_profile)
+        raw_clause_count
+        clause_count
+        total_literals
+        equality_literals
+        equality_literal_ratio
+        avg_literal_term_size
+        unit_ratio
+        negative_ratio
+        axiom_selection_enabled;
 
     let compat_mode () =
       if equality_problem then Resolution.Unrestricted else config.inference_mode
@@ -1275,7 +1338,7 @@ let run_file ?(config = default_config) filename =
 
     let run_feq_modern () =
       let force_feq_schedule = getenv_bool "IP_FEQ_MODERN_ALL" false in
-      if (not equality_problem) || ((not feq_problem_path) && not force_feq_schedule) then
+      if (not force_feq_schedule) && problem_profile <> Equality_heavy then
         run_legacy_then_modern ()
       else
         let aw_ratio =
@@ -1303,13 +1366,13 @@ let run_file ?(config = default_config) filename =
               run_profile_stage
                 ~stage_name:"FEQ legacy flash"
                 ~engine:Legacy_compat
-                ~fraction:(getenv_float "IP_FEQ_LEGACY_FLASH_FRACTION" 0.15)
+                ~fraction:(getenv_float "IP_FEQ_LEGACY_FLASH_FRACTION" 0.05)
                 ());
             (fun () ->
               run_profile_stage
                 ~stage_name:"FEQ stable modern"
                 ~engine:Modern_deep
-                ~fraction:(getenv_float "IP_FEQ_STABLE_FRACTION" 0.30)
+                ~fraction:(getenv_float "IP_FEQ_STABLE_FRACTION" 0.35)
                 ());
             feq_stage
               "FEQ unrestricted classic"
