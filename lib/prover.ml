@@ -20,6 +20,7 @@ type portfolio_mode =
   | Modern_compat_only
   | Feq_modern
   | Scheduled_portfolio
+  | Experimental_casc
 
 type engine_kind =
   | Legacy_compat
@@ -712,7 +713,7 @@ let select_axioms_sine ~enabled ~check_timeout ~support axioms =
                (fun (i, c, _syms) -> if Hashtbl.mem selected i then Some c else None)
       end
 
-let run_file ?(config = default_config) filename =
+let rec run_file ?(config = default_config) filename =
   reset_fresh_state ();
   Clause.reset_fresh_counter ();
   Resolution.reset_id_counter ();
@@ -1227,6 +1228,128 @@ let run_file ?(config = default_config) filename =
       | run :: tl -> loop (run ()) tl
     in
 
+    let run_experimental_subrun ~stage_name ~portfolio_mode ~fraction ?(env = []) () =
+      let budget = fraction_budget fraction in
+      if budget <= 0.1 then
+        timeout_result (elapsed ())
+      else begin
+        if config.print_derivation then
+          Printf.printf "%% Stage: %s (%.2fs, subrun)\n%!" stage_name budget;
+        with_envs env (fun () ->
+          let outcome =
+            run_file
+              ~config:
+                {
+                  config with
+                  time_limit_s = Some budget;
+                  portfolio_mode;
+                  print_derivation = false;
+                }
+              filename
+          in
+          let stop_reason =
+            match outcome.empty_clause, outcome.status with
+            | Some d, _ -> Refutation_found d
+            | None, GaveUp -> Saturation
+            | None, ResourceOut -> Clause_limit
+            | None, Timeout -> Time_limit
+            | None, _ -> Time_limit
+          in
+          {
+            Resolution.stop_reason;
+            derivation = outcome.derivation;
+            stats =
+              Option.value
+                outcome.resolution_stats
+                ~default:(empty_resolution_stats budget);
+          })
+      end
+    in
+
+    let run_experimental_casc () =
+      let small_non_equality =
+        problem_profile = Non_equality
+        && raw_clause_count
+           <= getenv_int "IP_EXPERIMENTAL_SMALL_NON_EQ_MAX_CLAUSES" 200
+        && raw_equality_literals = 0
+      in
+      let large_general = problem_profile = Large_general in
+      if small_non_equality then
+        run_schedule
+          [
+            run_experimental_subrun
+              ~stage_name:"Experimental small non-equality legacy long"
+              ~portfolio_mode:Legacy_only
+              ~fraction:
+                (getenv_float "IP_EXPERIMENTAL_SMALL_LEGACY_FRACTION" 0.75);
+            run_experimental_subrun
+              ~stage_name:"Experimental small non-equality modern classic"
+              ~portfolio_mode:Modern_only
+              ~fraction:
+                (getenv_float "IP_EXPERIMENTAL_SMALL_MODERN_FRACTION" 0.10)
+              ~env:[ "IP_PASSIVE_SELECTION", Some "classic" ];
+            run_remaining_stage
+              ~stage_name:"Experimental small non-equality stable fallback"
+              ~engine:Legacy_compat;
+          ]
+      else if large_general then
+        run_schedule
+          [
+            run_experimental_subrun
+              ~stage_name:"Experimental large SInE narrow"
+              ~portfolio_mode:Feq_modern
+              ~fraction:
+                (getenv_float "IP_EXPERIMENTAL_SINE_NARROW_FRACTION" 0.15)
+              ~env:
+                [
+                  "IP_AXIOM_SELECTION", Some "1";
+                  "IP_AXIOM_SELECTION_ALL", Some "1";
+                  "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "300";
+                  "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "128";
+                ];
+            run_experimental_subrun
+              ~stage_name:"Experimental large SInE medium"
+              ~portfolio_mode:Feq_modern
+              ~fraction:
+                (getenv_float "IP_EXPERIMENTAL_SINE_MEDIUM_FRACTION" 0.25)
+              ~env:
+                [
+                  "IP_AXIOM_SELECTION", Some "1";
+                  "IP_AXIOM_SELECTION_ALL", Some "1";
+                  "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "1000";
+                  "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "256";
+                ];
+            run_experimental_subrun
+              ~stage_name:"Experimental large SInE wide"
+              ~portfolio_mode:Feq_modern
+              ~fraction:
+                (getenv_float "IP_EXPERIMENTAL_SINE_WIDE_FRACTION" 0.25)
+              ~env:
+                [
+                  "IP_AXIOM_SELECTION", Some "1";
+                  "IP_AXIOM_SELECTION_ALL", Some "1";
+                  "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "2500";
+                  "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "512";
+                ];
+            run_experimental_subrun
+              ~stage_name:"Experimental large unselected fallback"
+              ~portfolio_mode:Feq_modern
+              ~fraction:
+                (getenv_float "IP_EXPERIMENTAL_LARGE_FULL_FRACTION" 0.25)
+              ~env:
+                [
+                  "IP_AXIOM_SELECTION", Some "0";
+                  "IP_AXIOM_SELECTION_ALL", Some "0";
+                ];
+          ]
+      else
+        run_experimental_subrun
+          ~stage_name:"Experimental stable fallback"
+          ~portfolio_mode:Feq_modern
+          ~fraction:1.0
+          ()
+    in
+
     let run_scheduled_portfolio () =
       let size_threshold = getenv_int "IP_PORTFOLIO_SIZE_THRESHOLD" 160 in
       let modern_biased_small =
@@ -1563,6 +1686,8 @@ let run_file ?(config = default_config) filename =
           run_modern_then_legacy ()
       | Feq_modern ->
           run_feq_modern ()
+      | Experimental_casc ->
+          run_experimental_casc ()
       | Legacy_only ->
           run_stage
             {
