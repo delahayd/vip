@@ -579,8 +579,8 @@ let clauses_symbols clauses =
     Types.StringSet.empty
     clauses
 
-let select_axioms_sine ~check_timeout ~support axioms =
-  if not (getenv_bool "IP_AXIOM_SELECTION" false) then
+let select_axioms_sine ~enabled ~check_timeout ~support axioms =
+  if not enabled then
     axioms
   else
     let min_axioms = getenv_int_global "IP_AXIOM_SELECTION_MIN_AXIOMS" 100 in
@@ -772,8 +772,25 @@ let run_file ?(config = default_config) filename =
       if config.use_sos then (part.axioms, part.support)
       else ([], part.axioms @ part.support)
     in
+    let filename_has_component component =
+      let normalized = String.map (function '\\' -> '/' | c -> c) filename in
+      let needle = "/" ^ component ^ "/" in
+      let len = String.length normalized in
+      let nlen = String.length needle in
+      let rec search i =
+        i + nlen <= len
+        && (String.sub normalized i nlen = needle || search (i + 1))
+      in
+      search 0
+    in
+    let feq_problem_path = filename_has_component "FEQ" in
+    let axiom_selection_enabled =
+      getenv_bool "IP_AXIOM_SELECTION" false
+      && (feq_problem_path || getenv_bool "IP_AXIOM_SELECTION_ALL" false)
+    in
     let axioms =
       select_axioms_sine
+        ~enabled:axiom_selection_enabled
         ~check_timeout:check_problem_timeout
         ~support
         raw_axioms
@@ -1257,7 +1274,8 @@ let run_file ?(config = default_config) filename =
     in
 
     let run_feq_modern () =
-      if not equality_problem then
+      let force_feq_schedule = getenv_bool "IP_FEQ_MODERN_ALL" false in
+      if (not equality_problem) || ((not feq_problem_path) && not force_feq_schedule) then
         run_legacy_then_modern ()
       else
         let aw_ratio =
@@ -1285,20 +1303,26 @@ let run_file ?(config = default_config) filename =
               run_profile_stage
                 ~stage_name:"FEQ legacy flash"
                 ~engine:Legacy_compat
-                ~fraction:(getenv_float "IP_FEQ_LEGACY_FLASH_FRACTION" 0.20)
+                ~fraction:(getenv_float "IP_FEQ_LEGACY_FLASH_FRACTION" 0.15)
+                ());
+            (fun () ->
+              run_profile_stage
+                ~stage_name:"FEQ stable modern"
+                ~engine:Modern_deep
+                ~fraction:(getenv_float "IP_FEQ_STABLE_FRACTION" 0.30)
                 ());
             feq_stage
               "FEQ unrestricted classic"
               "classic"
-              (getenv_float "IP_FEQ_CLASSIC_FRACTION" 0.52);
+              (getenv_float "IP_FEQ_CLASSIC_FRACTION" 0.30);
             feq_stage
               "FEQ unrestricted weight"
               "weight"
-              (getenv_float "IP_FEQ_WEIGHT_FRACTION" 0.20);
+              (getenv_float "IP_FEQ_WEIGHT_FRACTION" 0.15);
             feq_stage
               "FEQ unrestricted equality"
               "equality"
-              (getenv_float "IP_FEQ_EQUALITY_FRACTION" 0.20);
+              (getenv_float "IP_FEQ_EQUALITY_FRACTION" 0.10);
           ]
     in
 
