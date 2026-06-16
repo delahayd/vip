@@ -1,0 +1,12 @@
+# CASC regressions observed against the current CASC reference logs.
+# Paths are relative to the CASC FOF directory.
+FEQ/MGT039+2.p
+FNE/CSR057+2.p
+FNE/CSR062+2.p
+FNE/CSR073+2.p
+FNE/CSR073+3.p
+FNE/KRS189+1.p
+FNE/KRS233+1.p
+FNE/KRS234+1.p
+FNE/KRS251+1.p
+FNE/KRS258+1.p

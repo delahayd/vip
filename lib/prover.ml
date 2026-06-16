@@ -1278,10 +1278,19 @@ let rec run_file ?(config = default_config) filename =
         run_schedule
           [
             run_experimental_subrun
+              ~stage_name:"Experimental small non-equality modern portfolio"
+              ~portfolio_mode:Feq_modern
+              ~fraction:
+                (getenv_float
+                   "IP_EXPERIMENTAL_SMALL_MODERN_PORTFOLIO_FRACTION"
+                   0.60);
+            run_experimental_subrun
               ~stage_name:"Experimental small non-equality modern legacy-guided"
               ~portfolio_mode:Modern_only
               ~fraction:
-                (getenv_float "IP_EXPERIMENTAL_SMALL_LEGACY_GUIDED_FRACTION" 0.10)
+                (getenv_float
+                   "IP_EXPERIMENTAL_SMALL_LEGACY_GUIDED_FRACTION"
+                   0.15)
               ~env:
                 [
                   "IP_PASSIVE_SELECTION", Some "legacy";
@@ -1295,7 +1304,7 @@ let rec run_file ?(config = default_config) filename =
               ~stage_name:"Experimental small non-equality legacy fallback"
               ~portfolio_mode:Legacy_only
               ~fraction:
-                (getenv_float "IP_EXPERIMENTAL_SMALL_LEGACY_FRACTION" 0.75);
+                (getenv_float "IP_EXPERIMENTAL_SMALL_LEGACY_FRACTION" 0.25);
             run_experimental_subrun
               ~stage_name:"Experimental small non-equality modern classic"
               ~portfolio_mode:Modern_only
@@ -1742,7 +1751,10 @@ let rec run_file ?(config = default_config) filename =
               time_limit_s = stage_time total_timeout;
             }
       | Scheduled_portfolio ->
-          run_scheduled_portfolio ()
+          if getenv_bool "IP_SCHEDULED_LEGACY_SCHEDULER" false then
+            run_scheduled_portfolio ()
+          else
+            run_experimental_casc ()
       | Legacy_then_modern ->
           run_legacy_then_modern ()
     in

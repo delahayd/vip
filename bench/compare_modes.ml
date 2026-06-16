@@ -202,7 +202,7 @@ let new_summary () =
     processed = 0;
   }
 
-let update_summary summary outcome =
+let update_summary summary outcome actual_time =
   let stats = stats_of outcome in
   (if success outcome.Prover.status then summary.solved <- summary.solved + 1
    else
@@ -210,7 +210,7 @@ let update_summary summary outcome =
      | Timeout -> summary.timeout <- summary.timeout + 1
      | InputError -> summary.input_error <- summary.input_error + 1
      | _ -> summary.other_failure <- summary.other_failure + 1);
-  summary.total_time <- summary.total_time +. stats.wall_clock_s;
+  summary.total_time <- summary.total_time +. actual_time;
   summary.generated <- summary.generated + stats.generated_clauses;
   summary.processed <- summary.processed + stats.processed_clauses
 
@@ -328,7 +328,7 @@ let () =
 
   let oc = open_out !out in
   Printf.fprintf oc
-    "problem,portfolio,status,success,time_s,profile,raw_clauses,clauses,equality_literals,equality_ratio,avg_literal_term_size,unit_ratio,negative_ratio,axiom_selection,generated,processed,resolution_inferences,factoring_inferences,equality_resolution_inferences,equality_factoring_inferences,superposition_inferences,demodulation_rewrites,subsumption_tests,subsumption_rejections,avatar_enabled,avatar_splits,avatar_components,avatar_vars_used,avatar_max_vars,avatar_filtered_inferences,avatar_context_failures,avatar_sat_conflicts\n";
+    "problem,portfolio,status,success,time_s,engine_time_s,profile,raw_clauses,clauses,equality_literals,equality_ratio,avg_literal_term_size,unit_ratio,negative_ratio,axiom_selection,generated,processed,resolution_inferences,factoring_inferences,equality_resolution_inferences,equality_factoring_inferences,superposition_inferences,demodulation_rewrites,subsumption_tests,subsumption_rejections,avatar_enabled,avatar_splits,avatar_components,avatar_vars_used,avatar_max_vars,avatar_filtered_inferences,avatar_context_failures,avatar_sat_conflicts\n";
   flush oc;
 
   let total = List.length files in
@@ -344,16 +344,19 @@ let () =
       List.iter
         (fun portfolio ->
           let name = portfolio_name portfolio in
+          let started = Unix.gettimeofday () in
           let outcome = run_one ~base_config portfolio file in
+          let actual_time = Unix.gettimeofday () -. started in
           let stats = stats_of outcome in
           let info = outcome.Prover.info in
-          update_summary (Hashtbl.find summaries name) outcome;
+          update_summary (Hashtbl.find summaries name) outcome actual_time;
           Printf.fprintf oc
-            "%s,%s,%s,%b,%.6f,%s,%d,%d,%d,%.6f,%.6f,%.6f,%.6f,%b,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%b,%d,%d,%d,%d,%d,%d,%d\n"
+            "%s,%s,%s,%b,%.6f,%.6f,%s,%d,%d,%d,%.6f,%.6f,%.6f,%.6f,%b,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%b,%d,%d,%d,%d,%d,%d,%d\n"
             (csv_escape problem)
             (csv_escape name)
             (csv_escape (status_string outcome.status))
             (success outcome.status)
+            actual_time
             stats.wall_clock_s
             (csv_escape info.profile)
             info.raw_clause_count
@@ -386,7 +389,7 @@ let () =
           Printf.eprintf "      %-18s %s %.3fs gen=%d proc=%d\n%!"
             name
             (status_string outcome.status)
-            stats.wall_clock_s
+            actual_time
             stats.generated_clauses
             stats.processed_clauses)
         !portfolios)
