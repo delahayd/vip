@@ -1286,6 +1286,8 @@ let rec run_file ?(config = default_config) filename =
                 [
                   "IP_PASSIVE_SELECTION", Some "legacy";
                   "IP_LITERAL_SELECTION", Some "legacy";
+                  "IP_RESOLUTION_LITERAL_SELECTION", Some "legacy";
+                  "IP_LEGACY_SUBSUMPTION", Some "1";
                   "IP_FAST_CONDENSATION", Some "0";
                   "IP_FORWARD_SUBSUMPTION_RESOLUTION", Some "0";
                 ];

@@ -414,19 +414,33 @@ let resolve_two_clauses ~check_timeout ~emulate_v1 ~mode c1 c2 =
   let c1_renamed = rename_clause_apart c1 in
   let c2_renamed = rename_clause_apart c2 in
   let results = ref [] in
-  List.iteri
-    (fun i _ ->
+  let legacy_resolution_literals =
+    match Sys.getenv_opt "IP_RESOLUTION_LITERAL_SELECTION" with
+    | Some s -> String.equal (String.lowercase_ascii (String.trim s)) "legacy"
+    | None ->
+        begin
+          match Sys.getenv_opt "IP_LEGACY_RESOLUTION_LITERALS" with
+          | Some "1" | Some "true" | Some "TRUE" | Some "yes" | Some "YES" -> true
+          | _ -> false
+        end
+  in
+  let active_indices c =
+    if legacy_resolution_literals then all_indices c
+    else
+      all_indices c
+      |> List.filter (fun i -> is_active_literal ~emulate_v1 mode c i)
+  in
+  List.iter
+    (fun i ->
       check_timeout ();
-      if is_active_literal ~emulate_v1 mode c1 i then
-        List.iteri
-          (fun j _ ->
-            check_timeout ();
-            if is_active_literal ~emulate_v1 mode c2 j then
-              match resolve_pair c1_renamed c2_renamed i j with
-              | Some c -> results := c :: !results
-              | None -> ())
-          c2)
-    c1;
+      List.iter
+        (fun j ->
+          check_timeout ();
+          match resolve_pair c1_renamed c2_renamed i j with
+          | Some c -> results := c :: !results
+          | None -> ())
+        (active_indices c2))
+    (active_indices c1);
   dedup_clauses ~check_timeout !results
 
 let factor_pairs_unrestricted ~check_timeout c =
@@ -988,6 +1002,12 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let forward_subsumption_resolution_enabled =
     (not emulate_v1) && expensive_simplifications && getenv_bool "IP_FORWARD_SUBSUMPTION_RESOLUTION" true
   in
+  let legacy_candidate_pool =
+    (not emulate_v1) && getenv_bool "IP_LEGACY_CANDIDATE_POOL" false
+  in
+  let legacy_subsumption =
+    (not emulate_v1) && getenv_bool "IP_LEGACY_SUBSUMPTION" false
+  in
   let simplify_clause_modern c =
     if full_condensation_enabled then full_condense_clause c
     else if fast_condensation_enabled then fast_condense_clause c
@@ -1229,7 +1249,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
 
   let is_subsumed_by ?(ignore_id = -1) ?(context = []) _ c =
     let context = normalize_context context in
-    if emulate_v1 then
+    if emulate_v1 || legacy_subsumption then
       let c_norm = normalize_clause c in
       List.exists
         (fun d ->
@@ -1253,6 +1273,15 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
       aux candidates
   in
 
+  let index_clause_for_inference d =
+    Discrimination_index.add_clause literal_index ~clause_id:d.id d.clause_d;
+    Term_index.add_clause
+      term_index
+      ~clause_id:d.id
+      ~orientation_mode:(term_index_orientation_mode mode)
+      d.clause_d
+  in
+
   let delete_derived d =
     Hashtbl.remove all_by_id d.id;
     Feature_vector.remove fv_index d.id;
@@ -1273,7 +1302,9 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     in
     incr next_passive_id;
     passive := entry :: !passive;
-    Feature_vector.add fv_index d.clause_d d.id
+    Feature_vector.add fv_index d.clause_d d.id;
+    if legacy_candidate_pool then
+      index_clause_for_inference d
   in
 
   let rec add_clause ?(context = []) ?(allow_split = true) ~parents ~rule c =
@@ -1570,16 +1601,11 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   in
 
   let index_active_clause d =
-    Discrimination_index.add_clause literal_index ~clause_id:d.id d.clause_d;
-    Term_index.add_clause
-      term_index
-      ~clause_id:d.id
-      ~orientation_mode:(term_index_orientation_mode mode)
-      d.clause_d
+    index_clause_for_inference d
   in
 
   let backward_subsume given =
-    if emulate_v1 then
+    if emulate_v1 || legacy_subsumption then
       let given_norm = normalize_clause given.clause_d in
       let kept_active = ref [] in
       List.iter
