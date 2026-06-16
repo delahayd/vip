@@ -1278,7 +1278,19 @@ let rec run_file ?(config = default_config) filename =
         run_schedule
           [
             run_experimental_subrun
-              ~stage_name:"Experimental small non-equality legacy long"
+              ~stage_name:"Experimental small non-equality modern legacy-guided"
+              ~portfolio_mode:Modern_only
+              ~fraction:
+                (getenv_float "IP_EXPERIMENTAL_SMALL_LEGACY_GUIDED_FRACTION" 0.10)
+              ~env:
+                [
+                  "IP_PASSIVE_SELECTION", Some "legacy";
+                  "IP_LITERAL_SELECTION", Some "legacy";
+                  "IP_FAST_CONDENSATION", Some "0";
+                  "IP_FORWARD_SUBSUMPTION_RESOLUTION", Some "0";
+                ];
+            run_experimental_subrun
+              ~stage_name:"Experimental small non-equality legacy fallback"
               ~portfolio_mode:Legacy_only
               ~fraction:
                 (getenv_float "IP_EXPERIMENTAL_SMALL_LEGACY_FRACTION" 0.75);

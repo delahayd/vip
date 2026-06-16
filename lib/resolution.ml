@@ -276,13 +276,20 @@ let negative_indices c =
   |> List.map fst
 
 let selected_or_maximal_indices ~emulate_v1 c =
+  let legacy_literal_selection =
+    emulate_v1
+    ||
+    match Sys.getenv_opt "IP_LITERAL_SELECTION" with
+    | Some s -> String.equal (String.lowercase_ascii (String.trim s)) "legacy"
+    | None -> false
+  in
   let negs = negative_indices c in
   if negs <> [] then
-    if emulate_v1 then negs
+    if legacy_literal_selection then negs
     else
       (* Efficient selection: pick only the first negative literal. *)
       [ List.hd negs ]
-  else if emulate_v1 then
+  else if legacy_literal_selection then
     Ordering.maximal_literal_indices c
   else
     all_indices c
@@ -1448,6 +1455,10 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     let vars = clause_var_count c in
     let age_relief = e.age / 32 in
     match mode with
+    | "legacy" ->
+        let negative_bonus = if clause_has_negative c then 500 else 0 in
+        let equality_penalty = if clause_has_equality c then 25 else 0 in
+        (len * 1000) + equality_penalty - negative_bonus + (e.age / 4)
     | "short" -> (len * 100) + e.weight + (vars * 8) - age_relief
     | "syn" ->
         let negative_bonus = if clause_has_negative c then 12 else 0 in
