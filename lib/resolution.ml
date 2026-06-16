@@ -197,7 +197,7 @@ module Prop_sat = struct
     Hashtbl.iter (fun k v -> Hashtbl.add copy k v) assign;
     copy
 
-  let model st assumptions =
+  let model ?(prefer_false = false) st assumptions =
     let clauses = List.map (fun lit -> [ lit ]) assumptions @ !(st.clauses) in
     let vars = vars_of_clauses clauses in
     let rec search assign =
@@ -206,14 +206,17 @@ module Prop_sat = struct
         match List.find_opt (fun v -> not (Hashtbl.mem assign v)) vars with
         | None -> Some assign
         | Some v ->
-            let assign_true = copy_assign assign in
-            Hashtbl.add assign_true v true;
-            (match search assign_true with
+            let first_value, second_value =
+              if prefer_false then (false, true) else (true, false)
+            in
+            let assign_first = copy_assign assign in
+            Hashtbl.add assign_first v first_value;
+            (match search assign_first with
              | Some _ as m -> m
              | None ->
-                 let assign_false = copy_assign assign in
-                 Hashtbl.add assign_false v false;
-                 search assign_false)
+                 let assign_second = copy_assign assign in
+                 Hashtbl.add assign_second v second_value;
+                 search assign_second)
     in
     search (Hashtbl.create 17)
 
@@ -957,6 +960,9 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let avatar_max_component_percent = getenv_int "IP_AVATAR_MAX_COMPONENT_PERCENT" 80 in
   (* Context clauses are useful, but they should not starve the classical path. *)
   let avatar_context_penalty = getenv_int "IP_AVATAR_CONTEXT_PENALTY" 64 in
+  let avatar_model_false_first =
+    getenv_bool "IP_AVATAR_MODEL_FALSE_FIRST" true
+  in
   let fast_condensation_enabled =
     (not emulate_v1) && expensive_simplifications && getenv_bool "IP_FAST_CONDENSATION" true
   in
@@ -1033,7 +1039,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let refresh_avatar_model () =
     if avatar_enabled then begin
       incr avatar_sat_solves;
-      match Prop_sat.model sat [] with
+      match Prop_sat.model ~prefer_false:avatar_model_false_first sat [] with
       | Some model ->
           current_model := Some model;
           sat_unsat := false
@@ -1894,4 +1900,3 @@ let test_resolve mode c1 c2 =
 
 let test_factor mode c =
   factor_by_mode ~check_timeout:(fun () -> ()) ~emulate_v1:false mode c
-

@@ -1346,8 +1346,26 @@ let rec run_file ?(config = default_config) filename =
         run_experimental_subrun
           ~stage_name:"Experimental stable fallback"
           ~portfolio_mode:Feq_modern
-          ~fraction:1.0
+          ~fraction:(getenv_float "IP_EXPERIMENTAL_STABLE_FRACTION" 0.70)
           ()
+        |> fun first ->
+        match first.stop_reason with
+        | Refutation_found _ -> first
+        | Saturation | Time_limit | Clause_limit ->
+            run_remaining_stage
+              ~stage_name:"Experimental AVATAR fallback"
+              ~engine:Modern_deep
+              ~env:
+                [
+                  "IP_AVATAR_SPLITTING", Some "1";
+                  "IP_AVATAR_GROUND_ONLY", Some "0";
+                  "IP_AVATAR_KEEP_ORIGINAL", Some "1";
+                  "IP_AVATAR_MIN_SPLIT", Some "4";
+                  "IP_AVATAR_MAX_SPLIT_VARS", Some "8";
+                  "IP_AVATAR_MAX_SPLIT_VARS_PER_CLAUSE", Some "3";
+                  "IP_AVATAR_MODEL_FALSE_FIRST", Some "1";
+                ]
+              ()
     in
 
     let run_scheduled_portfolio () =
