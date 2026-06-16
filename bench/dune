@@ -11,6 +11,10 @@
  (libraries prover_lib unix))
 
 (executable
+ (name compare_modes)
+ (libraries prover_lib unix))
+
+(executable
  (name profile_problems)
  (libraries prover_lib unix))
 
