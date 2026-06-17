@@ -1418,6 +1418,39 @@ let rec run_file ?(config = default_config) filename =
                   "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "512";
                 ];
           ]
+      else if problem_profile = Equality_heavy
+              && raw_clause_count
+                 >= getenv_int "IP_EXPERIMENTAL_EQ_HEAVY_SINE_MIN_CLAUSES" 500 then
+        run_schedule
+          [
+            run_experimental_subrun
+              ~stage_name:"Experimental equality-heavy SInE narrow"
+              ~portfolio_mode:Feq_modern
+              ~fraction:
+                (getenv_float
+                   "IP_EXPERIMENTAL_EQ_HEAVY_SINE_FRACTION"
+                   0.25)
+              ~env:
+                [
+                  "IP_AXIOM_SELECTION", Some "1";
+                  "IP_AXIOM_SELECTION_ALL", Some "1";
+                  "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "300";
+                  "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "128";
+                ];
+            run_experimental_subrun
+              ~stage_name:"Experimental equality-heavy full fallback"
+              ~portfolio_mode:Feq_modern
+              ~fraction:
+                (getenv_float
+                   "IP_EXPERIMENTAL_EQ_HEAVY_FULL_FRACTION"
+                   0.50)
+              ~env:
+                [
+                  "IP_AXIOM_SELECTION", Some "0";
+                  "IP_AXIOM_SELECTION_ALL", Some "0";
+                ];
+            (fun () -> avatar_fallback ());
+          ]
       else if problem_profile = Equality_light then
         run_experimental_subrun
           ~stage_name:"Experimental equality-light FEQ full schedule"
