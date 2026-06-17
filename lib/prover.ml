@@ -1273,8 +1273,45 @@ let rec run_file ?(config = default_config) filename =
            <= getenv_int "IP_EXPERIMENTAL_SMALL_NON_EQ_MAX_CLAUSES" 200
         && raw_equality_literals = 0
       in
+      let compact_non_unit_non_equality =
+        small_non_equality
+        && raw_clause_count
+           <= getenv_int "IP_EXPERIMENTAL_COMPACT_NON_UNIT_MAX_CLAUSES" 30
+        && unit_ratio <= getenv_float "IP_EXPERIMENTAL_COMPACT_NON_UNIT_MAX_UNIT_RATIO" 0.05
+      in
       let large_general = problem_profile = Large_general in
-      if small_non_equality then
+      if compact_non_unit_non_equality then
+        run_schedule
+          [
+            run_experimental_subrun
+              ~stage_name:"Experimental compact non-unit modern"
+              ~portfolio_mode:Modern_only
+              ~fraction:
+                (getenv_float
+                   "IP_EXPERIMENTAL_COMPACT_NON_UNIT_MODERN_FRACTION"
+                   0.85)
+              ~env:[ "IP_PASSIVE_SELECTION", Some "classic" ];
+            run_experimental_subrun
+              ~stage_name:"Experimental compact non-unit legacy-guided"
+              ~portfolio_mode:Modern_only
+              ~fraction:
+                (getenv_float
+                   "IP_EXPERIMENTAL_COMPACT_NON_UNIT_LEGACY_GUIDED_FRACTION"
+                   0.10)
+              ~env:
+                [
+                  "IP_PASSIVE_SELECTION", Some "legacy";
+                  "IP_LITERAL_SELECTION", Some "legacy";
+                  "IP_RESOLUTION_LITERAL_SELECTION", Some "legacy";
+                  "IP_LEGACY_SUBSUMPTION", Some "1";
+                  "IP_FAST_CONDENSATION", Some "0";
+                  "IP_FORWARD_SUBSUMPTION_RESOLUTION", Some "0";
+                ];
+            run_remaining_stage
+              ~stage_name:"Experimental compact non-unit legacy fallback"
+              ~engine:Legacy_compat;
+          ]
+      else if small_non_equality then
         run_schedule
           [
             run_experimental_subrun
