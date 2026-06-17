@@ -1279,6 +1279,22 @@ let rec run_file ?(config = default_config) filename =
            <= getenv_int "IP_EXPERIMENTAL_COMPACT_NON_UNIT_MAX_CLAUSES" 30
         && unit_ratio <= getenv_float "IP_EXPERIMENTAL_COMPACT_NON_UNIT_MAX_UNIT_RATIO" 0.05
       in
+      let avatar_fallback () =
+        run_remaining_stage
+          ~stage_name:"Experimental AVATAR fallback"
+          ~engine:Modern_deep
+          ~env:
+            [
+              "IP_AVATAR_SPLITTING", Some "1";
+              "IP_AVATAR_GROUND_ONLY", Some "0";
+              "IP_AVATAR_KEEP_ORIGINAL", Some "1";
+              "IP_AVATAR_MIN_SPLIT", Some "4";
+              "IP_AVATAR_MAX_SPLIT_VARS", Some "8";
+              "IP_AVATAR_MAX_SPLIT_VARS_PER_CLAUSE", Some "3";
+              "IP_AVATAR_MODEL_FALSE_FIRST", Some "1";
+            ]
+          ()
+      in
       let large_general = problem_profile = Large_general in
       if compact_non_unit_non_equality then
         run_schedule
@@ -1402,6 +1418,22 @@ let rec run_file ?(config = default_config) filename =
                   "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "512";
                 ];
           ]
+      else if problem_profile = Equality_light then
+        run_experimental_subrun
+          ~stage_name:"Experimental equality-light FEQ full schedule"
+          ~portfolio_mode:Feq_modern
+          ~fraction:
+            (getenv_float
+               "IP_EXPERIMENTAL_EQUALITY_LIGHT_FEQ_ALL_FRACTION"
+               0.70)
+          ~env:[ "IP_FEQ_MODERN_ALL", Some "1" ]
+          ()
+        |> fun first ->
+        begin
+          match first.stop_reason with
+          | Refutation_found _ -> first
+          | Saturation | Time_limit | Clause_limit -> avatar_fallback ()
+        end
       else
         run_experimental_subrun
           ~stage_name:"Experimental stable fallback"
@@ -1412,20 +1444,7 @@ let rec run_file ?(config = default_config) filename =
         match first.stop_reason with
         | Refutation_found _ -> first
         | Saturation | Time_limit | Clause_limit ->
-            run_remaining_stage
-              ~stage_name:"Experimental AVATAR fallback"
-              ~engine:Modern_deep
-              ~env:
-                [
-                  "IP_AVATAR_SPLITTING", Some "1";
-                  "IP_AVATAR_GROUND_ONLY", Some "0";
-                  "IP_AVATAR_KEEP_ORIGINAL", Some "1";
-                  "IP_AVATAR_MIN_SPLIT", Some "4";
-                  "IP_AVATAR_MAX_SPLIT_VARS", Some "8";
-                  "IP_AVATAR_MAX_SPLIT_VARS_PER_CLAUSE", Some "3";
-                  "IP_AVATAR_MODEL_FALSE_FIRST", Some "1";
-                ]
-              ()
+            avatar_fallback ()
     in
 
     let run_scheduled_portfolio () =

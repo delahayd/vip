@@ -1,0 +1,19 @@
+# Representative CASC gains/lost-gains used for local portfolio calibration.
+# Paths are relative to the CASC FOF directory.
+FEQ/ALG210+2.p
+FEQ/COM125+1.p
+FEQ/CSR058+4.p
+FEQ/CSR069+4.p
+FEQ/GEO495+1.p
+FEQ/GEO500+1.p
+FEQ/HAL001+1.p
+FEQ/ITP004+4.p
+FEQ/LAT350+1.p
+FEQ/NUM587+1.p
+FEQ/SET144+3.p
+FEQ/SWV451+1.p
+FEQ/SWV480+1.p
+FEQ/SWW474+2.p
+FNE/COM008+1.p
+FNE/CSR115+91.p
+FNE/SYN353+1.p

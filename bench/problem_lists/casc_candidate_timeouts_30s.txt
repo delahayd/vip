@@ -1,0 +1,10 @@
+# Candidate wins that timeout locally with the current experimental-casc budget at 30s.
+# Paths are relative to the CASC FOF directory.
+FEQ/COM125+1.p
+FEQ/CSR058+4.p
+FEQ/CSR069+4.p
+FEQ/GEO495+1.p
+FEQ/LAT350+1.p
+FEQ/SWW474+2.p
+FNE/COM008+1.p
+FNE/CSR115+91.p
