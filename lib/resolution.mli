@@ -96,10 +96,11 @@ val run_resolution :
   run_result
 
 val print_derivation : derived list -> unit
+val tstp_derivation : derived list -> string
+val print_tstp_derivation : derived list -> unit
 
 (** Internal functions exposed for unit testing ONLY *)
 val test_resolve : inference_mode -> clause -> clause -> clause list
 val test_factor : inference_mode -> clause -> clause list
 val equality_resolution : check_timeout:(unit -> unit) -> emulate_v1:bool -> inference_mode -> clause -> clause list
 val equality_factoring : check_timeout:(unit -> unit) -> emulate_v1:bool -> inference_mode -> clause -> clause list
-

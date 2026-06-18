@@ -1932,6 +1932,118 @@ let print_derivation deriveds =
         (string_of_clause d.clause_d))
     deriveds
 
+let tptp_needs_quotes s =
+  let is_lower = function 'a' .. 'z' -> true | _ -> false in
+  let is_ident_char = function
+    | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' -> true
+    | _ -> false
+  in
+  String.length s = 0
+  || not (is_lower s.[0])
+  || not (String.for_all is_ident_char s)
+
+let tptp_quote s =
+  let b = Buffer.create (String.length s + 2) in
+  Buffer.add_char b '\'';
+  String.iter
+    (function
+      | '\'' -> Buffer.add_string b "\\'"
+      | '\\' -> Buffer.add_string b "\\\\"
+      | c -> Buffer.add_char b c)
+    s;
+  Buffer.add_char b '\'';
+  Buffer.contents b
+
+let tptp_name s =
+  if tptp_needs_quotes s then tptp_quote s else s
+
+let tptp_var_name v =
+  if String.length v > 0 then
+    match v.[0] with
+    | 'A' .. 'Z' -> v
+    | '_' -> v
+    | _ -> String.capitalize_ascii v
+  else
+    "V"
+
+let rec tptp_term = function
+  | Var v -> tptp_var_name v
+  | Fun (f, []) -> tptp_name f
+  | Fun (f, args) ->
+      Printf.sprintf
+        "%s(%s)"
+        (tptp_name f)
+        (String.concat "," (List.map tptp_term args))
+
+let tptp_atom a =
+  match a.pred, a.args with
+  | "=", [lhs; rhs] ->
+      Printf.sprintf "%s = %s" (tptp_term lhs) (tptp_term rhs)
+  | _, [] -> tptp_name a.pred
+  | _ ->
+      Printf.sprintf
+        "%s(%s)"
+        (tptp_name a.pred)
+        (String.concat "," (List.map tptp_term a.args))
+
+let tptp_literal = function
+  | Pos a -> tptp_atom a
+  | Neg { pred = "="; args = [lhs; rhs] } ->
+      Printf.sprintf "%s != %s" (tptp_term lhs) (tptp_term rhs)
+  | Neg a -> Printf.sprintf "~(%s)" (tptp_atom a)
+
+let tptp_clause c =
+  match canonicalize_clause_vars c with
+  | [] -> "$false"
+  | [lit] -> tptp_literal lit
+  | lits -> String.concat " | " (List.map tptp_literal lits)
+
+let tptp_rule_name rule =
+  let b = Buffer.create (String.length rule) in
+  String.iter
+    (fun c ->
+      match c with
+      | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' -> Buffer.add_char b (Char.lowercase_ascii c)
+      | _ -> Buffer.add_char b '_')
+    rule;
+  let s = Buffer.contents b in
+  if s = "" then "plain" else s
+
+let tptp_clause_name id =
+  Printf.sprintf "ip_%d" id
+
+let tstp_derivation deriveds =
+  let b = Buffer.create 4096 in
+  Printf.bprintf b "%% SZS output start CNFRefutation\n";
+  List.iter
+    (fun d ->
+      let name = tptp_clause_name d.id in
+      let role = if d.parents = [] then "axiom" else "plain" in
+      let clause = tptp_clause d.clause_d in
+      match d.parents with
+      | [] ->
+          Printf.bprintf b "cnf(%s,%s,(%s)).\n" name role clause
+      | ps ->
+          let parents =
+            ps
+            |> List.map tptp_clause_name
+            |> String.concat ","
+          in
+          Printf.bprintf
+            b
+            "cnf(%s,%s,(%s),inference(%s,[],[%s])).\n"
+            name
+            role
+            clause
+            (tptp_rule_name d.rule)
+            parents)
+    deriveds;
+  Printf.bprintf b "%% SZS output end CNFRefutation\n";
+  Buffer.contents b
+
+let print_tstp_derivation deriveds =
+  print_string (tstp_derivation deriveds)
+
 let test_resolve mode c1 c2 =
   resolve_two_clauses ~check_timeout:(fun () -> ()) ~emulate_v1:false ~mode c1 c2
 

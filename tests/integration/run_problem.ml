@@ -77,6 +77,34 @@ let check_derivation_present file () =
            file
            (string_of_szs_status result.status))
 
+let contains_substring haystack needle =
+  let h_len = String.length haystack in
+  let n_len = String.length needle in
+  let rec loop i =
+    if i + n_len > h_len then false
+    else if String.sub haystack i n_len = needle then true
+    else loop (i + 1)
+  in
+  n_len = 0 || loop 0
+
+let check_tstp_derivation file () =
+  let result = run_file ~config:config (path file) in
+  match result.status with
+  | Unsatisfiable | Theorem ->
+      let proof = Resolution.tstp_derivation result.derivation in
+      check bool "tstp start marker" true
+        (contains_substring proof "% SZS output start CNFRefutation");
+      check bool "contains cnf" true
+        (contains_substring proof "cnf(");
+      check bool "contains inference" true
+        (contains_substring proof "inference(")
+  | _ ->
+      fail
+        (Printf.sprintf
+           "expected proof-producing result for %s, got %s"
+           file
+           (string_of_szs_status result.status))
+
 let () =
   run "integration"
     [
@@ -87,5 +115,6 @@ let () =
           test_case "sat or unknown" `Quick (expect_not_refuted "sat_01.p");
           test_case "stats present" `Quick (check_stats_present "unsat_01.p");
           test_case "derivation present" `Quick (check_derivation_present "unsat_01.p");
+          test_case "tstp derivation present" `Quick (check_tstp_derivation "unsat_01.p");
         ] );
     ]

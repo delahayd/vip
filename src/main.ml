@@ -85,8 +85,13 @@ let play_timeout_safely () =
 
 let usage () =
   prerr_endline
-    "Usage: ip [--version] [--duke] [--proof] [--time-limit SECONDS] [--max-clauses N] [--mode MODE] [--portfolio legacy-modern|modern-legacy|legacy-only|modern-only|modern-compat-only|scheduled|feq-modern|experimental-casc|casc-aggressive] [--tptp DIR] [--sos|--no-sos] FILE";
+    "Usage: ip [--version] [--duke] [--proof] [--proof-format none|internal|tstp] [--proof-tstp] [--time-limit SECONDS] [--max-clauses N] [--mode MODE] [--portfolio legacy-modern|modern-legacy|legacy-only|modern-only|modern-compat-only|scheduled|feq-modern|experimental-casc|casc-aggressive] [--tptp DIR] [--sos|--no-sos] FILE";
   exit 2
+
+type proof_format =
+  | No_proof
+  | Internal
+  | Tstp
 
 let mode_of_string = function
   | "unrestricted" -> Prover_lib.Resolution.Unrestricted
@@ -114,9 +119,17 @@ let portfolio_of_string = function
       prerr_endline ("Unknown portfolio mode: " ^ s);
       usage ()
 
+let proof_format_of_string = function
+  | "none" | "off" | "false" -> No_proof
+  | "internal" | "trace" -> Internal
+  | "tstp" -> Tstp
+  | s ->
+      prerr_endline ("Unknown proof format: " ^ s);
+      usage ()
+
 let parse_args () =
   let file = ref None in
-  let print_derivation = ref false in
+  let proof_format = ref No_proof in
   let time_limit_s = ref None in
   let max_generated_clauses = ref None in
   let inference_mode = ref Prover_lib.Resolution.Ordered_with_fallback in
@@ -147,8 +160,17 @@ let parse_args () =
           loop (i + 1)
 
       | "--proof" ->
-          print_derivation := true;
+          proof_format := Internal;
           loop (i + 1)
+
+      | "--proof-tstp" ->
+          proof_format := Tstp;
+          loop (i + 1)
+
+      | "--proof-format" ->
+          if i + 1 >= Array.length Sys.argv then usage ();
+          proof_format := proof_format_of_string Sys.argv.(i + 1);
+          loop (i + 2)
 
       | "--time-limit" ->
           if i + 1 >= Array.length Sys.argv then usage ();
@@ -212,20 +234,21 @@ let parse_args () =
             {
               Prover_lib.Prover.time_limit_s = !time_limit_s;
               max_generated_clauses = !max_generated_clauses;
-              print_derivation = !print_derivation;
+              print_derivation = !proof_format = Internal;
               inference_mode = !inference_mode;
               tptp_dir = !tptp_dir;
               use_sos = !use_sos;
               portfolio_mode = !portfolio_mode;
             },
-            !duke )
+            !duke,
+            !proof_format )
 
 let () =
   match parse_args () with
   | `Version ->
       print_version ()
 
-  | `Run (filename, config, duke) ->
+  | `Run (filename, config, duke, proof_format) ->
       let duke = check_duke_dependencies duke in
       try
         let outcome = Prover_lib.Prover.run_file ~config filename in
@@ -238,9 +261,20 @@ let () =
           | _ -> ()
         end;
 
-        if config.Prover_lib.Prover.print_derivation then begin
-          print_endline "% Proof trace:";
-          Prover_lib.Resolution.print_derivation outcome.derivation
+        begin
+          match proof_format with
+          | No_proof -> ()
+          | Internal ->
+              print_endline "% Proof trace:";
+              Prover_lib.Resolution.print_derivation outcome.derivation
+          | Tstp ->
+              begin
+                match outcome.Prover_lib.Prover.empty_clause with
+                | Some _ ->
+                    Prover_lib.Resolution.print_tstp_derivation outcome.derivation
+                | None ->
+                    print_endline "% No refutation proof available."
+              end
         end
       with
       | Prover_lib.Resolution.Timeout_hit ->
