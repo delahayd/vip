@@ -2086,7 +2086,7 @@ let rec run_file ?(config = default_config) filename =
       ignore (Unix.alarm 0);
       timeout_outcome (elapsed ())
 
-let print_szs outcome =
+let print_szs ?(verbose = true) outcome =
   let name =
     match outcome.info.file with
     | Some f -> f
@@ -2097,6 +2097,9 @@ let print_szs outcome =
     "%% SZS status %s for %s\n"
     (string_of_szs_status outcome.status)
     name;
+  if not verbose then
+    ()
+  else begin
   Printf.printf "%% profile                 : %s\n" outcome.info.profile;
   Printf.printf "%% raw clauses             : %d\n" outcome.info.raw_clause_count;
   Printf.printf "%% equality literals       : %d\n" outcome.info.equality_literals;
@@ -2141,3 +2144,4 @@ let print_szs outcome =
         Printf.printf "%% avatar sat conflicts    : %d\n" s.avatar_sat_conflicts
       end;
       Printf.printf "%% wall clock seconds      : %.6f\n" s.wall_clock_s
+  end

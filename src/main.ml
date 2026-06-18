@@ -85,7 +85,7 @@ let play_timeout_safely () =
 
 let usage () =
   prerr_endline
-    "Usage: ip [--version] [--duke] [--proof] [--proof-format none|internal|tstp] [--proof-tstp] [--time-limit SECONDS] [--max-clauses N] [--mode MODE] [--portfolio legacy-modern|modern-legacy|legacy-only|modern-only|modern-compat-only|scheduled|feq-modern|experimental-casc|casc-aggressive] [--tptp DIR] [--sos|--no-sos] FILE";
+    "Usage: ip [--version] [--duke] [--proof] [--proof-format none|internal|tstp] [--proof-tstp] [--competition-output] [--time-limit SECONDS] [--max-clauses N] [--mode MODE] [--portfolio legacy-modern|modern-legacy|legacy-only|modern-only|modern-compat-only|scheduled|feq-modern|experimental-casc|casc-aggressive] [--tptp DIR] [--sos|--no-sos] FILE";
   exit 2
 
 type proof_format =
@@ -138,6 +138,7 @@ let parse_args () =
   let tptp_dir = ref None in
   let use_sos = ref true in
   let portfolio_mode = ref Prover_lib.Prover.Legacy_then_modern in
+  let competition_output = ref false in
 
   let rec loop i =
     if i >= Array.length Sys.argv then ()
@@ -171,6 +172,11 @@ let parse_args () =
           if i + 1 >= Array.length Sys.argv then usage ();
           proof_format := proof_format_of_string Sys.argv.(i + 1);
           loop (i + 2)
+
+      | "--competition-output" | "--casc-output" ->
+          competition_output := true;
+          proof_format := Tstp;
+          loop (i + 1)
 
       | "--time-limit" ->
           if i + 1 >= Array.length Sys.argv then usage ();
@@ -241,18 +247,19 @@ let parse_args () =
               portfolio_mode = !portfolio_mode;
             },
             !duke,
-            !proof_format )
+            !proof_format,
+            !competition_output )
 
 let () =
   match parse_args () with
   | `Version ->
       print_version ()
 
-  | `Run (filename, config, duke, proof_format) ->
+  | `Run (filename, config, duke, proof_format, competition_output) ->
       let duke = check_duke_dependencies duke in
       try
         let outcome = Prover_lib.Prover.run_file ~config filename in
-        Prover_lib.Prover.print_szs outcome;
+        Prover_lib.Prover.print_szs ~verbose:(not competition_output) outcome;
 
         if duke then begin
           match outcome.Prover_lib.Prover.status with
@@ -271,9 +278,12 @@ let () =
               begin
                 match outcome.Prover_lib.Prover.empty_clause with
                 | Some _ ->
-                    Prover_lib.Resolution.print_tstp_derivation outcome.derivation
+                    Prover_lib.Resolution.print_tstp_derivation
+                      ~problem:filename
+                      outcome.derivation
                 | None ->
-                    print_endline "% No refutation proof available."
+                    if not competition_output then
+                      print_endline "% No refutation proof available."
               end
         end
       with
@@ -281,5 +291,7 @@ let () =
 	  Printf.printf "%% SZS status Timeout for %s\n%!" filename;
 	  if duke then play_timeout_safely ()
       | exn ->
-          Printf.eprintf "InputError %s\n" (Printexc.to_string exn);
+          Printf.printf "%% SZS status InputError for %s\n%!" filename;
+          if not competition_output then
+            Printf.printf "%% InputError %s\n%!" (Printexc.to_string exn);
           exit 1

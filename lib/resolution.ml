@@ -2012,9 +2012,13 @@ let tptp_rule_name rule =
 let tptp_clause_name id =
   Printf.sprintf "ip_%d" id
 
-let tstp_derivation deriveds =
+let tstp_derivation ?problem deriveds =
   let b = Buffer.create 4096 in
-  Printf.bprintf b "%% SZS output start CNFRefutation\n";
+  begin
+    match problem with
+    | Some p -> Printf.bprintf b "%% SZS output start CNFRefutation for %s\n" p
+    | None -> Printf.bprintf b "%% SZS output start CNFRefutation\n"
+  end;
   List.iter
     (fun d ->
       let name = tptp_clause_name d.id in
@@ -2038,11 +2042,15 @@ let tstp_derivation deriveds =
             (tptp_rule_name d.rule)
             parents)
     deriveds;
-  Printf.bprintf b "%% SZS output end CNFRefutation\n";
+  begin
+    match problem with
+    | Some p -> Printf.bprintf b "%% SZS output end CNFRefutation for %s\n" p
+    | None -> Printf.bprintf b "%% SZS output end CNFRefutation\n"
+  end;
   Buffer.contents b
 
-let print_tstp_derivation deriveds =
-  print_string (tstp_derivation deriveds)
+let print_tstp_derivation ?problem deriveds =
+  print_string (tstp_derivation ?problem deriveds)
 
 let test_resolve mode c1 c2 =
   resolve_two_clauses ~check_timeout:(fun () -> ()) ~emulate_v1:false ~mode c1 c2

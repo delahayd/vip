@@ -69,4 +69,4 @@ val default_config : config
 val clauses_of_file : string -> clause list
 val run_file : ?config:config -> string -> outcome
 val string_of_szs_status : szs_status -> string
-val print_szs : outcome -> unit
+val print_szs : ?verbose:bool -> outcome -> unit
