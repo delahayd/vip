@@ -28,10 +28,12 @@ let with_timeout_poll check_timeout f =
 
 let fresh_counter = ref 0
 let skolem_counter = ref 0
+let def_counter = ref 0
 
 let reset_fresh_state () =
   fresh_counter := 0;
-  skolem_counter := 0
+  skolem_counter := 0;
+  def_counter := 0
 
 let fresh_var base =
   incr fresh_counter;
@@ -40,6 +42,10 @@ let fresh_var base =
 let fresh_skolem_name () =
   incr skolem_counter;
   "sk" ^ string_of_int !skolem_counter
+
+let fresh_def_name () =
+  incr def_counter;
+  "ip_def_" ^ string_of_int !def_counter
 
 let rec elim_imp f =
   poll_timeout ();
@@ -152,6 +158,18 @@ let rec drop_forall f =
   | Imp _ | RevImp _ | Iff _ | Xor _ ->
       failwith "drop_forall: formule non préparée"
 
+let split_top_level_conjuncts f =
+  let rec aux wrappers acc f =
+    poll_timeout ();
+    match f with
+    | And (a, b) ->
+        aux wrappers (aux wrappers acc b) a
+    | Forall (vs, body) ->
+        aux (fun part -> wrappers (Forall (vs, part))) acc body
+    | _ -> wrappers f :: acc
+  in
+  aux (fun x -> x) [] f
+
 let rec distribute a b =
   poll_timeout ();
   match a, b with
@@ -177,16 +195,26 @@ let lit_of_formula = function
   | _ -> failwith "formule non littérale"
 
 let rec flatten_or f =
-  poll_timeout ();
-  match f with
-  | Or (a, b) -> flatten_or a @ flatten_or b
-  | x -> [x]
+  let rec aux acc = function
+    | Or (a, b) ->
+        poll_timeout ();
+        aux (aux acc b) a
+    | x ->
+        poll_timeout ();
+        x :: acc
+  in
+  aux [] f
 
 let rec flatten_and f =
-  poll_timeout ();
-  match f with
-  | And (a, b) -> flatten_and a @ flatten_and b
-  | x -> [x]
+  let rec aux acc = function
+    | And (a, b) ->
+        poll_timeout ();
+        aux (aux acc b) a
+    | x ->
+        poll_timeout ();
+        x :: acc
+  in
+  aux [] f
 
 let clause_of_disjunction f =
   let parts = flatten_or f in
@@ -204,16 +232,119 @@ let clause_of_disjunction f =
 let clauses_of_cnf_formula f =
   flatten_and f |> List.filter_map clause_of_disjunction
 
+let neg_literal = function
+  | Pos a -> Neg a
+  | Neg a -> Pos a
+
+let true_lit = Pos { pred = "$true"; args = [] }
+let false_lit = Pos { pred = "$false"; args = [] }
+
+let definition_literal f =
+  let vars =
+    Fof.vars_of_formula Types.StringSet.empty f
+    |> Types.StringSet.elements
+  in
+  Pos { pred = fresh_def_name (); args = List.map (fun v -> Var v) vars }
+
+let definitional_clauses_of_nnf f =
+  let rec aux f =
+    poll_timeout ();
+    match f with
+    | FTrue -> (true_lit, [])
+    | FFalse -> (false_lit, [])
+    | Atom a -> (Pos a, [])
+    | Not (Atom a) -> (Neg a, [])
+    | And (a, b) ->
+        let la, ca = aux a in
+        let lb, cb = aux b in
+        let d = definition_literal f in
+        ( d,
+          ca @ cb
+          @ [
+              [ neg_literal d; la ];
+              [ neg_literal d; lb ];
+              [ d; neg_literal la; neg_literal lb ];
+            ] )
+    | Or (a, b) ->
+        let la, ca = aux a in
+        let lb, cb = aux b in
+        let d = definition_literal f in
+        ( d,
+          ca @ cb
+          @ [
+              [ neg_literal d; la; lb ];
+              [ d; neg_literal la ];
+              [ d; neg_literal lb ];
+            ] )
+    | Not _ -> failwith "definitional CNF: négation non atomique"
+    | Forall _ | Exists _ | Imp _ | RevImp _ | Iff _ | Xor _ ->
+        failwith "definitional CNF: formule non préparée"
+  in
+  let top, clauses = aux f in
+  clauses @ [ [ top ] ]
+  |> List.filter_map simplify_clause
+
+let getenv_bool name default =
+  match Sys.getenv_opt name with
+  | Some ("1" | "true" | "TRUE" | "yes" | "YES" | "on" | "ON") -> true
+  | Some ("0" | "false" | "FALSE" | "no" | "NO" | "off" | "OFF") -> false
+  | _ -> default
+
+let getenv_int name default =
+  match Sys.getenv_opt name with
+  | Some value -> (
+      match int_of_string_opt value with
+      | Some n when n > 0 -> n
+      | _ -> default)
+  | None -> default
+
+let saturated_add limit a b =
+  if a >= limit || b >= limit || a > limit - b then limit else a + b
+
+let saturated_mul limit a b =
+  if a = 0 || b = 0 then 0
+  else if a >= limit || b >= limit || a > limit / b then limit
+  else a * b
+
+let estimated_cnf_clause_count ~limit f =
+  let rec aux f =
+    poll_timeout ();
+    match f with
+    | And (a, b) -> saturated_add limit (aux a) (aux b)
+    | Or (a, b) -> saturated_mul limit (aux a) (aux b)
+    | Atom _ | Not (Atom _) | FTrue | FFalse -> 1
+    | Not _ -> limit
+    | Forall _ | Exists _ | Imp _ | RevImp _ | Iff _ | Xor _ -> limit
+  in
+  aux f
+
 let clausify_formula ?(check_timeout = fun () -> ()) f =
   with_timeout_poll check_timeout (fun () ->
-      f
-      |> elim_imp
-      |> nnf
-      |> standardize []
-      |> skolem []
-      |> drop_forall
-      |> cnf_shape
-      |> clauses_of_cnf_formula)
+      let prepared =
+        f
+        |> elim_imp
+        |> nnf
+        |> standardize []
+        |> skolem []
+        |> drop_forall
+      in
+      let force_definitional = getenv_bool "IP_DEFINITIONAL_CNF" false in
+      let auto_definitional = getenv_bool "IP_AUTO_DEFINITIONAL_CNF" false in
+      let distribution_limit = getenv_int "IP_CNF_DISTRIBUTION_LIMIT" 4096 in
+      let use_definitional =
+        force_definitional
+        || (auto_definitional
+            && estimated_cnf_clause_count
+                 ~limit:(distribution_limit + 1)
+                 prepared
+               > distribution_limit)
+      in
+      if use_definitional then
+        definitional_clauses_of_nnf prepared
+      else
+        prepared
+        |> cnf_shape
+        |> clauses_of_cnf_formula)
 
 let role_requires_negation role =
   role = "conjecture"
@@ -241,7 +372,10 @@ let clauses_of_input_with_report ?(check_timeout = fun () -> ()) inputs =
         aux (List.rev_append clauses acc) (produced + List.length clauses) xs
     | Input_fof { role; formula; _ } :: xs ->
         let f = if role_requires_negation role then Not formula else formula in
-        let cls = clausify_formula ~check_timeout f in
+        let formulas =
+          if role_requires_negation role then [ f ] else split_top_level_conjuncts f
+        in
+        let cls = List.concat_map (clausify_formula ~check_timeout) formulas in
         aux (List.rev_append cls acc) (produced + List.length cls) xs
   in
   aux [] 0 inputs)
@@ -282,7 +416,10 @@ let partition_input_clauses ?(check_timeout = fun () -> ()) inputs =
         aux axioms support (produced + List.length clauses) xs
     | Input_fof { role; formula; _ } :: xs ->
         let f = if role_requires_negation role then Not formula else formula in
-        let cls = clausify_formula ~check_timeout f in
+        let formulas =
+          if role_requires_negation role then [ f ] else split_top_level_conjuncts f
+        in
+        let cls = List.concat_map (clausify_formula ~check_timeout) formulas in
         let axioms, support =
           if is_support_role role then
             (axioms, List.rev_append cls support)

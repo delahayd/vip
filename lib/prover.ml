@@ -1267,6 +1267,15 @@ let rec run_file ?(config = default_config) filename =
     in
 
     let run_experimental_casc () =
+      let experimental_feq_legacy_flash =
+        match Sys.getenv_opt "IP_EXPERIMENTAL_FEQ_LEGACY_FLASH_FRACTION" with
+        | Some value when String.trim value <> "" -> value
+        | _ -> "0"
+      in
+      with_env
+        "IP_FEQ_LEGACY_FLASH_FRACTION"
+        (Some experimental_feq_legacy_flash)
+        (fun () ->
       let small_non_equality =
         problem_profile = Non_equality
         && raw_clause_count
@@ -1294,6 +1303,14 @@ let rec run_file ?(config = default_config) filename =
               "IP_AVATAR_MODEL_FALSE_FIRST", Some "1";
             ]
           ()
+      in
+      let feq_subrun_env extra =
+        let legacy_flash =
+          match Sys.getenv_opt "IP_EXPERIMENTAL_FEQ_LEGACY_FLASH_FRACTION" with
+          | Some value when String.trim value <> "" -> value
+          | _ -> "0"
+        in
+        ("IP_FEQ_LEGACY_FLASH_FRACTION", Some legacy_flash) :: extra
       in
       let large_general = problem_profile = Large_general in
       if compact_non_unit_non_equality then
@@ -1391,46 +1408,46 @@ let rec run_file ?(config = default_config) filename =
               ~fraction:
                 (getenv_float "IP_EXPERIMENTAL_LARGE_FULL_FIRST_FRACTION" 0.40)
               ~env:
-                [
+                (feq_subrun_env [
                   "IP_AXIOM_SELECTION", Some "0";
                   "IP_AXIOM_SELECTION_ALL", Some "0";
-                ];
+                ]);
             run_experimental_subrun
               ~stage_name:"Experimental large SInE narrow"
               ~portfolio_mode:Feq_modern
               ~fraction:
                 (getenv_float "IP_EXPERIMENTAL_SINE_NARROW_FRACTION" 0.0)
               ~env:
-                [
+                (feq_subrun_env [
                   "IP_AXIOM_SELECTION", Some "1";
                   "IP_AXIOM_SELECTION_ALL", Some "1";
                   "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "300";
                   "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "128";
-                ];
+                ]);
             run_experimental_subrun
               ~stage_name:"Experimental large SInE medium"
               ~portfolio_mode:Feq_modern
               ~fraction:
                 (getenv_float "IP_EXPERIMENTAL_SINE_MEDIUM_FRACTION" 0.0)
               ~env:
-                [
+                (feq_subrun_env [
                   "IP_AXIOM_SELECTION", Some "1";
                   "IP_AXIOM_SELECTION_ALL", Some "1";
                   "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "1000";
                   "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "256";
-                ];
+                ]);
             run_experimental_subrun
               ~stage_name:"Experimental large SInE wide"
               ~portfolio_mode:Feq_modern
               ~fraction:
                 (getenv_float "IP_EXPERIMENTAL_SINE_WIDE_FRACTION" 0.0)
               ~env:
-                [
+                (feq_subrun_env [
                   "IP_AXIOM_SELECTION", Some "1";
                   "IP_AXIOM_SELECTION_ALL", Some "1";
                   "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "2500";
                   "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "512";
-                ];
+                ]);
           ]
       else if problem_profile = Equality_heavy
               && raw_clause_count
@@ -1445,12 +1462,12 @@ let rec run_file ?(config = default_config) filename =
                    "IP_EXPERIMENTAL_EQ_HEAVY_SINE_FRACTION"
                    0.25)
               ~env:
-                [
+                (feq_subrun_env [
                   "IP_AXIOM_SELECTION", Some "1";
                   "IP_AXIOM_SELECTION_ALL", Some "1";
                   "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "300";
                   "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "128";
-                ];
+                ]);
             run_experimental_subrun
               ~stage_name:"Experimental equality-heavy full fallback"
               ~portfolio_mode:Feq_modern
@@ -1459,10 +1476,10 @@ let rec run_file ?(config = default_config) filename =
                    "IP_EXPERIMENTAL_EQ_HEAVY_FULL_FRACTION"
                    0.50)
               ~env:
-                [
+                (feq_subrun_env [
                   "IP_AXIOM_SELECTION", Some "0";
                   "IP_AXIOM_SELECTION_ALL", Some "0";
-                ];
+                ]);
             (fun () -> avatar_fallback ());
           ]
       else if problem_profile = Equality_light then
@@ -1473,7 +1490,7 @@ let rec run_file ?(config = default_config) filename =
             (getenv_float
                "IP_EXPERIMENTAL_EQUALITY_LIGHT_FEQ_ALL_FRACTION"
                0.70)
-          ~env:[ "IP_FEQ_MODERN_ALL", Some "1" ]
+          ~env:(feq_subrun_env [ "IP_FEQ_MODERN_ALL", Some "1" ])
           ()
         |> fun first ->
         begin
@@ -1486,12 +1503,14 @@ let rec run_file ?(config = default_config) filename =
           ~stage_name:"Experimental stable fallback"
           ~portfolio_mode:Feq_modern
           ~fraction:(getenv_float "IP_EXPERIMENTAL_STABLE_FRACTION" 0.70)
+          ~env:(feq_subrun_env [])
           ()
         |> fun first ->
         match first.stop_reason with
         | Refutation_found _ -> first
         | Saturation | Time_limit | Clause_limit ->
             avatar_fallback ()
+        )
     in
 
     let run_scheduled_portfolio () =
@@ -1734,10 +1753,20 @@ let rec run_file ?(config = default_config) filename =
         run_schedule
           [
             (fun () ->
+              let default_legacy_flash =
+                if getenv_bool "IP_DEFINITIONAL_CNF" false
+                   || getenv_bool "IP_AUTO_DEFINITIONAL_CNF" false then
+                  0.0
+                else
+                  0.05
+              in
               run_profile_stage
                 ~stage_name:"FEQ legacy flash"
                 ~engine:Legacy_compat
-                ~fraction:(getenv_float "IP_FEQ_LEGACY_FLASH_FRACTION" 0.05)
+                ~fraction:
+                  (getenv_float
+                     "IP_FEQ_LEGACY_FLASH_FRACTION"
+                     default_legacy_flash)
                 ());
             (fun () ->
               run_profile_stage
@@ -1889,7 +1918,8 @@ let rec run_file ?(config = default_config) filename =
     }
   with
   | Clausify.Timeout_hit
-  | Resolution.Timeout_hit ->
+  | Resolution.Timeout_hit
+  | Stack_overflow ->
       ignore (Unix.alarm 0);
       timeout_outcome (elapsed ())
 
