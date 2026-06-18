@@ -186,6 +186,7 @@ let run_one ~base_config portfolio_mode file =
       derivation = [];
       empty_clause = None;
       resolution_stats = Some empty_stats;
+      tstp_prelude = None;
     }
 
 let stats_of outcome =

@@ -96,8 +96,19 @@ val run_resolution :
   run_result
 
 val print_derivation : derived list -> unit
-val tstp_derivation : ?problem:string -> derived list -> string
-val print_tstp_derivation : ?problem:string -> derived list -> unit
+val tstp_clause_formula : clause -> string
+val tstp_derivation :
+  ?problem:string ->
+  ?prelude:string ->
+  ?skip_initial:bool ->
+  derived list ->
+  string
+val print_tstp_derivation :
+  ?problem:string ->
+  ?prelude:string ->
+  ?skip_initial:bool ->
+  derived list ->
+  unit
 
 (** Internal functions exposed for unit testing ONLY *)
 val test_resolve : inference_mode -> clause -> clause -> clause list

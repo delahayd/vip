@@ -65,6 +65,7 @@ type outcome = {
   derivation : Resolution.derived list;
   empty_clause : Resolution.derived option;
   resolution_stats : Resolution.stats option;
+  tstp_prelude : string option;
 }
 
 let default_config = {
@@ -86,6 +87,172 @@ let string_of_szs_status = function
   | Timeout -> "Timeout"
   | ResourceOut -> "ResourceOut"
   | InputError -> "InputError"
+
+let tptp_needs_quotes s =
+  let is_lower = function 'a' .. 'z' -> true | _ -> false in
+  let is_ident_char = function
+    | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' -> true
+    | _ -> false
+  in
+  String.length s = 0
+  || not (is_lower s.[0])
+  || not (String.for_all is_ident_char s)
+
+let tptp_quote s =
+  let b = Buffer.create (String.length s + 2) in
+  Buffer.add_char b '\'';
+  String.iter
+    (function
+      | '\'' -> Buffer.add_string b "\\'"
+      | '\\' -> Buffer.add_string b "\\\\"
+      | c -> Buffer.add_char b c)
+    s;
+  Buffer.add_char b '\'';
+  Buffer.contents b
+
+let tptp_name s =
+  if tptp_needs_quotes s then tptp_quote s else s
+
+let tptp_var_name v =
+  if String.length v > 0 then
+    match v.[0] with
+    | 'A' .. 'Z' | '_' -> v
+    | _ -> String.capitalize_ascii v
+  else
+    "V"
+
+let rec tptp_term = function
+  | Types.Var v -> tptp_var_name v
+  | Types.Fun (f, []) -> tptp_name f
+  | Types.Fun (f, args) ->
+      Printf.sprintf
+        "%s(%s)"
+        (tptp_name f)
+        (String.concat "," (List.map tptp_term args))
+
+let tptp_atom a =
+  match a.Types.pred, a.Types.args with
+  | "=", [ lhs; rhs ] ->
+      Printf.sprintf "%s = %s" (tptp_term lhs) (tptp_term rhs)
+  | _, [] -> tptp_name a.Types.pred
+  | _ ->
+      Printf.sprintf
+        "%s(%s)"
+        (tptp_name a.Types.pred)
+        (String.concat "," (List.map tptp_term a.Types.args))
+
+let rec tptp_formula = function
+  | Fof.FTrue -> "$true"
+  | Fof.FFalse -> "$false"
+  | Fof.Atom a -> tptp_atom a
+  | Fof.Not f -> Printf.sprintf "~(%s)" (tptp_formula f)
+  | Fof.And (a, b) -> Printf.sprintf "(%s & %s)" (tptp_formula a) (tptp_formula b)
+  | Fof.Or (a, b) -> Printf.sprintf "(%s | %s)" (tptp_formula a) (tptp_formula b)
+  | Fof.Imp (a, b) -> Printf.sprintf "(%s => %s)" (tptp_formula a) (tptp_formula b)
+  | Fof.RevImp (a, b) -> Printf.sprintf "(%s <= %s)" (tptp_formula a) (tptp_formula b)
+  | Fof.Iff (a, b) -> Printf.sprintf "(%s <=> %s)" (tptp_formula a) (tptp_formula b)
+  | Fof.Xor (a, b) -> Printf.sprintf "(%s <~> %s)" (tptp_formula a) (tptp_formula b)
+  | Fof.Forall (vs, f) ->
+      Printf.sprintf
+        "! [%s] : (%s)"
+        (String.concat "," (List.map tptp_var_name vs))
+        (tptp_formula f)
+  | Fof.Exists (vs, f) ->
+      Printf.sprintf
+        "? [%s] : (%s)"
+        (String.concat "," (List.map tptp_var_name vs))
+        (tptp_formula f)
+
+let role_requires_negation role =
+  role = "conjecture"
+
+let proof_input_name index =
+  Printf.sprintf "ip_input_%d" index
+
+let proof_clause_name id =
+  if id < 0 then
+    Printf.sprintf "ip_m%d" (-id)
+  else
+    Printf.sprintf "ip_%d" id
+
+let clause_key clause =
+  clause
+  |> Clause.normalize_clause
+  |> Pretty.string_of_clause
+
+let build_tstp_prelude inputs (trace : Clausify.clausification_trace) derivation =
+  let input_by_index = Hashtbl.create 97 in
+  List.iteri
+    (fun i input -> Hashtbl.replace input_by_index (i + 1) input)
+    inputs;
+  let origins_by_clause = Hashtbl.create 257 in
+  List.iter
+    (fun origin ->
+      let key = clause_key origin.Clausify.clause in
+      if not (Hashtbl.mem origins_by_clause key) then
+        Hashtbl.add origins_by_clause key origin)
+    trace.origins;
+  let printed_inputs = Hashtbl.create 97 in
+  let b = Buffer.create 4096 in
+  let print_source origin =
+    if not (Hashtbl.mem printed_inputs origin.Clausify.input_index) then begin
+      Hashtbl.add printed_inputs origin.input_index ();
+      let source_name = proof_input_name origin.input_index in
+      match Hashtbl.find_opt input_by_index origin.input_index with
+      | Some (Fof.Input_fof { role; formula; _ }) ->
+          Printf.bprintf
+            b
+            "fof(%s,%s,(%s)).\n"
+            source_name
+            role
+            (tptp_formula formula)
+      | Some (Fof.Input_cnf { role; clause; _ }) ->
+          Printf.bprintf
+            b
+            "cnf(%s,%s,(%s)).\n"
+            source_name
+            role
+            (Resolution.tstp_clause_formula clause)
+      | Some (Fof.Input_include _) | None -> ()
+    end
+  in
+  List.iter
+    (fun (d : Resolution.derived) ->
+      if d.parents = [] then begin
+        let clause = Resolution.tstp_clause_formula d.clause_d in
+        match Hashtbl.find_opt origins_by_clause (clause_key d.clause_d) with
+        | Some origin when origin.input_is_cnf && not (role_requires_negation origin.input_role) ->
+            Printf.bprintf
+              b
+              "cnf(%s,%s,(%s)).\n"
+              (proof_clause_name d.id)
+              origin.input_role
+              clause
+        | Some origin ->
+            print_source origin;
+            let source_name = proof_input_name origin.input_index in
+            let role =
+              if role_requires_negation origin.input_role then
+                "negated_conjecture"
+              else
+                "plain"
+            in
+            let status =
+              if role_requires_negation origin.input_role then "cth" else "esa"
+            in
+            Printf.bprintf
+              b
+              "cnf(%s,%s,(%s),inference(cnf_transformation,[status(%s)],[%s])).\n"
+              (proof_clause_name d.id)
+              role
+              clause
+              status
+              source_name
+        | None ->
+            Printf.bprintf b "cnf(%s,axiom,(%s)).\n" (proof_clause_name d.id) clause
+      end)
+    derivation;
+  Buffer.contents b
 
 let clauses_of_file filename =
   let parsed = load_problem filename in
@@ -785,6 +952,7 @@ let rec run_file ?(config = default_config) filename =
             avatar_filtered_inferences = 0;
             wall_clock_s;
           };
+      tstp_prelude = None;
     }
   in
 
@@ -796,7 +964,12 @@ let rec run_file ?(config = default_config) filename =
     in
     let parsed = load_problem ~config:load_config filename in
     check_problem_timeout ();
-    let part = partition_input_clauses ~check_timeout:check_problem_timeout parsed.inputs in
+    let traced_part =
+      partition_input_clauses_with_trace
+        ~check_timeout:check_problem_timeout
+        parsed.inputs
+    in
+    let part = traced_part.partition in
 
     let raw_axioms, support =
       if config.use_sos then (part.axioms, part.support)
@@ -2078,6 +2251,11 @@ let rec run_file ?(config = default_config) filename =
       derivation = res.derivation;
       empty_clause;
       resolution_stats = Some res.stats;
+      tstp_prelude =
+        (match empty_clause with
+         | None -> None
+         | Some _ ->
+             Some (build_tstp_prelude parsed.inputs traced_part.trace res.derivation));
     }
   with
   | Clausify.Timeout_hit

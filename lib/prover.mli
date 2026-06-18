@@ -63,6 +63,7 @@ type outcome = {
   derivation : Resolution.derived list;
   empty_clause : Resolution.derived option;
   resolution_stats : Resolution.stats option;
+  tstp_prelude : string option;
 }
 
 val default_config : config

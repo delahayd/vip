@@ -68,7 +68,14 @@ let run_one ~base_config portfolio_mode file =
       axiom_selection_enabled = false;
     } in
     let _ = exn in
-    { Prover.status = InputError; info; derivation = []; empty_clause = None; resolution_stats = None }
+    {
+      Prover.status = InputError;
+      info;
+      derivation = [];
+      empty_clause = None;
+      resolution_stats = None;
+      tstp_prelude = None;
+    }
 
 let () =
   let dir = ref None in

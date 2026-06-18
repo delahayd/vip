@@ -280,6 +280,8 @@ let () =
                 | Some _ ->
                     Prover_lib.Resolution.print_tstp_derivation
                       ~problem:filename
+                      ?prelude:outcome.Prover_lib.Prover.tstp_prelude
+                      ~skip_initial:(outcome.Prover_lib.Prover.tstp_prelude <> None)
                       outcome.derivation
                 | None ->
                     if not competition_output then

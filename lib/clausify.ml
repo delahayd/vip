@@ -13,6 +13,23 @@ type partitioned_clauses = {
   report : clausification_report;
 }
 
+type clause_origin = {
+  clause : clause;
+  input_index : int;
+  input_name : string;
+  input_role : string;
+  input_is_cnf : bool;
+}
+
+type clausification_trace = {
+  origins : clause_origin list;
+}
+
+type traced_partitioned_clauses = {
+  partition : partitioned_clauses;
+  trace : clausification_trace;
+}
+
 exception Timeout_hit
 
 let current_check_timeout = ref (fun () -> ())
@@ -429,3 +446,77 @@ let partition_input_clauses ?(check_timeout = fun () -> ()) inputs =
         aux axioms support (produced + List.length cls) xs
   in
   aux [] [] 0 inputs)
+
+let partition_input_clauses_with_trace ?(check_timeout = fun () -> ()) inputs =
+  with_timeout_poll check_timeout (fun () ->
+  let add_origins ~input_index ~input_name ~input_role ~input_is_cnf clauses origins =
+    List.fold_left
+      (fun acc clause -> { clause; input_index; input_name; input_role; input_is_cnf } :: acc)
+      origins
+      clauses
+  in
+  let rec aux input_index axioms support origins produced = function
+    | [] ->
+        let partition =
+          {
+            axioms = List.rev axioms;
+            support = List.rev support;
+            report = {
+              input_count = List.length inputs;
+              produced_clause_count = produced;
+            };
+          }
+        in
+        { partition; trace = { origins = List.rev origins } }
+    | Input_include _ :: xs ->
+        aux (input_index + 1) axioms support origins produced xs
+    | Input_cnf { name; role; clause } :: xs ->
+        let raw_clauses =
+          if role_requires_negation role then
+            List.map
+              (fun lit -> [match lit with Pos a -> Neg a | Neg a -> Pos a])
+              clause
+          else
+            [clause]
+        in
+        let clauses = raw_clauses |> List.filter_map simplify_clause in
+        let axioms, support =
+          if is_support_role role then
+            (axioms, List.rev_append clauses support)
+          else
+            (List.rev_append clauses axioms, support)
+        in
+        let origins =
+          add_origins
+            ~input_index
+            ~input_name:name
+            ~input_role:role
+            ~input_is_cnf:true
+            clauses
+            origins
+        in
+        aux (input_index + 1) axioms support origins (produced + List.length clauses) xs
+    | Input_fof { name; role; formula } :: xs ->
+        let f = if role_requires_negation role then Not formula else formula in
+        let formulas =
+          if role_requires_negation role then [ f ] else split_top_level_conjuncts f
+        in
+        let cls = List.concat_map (clausify_formula ~check_timeout) formulas in
+        let axioms, support =
+          if is_support_role role then
+            (axioms, List.rev_append cls support)
+          else
+            (List.rev_append cls axioms, support)
+        in
+        let origins =
+          add_origins
+            ~input_index
+            ~input_name:name
+            ~input_role:role
+            ~input_is_cnf:false
+            cls
+            origins
+        in
+        aux (input_index + 1) axioms support origins (produced + List.length cls) xs
+  in
+  aux 1 [] [] [] 0 inputs)

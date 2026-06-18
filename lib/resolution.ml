@@ -1998,6 +1998,9 @@ let tptp_clause c =
   | [lit] -> tptp_literal lit
   | lits -> String.concat " | " (List.map tptp_literal lits)
 
+let tstp_clause_formula c =
+  tptp_clause c
+
 let tptp_rule_name rule =
   let b = Buffer.create (String.length rule) in
   String.iter
@@ -2010,37 +2013,43 @@ let tptp_rule_name rule =
   if s = "" then "plain" else s
 
 let tptp_clause_name id =
-  Printf.sprintf "ip_%d" id
+  if id < 0 then
+    Printf.sprintf "ip_m%d" (-id)
+  else
+    Printf.sprintf "ip_%d" id
 
-let tstp_derivation ?problem deriveds =
+let tstp_derivation ?problem ?(prelude = "") ?(skip_initial = false) deriveds =
   let b = Buffer.create 4096 in
   begin
     match problem with
     | Some p -> Printf.bprintf b "%% SZS output start CNFRefutation for %s\n" p
     | None -> Printf.bprintf b "%% SZS output start CNFRefutation\n"
   end;
+  Buffer.add_string b prelude;
   List.iter
     (fun d ->
-      let name = tptp_clause_name d.id in
-      let role = if d.parents = [] then "axiom" else "plain" in
-      let clause = tptp_clause d.clause_d in
-      match d.parents with
-      | [] ->
-          Printf.bprintf b "cnf(%s,%s,(%s)).\n" name role clause
-      | ps ->
-          let parents =
-            ps
-            |> List.map tptp_clause_name
-            |> String.concat ","
-          in
-          Printf.bprintf
-            b
-            "cnf(%s,%s,(%s),inference(%s,[],[%s])).\n"
-            name
-            role
-            clause
-            (tptp_rule_name d.rule)
-            parents)
+      if not (skip_initial && d.parents = []) then begin
+        let name = tptp_clause_name d.id in
+        let role = if d.parents = [] then "axiom" else "plain" in
+        let clause = tptp_clause d.clause_d in
+        match d.parents with
+        | [] ->
+            Printf.bprintf b "cnf(%s,%s,(%s)).\n" name role clause
+        | ps ->
+            let parents =
+              ps
+              |> List.map tptp_clause_name
+              |> String.concat ","
+            in
+            Printf.bprintf
+              b
+              "cnf(%s,%s,(%s),inference(%s,[status(thm)],[%s])).\n"
+              name
+              role
+              clause
+              (tptp_rule_name d.rule)
+              parents
+      end)
     deriveds;
   begin
     match problem with
@@ -2049,8 +2058,8 @@ let tstp_derivation ?problem deriveds =
   end;
   Buffer.contents b
 
-let print_tstp_derivation ?problem deriveds =
-  print_string (tstp_derivation ?problem deriveds)
+let print_tstp_derivation ?problem ?prelude ?skip_initial deriveds =
+  print_string (tstp_derivation ?problem ?prelude ?skip_initial deriveds)
 
 let test_resolve mode c1 c2 =
   resolve_two_clauses ~check_timeout:(fun () -> ()) ~emulate_v1:false ~mode c1 c2
