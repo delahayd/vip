@@ -19,6 +19,7 @@ type portfolio_mode =
   | Feq_modern
   | Scheduled_portfolio
   | Experimental_casc
+  | Casc_aggressive
 
 type engine_kind =
   | Legacy_compat

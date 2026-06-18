@@ -85,7 +85,7 @@ let play_timeout_safely () =
 
 let usage () =
   prerr_endline
-    "Usage: ip [--version] [--duke] [--proof] [--time-limit SECONDS] [--max-clauses N] [--mode MODE] [--portfolio legacy-modern|modern-legacy|legacy-only|modern-only|modern-compat-only|scheduled|feq-modern|experimental-casc] [--tptp DIR] [--sos|--no-sos] FILE";
+    "Usage: ip [--version] [--duke] [--proof] [--time-limit SECONDS] [--max-clauses N] [--mode MODE] [--portfolio legacy-modern|modern-legacy|legacy-only|modern-only|modern-compat-only|scheduled|feq-modern|experimental-casc|casc-aggressive] [--tptp DIR] [--sos|--no-sos] FILE";
   exit 2
 
 let mode_of_string = function
@@ -108,6 +108,8 @@ let portfolio_of_string = function
       Prover_lib.Prover.Feq_modern
   | "experimental-casc" | "casc-experimental" | "exp-casc" ->
       Prover_lib.Prover.Experimental_casc
+  | "casc-aggressive" | "aggressive-casc" | "aggressive" ->
+      Prover_lib.Prover.Casc_aggressive
   | s ->
       prerr_endline ("Unknown portfolio mode: " ^ s);
       usage ()

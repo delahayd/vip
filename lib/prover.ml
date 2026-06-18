@@ -21,6 +21,7 @@ type portfolio_mode =
   | Feq_modern
   | Scheduled_portfolio
   | Experimental_casc
+  | Casc_aggressive
 
 type engine_kind =
   | Legacy_compat
@@ -1513,6 +1514,166 @@ let rec run_file ?(config = default_config) filename =
         )
     in
 
+    let run_casc_aggressive () =
+      let feq_env extra =
+        ("IP_FEQ_LEGACY_FLASH_FRACTION", Some "0") :: extra
+      in
+      let avatar_env =
+        [
+          "IP_AVATAR_SPLITTING", Some "1";
+          "IP_AVATAR_GROUND_ONLY", Some "0";
+          "IP_AVATAR_KEEP_ORIGINAL", Some "1";
+          "IP_AVATAR_MIN_SPLIT", Some "3";
+          "IP_AVATAR_MAX_SPLIT_VARS", Some "10";
+          "IP_AVATAR_MAX_SPLIT_VARS_PER_CLAUSE", Some "4";
+          "IP_AVATAR_MODEL_FALSE_FIRST", Some "1";
+        ]
+      in
+      let legacy_guided_env =
+        [
+          "IP_PASSIVE_SELECTION", Some "legacy";
+          "IP_LITERAL_SELECTION", Some "legacy";
+          "IP_RESOLUTION_LITERAL_SELECTION", Some "legacy";
+          "IP_LEGACY_SUBSUMPTION", Some "1";
+          "IP_FAST_CONDENSATION", Some "0";
+          "IP_FORWARD_SUBSUMPTION_RESOLUTION", Some "0";
+        ]
+      in
+      let feq_sine name fraction max_axioms max_freq =
+        run_experimental_subrun
+          ~stage_name:name
+          ~portfolio_mode:Feq_modern
+          ~fraction
+          ~env:
+            (feq_env
+               [
+                 "IP_FEQ_MODERN_ALL", Some "1";
+                 "IP_AXIOM_SELECTION", Some "1";
+                 "IP_AXIOM_SELECTION_ALL", Some "1";
+                 "IP_AXIOM_SELECTION_MAX_AXIOMS", Some max_axioms;
+                 "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some max_freq;
+                 "IP_FEQ_STABLE_FRACTION", Some "0.10";
+                 "IP_FEQ_CLASSIC_FRACTION", Some "0.45";
+                 "IP_FEQ_WEIGHT_FRACTION", Some "0.20";
+                 "IP_FEQ_EQUALITY_FRACTION", Some "0.20";
+               ])
+      in
+      let avatar_stage fraction =
+        run_experimental_subrun
+          ~stage_name:"Aggressive AVATAR stage"
+          ~portfolio_mode:Modern_only
+          ~fraction
+          ~env:avatar_env
+      in
+      let definitional_stage fraction =
+        run_experimental_subrun
+          ~stage_name:"Aggressive definitional CNF FEQ"
+          ~portfolio_mode:Feq_modern
+          ~fraction
+          ~env:
+            (feq_env
+               [
+                 "IP_AUTO_DEFINITIONAL_CNF", Some "1";
+                 "IP_CNF_DISTRIBUTION_LIMIT", Some "4096";
+                 "IP_FEQ_MODERN_ALL", Some "1";
+                 "IP_FEQ_STABLE_FRACTION", Some "0.05";
+                 "IP_FEQ_CLASSIC_FRACTION", Some "0.45";
+                 "IP_FEQ_WEIGHT_FRACTION", Some "0.25";
+                 "IP_FEQ_EQUALITY_FRACTION", Some "0.20";
+               ])
+      in
+      let legacy_probe fraction =
+        run_experimental_subrun
+          ~stage_name:"Aggressive legacy probe"
+          ~portfolio_mode:Legacy_only
+          ~fraction
+      in
+      let legacy_guided fraction =
+        run_experimental_subrun
+          ~stage_name:"Aggressive legacy-guided modern"
+          ~portfolio_mode:Modern_only
+          ~fraction
+          ~env:legacy_guided_env
+      in
+      let stable_first =
+        run_experimental_subrun
+          ~stage_name:"Aggressive stable first pass"
+          ~portfolio_mode:Experimental_casc
+          ~fraction:(getenv_float "IP_AGGRESSIVE_STABLE_FIRST_FRACTION" 0.75)
+          ~env:[ "IP_EXPERIMENTAL_FEQ_LEGACY_FLASH_FRACTION", Some "0" ]
+          ()
+      in
+      match stable_first.stop_reason with
+      | Refutation_found _ -> stable_first
+      | Saturation | Time_limit | Clause_limit ->
+      if problem_profile = Equality_heavy || problem_profile = Equality_light then
+        run_schedule
+          [
+            feq_sine
+              "Aggressive FEQ SInE medium"
+              (getenv_float "IP_AGGRESSIVE_FEQ_SINE_MEDIUM_FRACTION" 0.16)
+              "1200"
+              "256";
+            avatar_stage
+              (getenv_float "IP_AGGRESSIVE_FEQ_AVATAR_FRACTION" 0.12);
+            feq_sine
+              "Aggressive FEQ SInE wide"
+              (getenv_float "IP_AGGRESSIVE_FEQ_SINE_WIDE_FRACTION" 0.10)
+              "3000"
+              "768";
+            definitional_stage
+              (getenv_float "IP_AGGRESSIVE_FEQ_DEFINITIONAL_FRACTION" 0.06);
+            run_remaining_stage
+              ~stage_name:"Aggressive FEQ remaining AVATAR"
+              ~engine:Modern_deep
+              ~env:avatar_env;
+          ]
+      else if problem_profile = Large_general then
+        run_schedule
+          [
+            legacy_probe
+              (getenv_float "IP_AGGRESSIVE_LARGE_LEGACY_FRACTION" 0.35);
+            run_experimental_subrun
+              ~stage_name:"Aggressive large full modern"
+              ~portfolio_mode:Feq_modern
+              ~fraction:(getenv_float "IP_AGGRESSIVE_LARGE_FULL_FRACTION" 0.25)
+              ~env:
+                (feq_env
+                   [
+                     "IP_AXIOM_SELECTION", Some "0";
+                     "IP_AXIOM_SELECTION_ALL", Some "0";
+                   ]);
+            legacy_guided
+              (getenv_float "IP_AGGRESSIVE_LARGE_LEGACY_GUIDED_FRACTION" 0.18);
+            feq_sine
+              "Aggressive large SInE wide"
+              (getenv_float "IP_AGGRESSIVE_LARGE_SINE_FRACTION" 0.15)
+              "3000"
+              "768";
+            run_remaining_stage
+              ~stage_name:"Aggressive large remaining legacy"
+              ~engine:Legacy_compat;
+          ]
+      else
+        run_schedule
+          [
+            legacy_probe
+              (getenv_float "IP_AGGRESSIVE_GENERAL_LEGACY_FRACTION" 0.45);
+            legacy_guided
+              (getenv_float "IP_AGGRESSIVE_GENERAL_LEGACY_GUIDED_FRACTION" 0.25);
+            run_experimental_subrun
+              ~stage_name:"Aggressive general modern classic"
+              ~portfolio_mode:Modern_only
+              ~fraction:(getenv_float "IP_AGGRESSIVE_GENERAL_CLASSIC_FRACTION" 0.15)
+              ~env:[ "IP_PASSIVE_SELECTION", Some "classic" ];
+            avatar_stage
+              (getenv_float "IP_AGGRESSIVE_GENERAL_AVATAR_FRACTION" 0.10);
+            run_remaining_stage
+              ~stage_name:"Aggressive general remaining legacy"
+              ~engine:Legacy_compat;
+          ]
+    in
+
     let run_scheduled_portfolio () =
       let size_threshold = getenv_int "IP_PORTFOLIO_SIZE_THRESHOLD" 160 in
       let modern_biased_small =
@@ -1861,6 +2022,8 @@ let rec run_file ?(config = default_config) filename =
           run_feq_modern ()
       | Experimental_casc ->
           run_experimental_casc ()
+      | Casc_aggressive ->
+          run_casc_aggressive ()
       | Legacy_only ->
           run_stage
             {
