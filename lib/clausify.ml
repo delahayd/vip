@@ -376,6 +376,22 @@ let safe_definition_atom atom body =
        (vars_of_atom_set atom)
   && formula_size body <= getenv_int "IP_ONE_WAY_DEFINITION_MAX_BODY_SIZE" 80
 
+let conjoin a b =
+  match a, b with
+  | FTrue, x | x, FTrue -> x
+  | FFalse, _ | _, FFalse -> FFalse
+  | _ -> And (a, b)
+
+let safe_guarded_definition_atom atom guard body =
+  atom.pred <> "="
+  && not (atom_pred_occurs atom.pred guard)
+  && not (atom_pred_occurs atom.pred body)
+  && vars_subset
+       (Fof.vars_of_formula Types.StringSet.empty (conjoin guard body))
+       (vars_of_atom_set atom)
+  && formula_size (conjoin guard body)
+     <= getenv_int "IP_ONE_WAY_DEFINITION_MAX_BODY_SIZE" 80
+
 let one_way_definition_formula f =
   if not (getenv_bool "IP_ONE_WAY_DEFINITIONS" false) then
     f
@@ -386,11 +402,12 @@ let one_way_definition_formula f =
       | Some value when String.lowercase_ascii value = "compress" -> `Compress
       | _ -> `Expand
     in
-    let orient atom rhs =
-      if safe_definition_atom atom rhs then
+    let orient ?guard atom rhs =
+      let guard = Option.value guard ~default:FTrue in
+      if safe_guarded_definition_atom atom guard rhs then
         match orientation with
-        | `Expand -> Some (Imp (Atom atom, rhs))
-        | `Compress -> Some (RevImp (Atom atom, rhs))
+        | `Expand -> Some (Imp (conjoin guard (Atom atom), rhs))
+        | `Compress -> Some (Imp (conjoin guard rhs, Atom atom))
       else
         None
     in
@@ -398,11 +415,185 @@ let one_way_definition_formula f =
       match body with
       | Iff (Atom atom, rhs) -> orient atom rhs
       | Iff (rhs, Atom atom) -> orient atom rhs
+      | Imp (guard, Iff (Atom atom, rhs)) -> orient ~guard atom rhs
+      | Imp (guard, Iff (rhs, Atom atom)) -> orient ~guard atom rhs
+      | RevImp (Iff (Atom atom, rhs), guard) -> orient ~guard atom rhs
+      | RevImp (Iff (rhs, Atom atom), guard) -> orient ~guard atom rhs
       | _ -> None
     in
     match body' with
     | None -> f
     | Some body -> rebuild_forall vars body
+
+type formula_definition = {
+  def_pred : string;
+  def_arity : int;
+  def_vars : string list;
+  def_body : formula;
+  def_input_name : string;
+}
+
+let distinct_strings xs =
+  List.length xs = List.length (List.sort_uniq String.compare xs)
+
+let atom_definition_of_formula name f =
+  let _vars, body = peel_forall f in
+  let candidate =
+    match body with
+    | Iff (Atom atom, rhs)
+    | Iff (rhs, Atom atom) ->
+        Some (atom, rhs)
+    | _ -> None
+  in
+  match candidate with
+  | None -> None
+  | Some (atom, rhs) ->
+      let head_vars =
+        List.filter_map
+          (function
+            | Var v -> Some v
+            | Fun _ -> None)
+          atom.args
+      in
+      if List.length head_vars = List.length atom.args
+         && distinct_strings head_vars
+         && safe_definition_atom atom rhs
+      then
+        Some
+          {
+            def_pred = atom.pred;
+            def_arity = List.length atom.args;
+            def_vars = head_vars;
+            def_body = rhs;
+            def_input_name = name;
+          }
+      else
+        None
+
+let collect_formula_definitions inputs =
+  let max_rules = getenv_int "IP_DMT_MAX_DEFINITIONS" 64 in
+  let rec aux acc = function
+    | [] -> List.rev acc
+    | _ when List.length acc >= max_rules -> List.rev acc
+    | Input_fof { name; role = "axiom"; formula } :: tl ->
+        begin
+          match atom_definition_of_formula name formula with
+          | Some d when not (List.exists (fun e -> e.def_pred = d.def_pred && e.def_arity = d.def_arity) acc) ->
+              aux (d :: acc) tl
+          | _ -> aux acc tl
+        end
+    | _ :: tl -> aux acc tl
+  in
+  aux [] inputs
+
+let definition_for_atom defs atom =
+  List.find_opt
+    (fun d -> d.def_pred = atom.pred && d.def_arity = List.length atom.args)
+    defs
+
+let instantiate_definition def args =
+  let subs = List.combine def.def_vars args in
+  Fof.subst_formula subs def.def_body
+
+let rec rewrite_formula_once defs f =
+  match f with
+  | Atom atom ->
+      begin
+        match definition_for_atom defs atom with
+        | None -> (f, false)
+        | Some def -> (instantiate_definition def atom.args, true)
+      end
+  | FTrue | FFalse -> (f, false)
+  | Not f ->
+      let f', changed = rewrite_formula_once defs f in
+      (Not f', changed)
+  | And (a, b) ->
+      let a', ca = rewrite_formula_once defs a in
+      let b', cb = rewrite_formula_once defs b in
+      (And (a', b'), ca || cb)
+  | Or (a, b) ->
+      let a', ca = rewrite_formula_once defs a in
+      let b', cb = rewrite_formula_once defs b in
+      (Or (a', b'), ca || cb)
+  | Imp (a, b) ->
+      let a', ca = rewrite_formula_once defs a in
+      let b', cb = rewrite_formula_once defs b in
+      (Imp (a', b'), ca || cb)
+  | RevImp (a, b) ->
+      let a', ca = rewrite_formula_once defs a in
+      let b', cb = rewrite_formula_once defs b in
+      (RevImp (a', b'), ca || cb)
+  | Iff (a, b) ->
+      let a', ca = rewrite_formula_once defs a in
+      let b', cb = rewrite_formula_once defs b in
+      (Iff (a', b'), ca || cb)
+  | Xor (a, b) ->
+      let a', ca = rewrite_formula_once defs a in
+      let b', cb = rewrite_formula_once defs b in
+      (Xor (a', b'), ca || cb)
+  | Forall (vs, f) ->
+      let f', changed = rewrite_formula_once defs f in
+      (Forall (vs, f'), changed)
+  | Exists (vs, f) ->
+      let f', changed = rewrite_formula_once defs f in
+      (Exists (vs, f'), changed)
+
+let rewrite_formula_fixpoint defs f =
+  let max_passes = getenv_int "IP_DMT_REWRITE_PASSES" 4 in
+  let max_size = getenv_int "IP_DMT_MAX_REWRITTEN_FORMULA_SIZE" 240 in
+  let rec loop n f =
+    if n <= 0 || formula_size f > max_size then
+      f
+    else
+      let f', changed = rewrite_formula_once defs f in
+      if changed then loop (n - 1) f' else f
+  in
+  loop max_passes f
+
+let input_mentions_definition defs = function
+  | Input_cnf { clause; _ } ->
+      List.exists
+        (fun lit ->
+          let atom =
+            match lit with
+            | Pos a | Neg a -> a
+          in
+          definition_for_atom defs atom <> None)
+        clause
+  | Input_fof { formula; _ } ->
+      List.exists
+        (fun d -> atom_pred_occurs d.def_pred formula)
+        defs
+  | Input_include _ -> false
+
+let dmt_expand_inputs inputs =
+  if not (getenv_bool "IP_DMT_EXPAND_DEFINITIONS" false) then
+    inputs
+  else
+    let defs = collect_formula_definitions inputs in
+    if defs = [] then
+      inputs
+    else
+      let has_cnf =
+        List.exists
+          (function Input_cnf _ -> true | Input_fof _ | Input_include _ -> false)
+          inputs
+      in
+      let remove_definitions =
+        getenv_bool "IP_DMT_REMOVE_DEFINITIONS" true && not has_cnf
+      in
+      let is_definition_input name =
+        List.exists (fun d -> d.def_input_name = name) defs
+      in
+      List.filter_map
+        (function
+          | Input_fof { name; role; formula } when remove_definitions && is_definition_input name ->
+              None
+          | Input_fof ({ formula; _ } as i) ->
+              let formula = rewrite_formula_fixpoint defs formula in
+              Some (Input_fof { i with formula })
+          | input -> Some input)
+        inputs
 
 let saturated_add limit a b =
   if a >= limit || b >= limit || a > limit - b then limit else a + b
@@ -460,6 +651,7 @@ let is_support_role role =
 
 let clauses_of_input_with_report ?(check_timeout = fun () -> ()) inputs =
   with_timeout_poll check_timeout (fun () ->
+  let inputs = dmt_expand_inputs inputs in
   let rec aux acc produced = function
     | [] ->
         (List.rev acc, { input_count = List.length inputs; produced_clause_count = produced })
@@ -495,6 +687,7 @@ let clauses_of_input ?(check_timeout = fun () -> ()) inputs =
 
 let partition_input_clauses ?(check_timeout = fun () -> ()) inputs =
   with_timeout_poll check_timeout (fun () ->
+  let inputs = dmt_expand_inputs inputs in
   let rec aux axioms support produced = function
     | [] ->
         {
@@ -546,6 +739,7 @@ let partition_input_clauses ?(check_timeout = fun () -> ()) inputs =
 
 let partition_input_clauses_with_trace ?(check_timeout = fun () -> ()) inputs =
   with_timeout_poll check_timeout (fun () ->
+  let inputs = dmt_expand_inputs inputs in
   let add_origins ~input_index ~input_name ~input_role ~input_is_cnf ~transformation_status clauses origins =
     List.fold_left
       (fun acc clause ->
