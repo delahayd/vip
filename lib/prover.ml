@@ -240,6 +240,12 @@ let build_tstp_prelude inputs (trace : Clausify.clausification_trace) derivation
             let status =
               if role_requires_negation origin.input_role then "cth" else "esa"
             in
+            let status =
+              if origin.Clausify.transformation_status <> "" then
+                origin.transformation_status
+              else
+                status
+            in
             Printf.bprintf
               b
               "cnf(%s,%s,(%s),inference(cnf_transformation,[status(%s)],[%s])).\n"

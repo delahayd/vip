@@ -19,6 +19,7 @@ type clause_origin = {
   input_name : string;
   input_role : string;
   input_is_cnf : bool;
+  transformation_status : string;
 }
 
 type clausification_trace = {
@@ -315,6 +316,94 @@ let getenv_int name default =
       | _ -> default)
   | None -> default
 
+let formula_size f =
+  let rec aux = function
+    | FTrue | FFalse | Atom _ -> 1
+    | Not f -> 1 + aux f
+    | And (a, b)
+    | Or (a, b)
+    | Imp (a, b)
+    | RevImp (a, b)
+    | Iff (a, b)
+    | Xor (a, b) ->
+        1 + aux a + aux b
+    | Forall (_, f)
+    | Exists (_, f) ->
+        1 + aux f
+  in
+  aux f
+
+let atom_pred_occurs pred f =
+  let rec aux = function
+    | FTrue | FFalse -> false
+    | Atom a -> a.pred = pred
+    | Not f -> aux f
+    | And (a, b)
+    | Or (a, b)
+    | Imp (a, b)
+    | RevImp (a, b)
+    | Iff (a, b)
+    | Xor (a, b) ->
+        aux a || aux b
+    | Forall (_, f)
+    | Exists (_, f) ->
+        aux f
+  in
+  aux f
+
+let vars_of_atom_set a =
+  Fof.vars_of_formula Types.StringSet.empty (Atom a)
+
+let vars_subset a b =
+  Types.StringSet.for_all (fun v -> Types.StringSet.mem v b) a
+
+let rec peel_forall = function
+  | Forall (vs, body) ->
+      let qs, body = peel_forall body in
+      (vs @ qs, body)
+  | f -> ([], f)
+
+let rebuild_forall vars body =
+  match vars with
+  | [] -> body
+  | _ -> Forall (vars, body)
+
+let safe_definition_atom atom body =
+  atom.pred <> "="
+  && not (atom_pred_occurs atom.pred body)
+  && vars_subset
+       (Fof.vars_of_formula Types.StringSet.empty body)
+       (vars_of_atom_set atom)
+  && formula_size body <= getenv_int "IP_ONE_WAY_DEFINITION_MAX_BODY_SIZE" 80
+
+let one_way_definition_formula f =
+  if not (getenv_bool "IP_ONE_WAY_DEFINITIONS" false) then
+    f
+  else
+    let vars, body = peel_forall f in
+    let orientation =
+      match Sys.getenv_opt "IP_ONE_WAY_DEFINITION_ORIENTATION" with
+      | Some value when String.lowercase_ascii value = "compress" -> `Compress
+      | _ -> `Expand
+    in
+    let orient atom rhs =
+      if safe_definition_atom atom rhs then
+        match orientation with
+        | `Expand -> Some (Imp (Atom atom, rhs))
+        | `Compress -> Some (RevImp (Atom atom, rhs))
+      else
+        None
+    in
+    let body' =
+      match body with
+      | Iff (Atom atom, rhs) -> orient atom rhs
+      | Iff (rhs, Atom atom) -> orient atom rhs
+      | _ -> None
+    in
+    match body' with
+    | None -> f
+    | Some body -> rebuild_forall vars body
+
 let saturated_add limit a b =
   if a >= limit || b >= limit || a > limit - b then limit else a + b
 
@@ -392,6 +481,10 @@ let clauses_of_input_with_report ?(check_timeout = fun () -> ()) inputs =
         let formulas =
           if role_requires_negation role then [ f ] else split_top_level_conjuncts f
         in
+        let formulas =
+          if role = "axiom" then List.map one_way_definition_formula formulas
+          else formulas
+        in
         let cls = List.concat_map (clausify_formula ~check_timeout) formulas in
         aux (List.rev_append cls acc) (produced + List.length cls) xs
   in
@@ -436,6 +529,10 @@ let partition_input_clauses ?(check_timeout = fun () -> ()) inputs =
         let formulas =
           if role_requires_negation role then [ f ] else split_top_level_conjuncts f
         in
+        let formulas =
+          if role = "axiom" then List.map one_way_definition_formula formulas
+          else formulas
+        in
         let cls = List.concat_map (clausify_formula ~check_timeout) formulas in
         let axioms, support =
           if is_support_role role then
@@ -449,9 +546,10 @@ let partition_input_clauses ?(check_timeout = fun () -> ()) inputs =
 
 let partition_input_clauses_with_trace ?(check_timeout = fun () -> ()) inputs =
   with_timeout_poll check_timeout (fun () ->
-  let add_origins ~input_index ~input_name ~input_role ~input_is_cnf clauses origins =
+  let add_origins ~input_index ~input_name ~input_role ~input_is_cnf ~transformation_status clauses origins =
     List.fold_left
-      (fun acc clause -> { clause; input_index; input_name; input_role; input_is_cnf } :: acc)
+      (fun acc clause ->
+        { clause; input_index; input_name; input_role; input_is_cnf; transformation_status } :: acc)
       origins
       clauses
   in
@@ -492,6 +590,7 @@ let partition_input_clauses_with_trace ?(check_timeout = fun () -> ()) inputs =
             ~input_name:name
             ~input_role:role
             ~input_is_cnf:true
+            ~transformation_status:"thm"
             clauses
             origins
         in
@@ -501,22 +600,46 @@ let partition_input_clauses_with_trace ?(check_timeout = fun () -> ()) inputs =
         let formulas =
           if role_requires_negation role then [ f ] else split_top_level_conjuncts f
         in
-        let cls = List.concat_map (clausify_formula ~check_timeout) formulas in
+        let formulas =
+          if role = "axiom" then
+            List.map
+              (fun f ->
+                let f' = one_way_definition_formula f in
+                (f', if f' = f then "esa" else "thm"))
+              formulas
+          else
+            List.map
+              (fun f -> (f, if role_requires_negation role then "cth" else "esa"))
+              formulas
+        in
+        let cls =
+          List.concat_map
+            (fun (f, status) ->
+              clausify_formula ~check_timeout f
+              |> List.map (fun c -> (c, status)))
+            formulas
+        in
+        let clauses = List.map fst cls in
         let axioms, support =
           if is_support_role role then
-            (axioms, List.rev_append cls support)
+            (axioms, List.rev_append clauses support)
           else
-            (List.rev_append cls axioms, support)
+            (List.rev_append clauses axioms, support)
         in
         let origins =
-          add_origins
-            ~input_index
-            ~input_name:name
-            ~input_role:role
-            ~input_is_cnf:false
-            cls
+          List.fold_left
+            (fun origins (clause, transformation_status) ->
+              add_origins
+                ~input_index
+                ~input_name:name
+                ~input_role:role
+                ~input_is_cnf:false
+                ~transformation_status
+                [ clause ]
+                origins)
             origins
+            cls
         in
-        aux (input_index + 1) axioms support origins (produced + List.length cls) xs
+        aux (input_index + 1) axioms support origins (produced + List.length clauses) xs
   in
   aux 1 [] [] [] 0 inputs)
