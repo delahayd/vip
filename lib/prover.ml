@@ -1408,8 +1408,11 @@ let rec run_file ?(config = default_config) filename =
       | run :: tl -> loop (run ()) tl
     in
 
-    let run_experimental_subrun ~stage_name ~portfolio_mode ~fraction ?(env = []) () =
-      let budget = fraction_budget fraction in
+    let run_experimental_subrun ~stage_name ~portfolio_mode ~fraction
+        ?(min_budget_s = 0.0) ?(env = []) () =
+      let budget =
+        min (remaining_time ()) (max (fraction_budget fraction) min_budget_s)
+      in
       if budget <= 0.1 then
         timeout_result (elapsed ())
       else begin
@@ -1641,6 +1644,10 @@ let rec run_file ?(config = default_config) filename =
                 (getenv_float
                    "IP_EXPERIMENTAL_EQ_HEAVY_SINE_FRACTION"
                    0.25)
+              ~min_budget_s:
+                (getenv_float
+                   "IP_EXPERIMENTAL_EQ_HEAVY_SINE_MIN_SECONDS"
+                   4.2)
               ~env:
                 (feq_subrun_env [
                   "IP_AXIOM_SELECTION", Some "1";
