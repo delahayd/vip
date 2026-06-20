@@ -835,9 +835,20 @@ let select_axioms_sine ~enabled ~check_timeout ~support axioms =
         in
         take max_seeds Types.StringSet.empty candidates
       in
+      let predicate_symbols_only syms =
+        Types.StringSet.filter
+          (fun s -> String.length s >= 2 && String.sub s 0 2 = "p:")
+          syms
+      in
       let initial_symbols =
         if support = [] then rare_seed_symbols ()
-        else selectable_symbols (clauses_symbols support)
+        else
+          let syms = selectable_symbols (clauses_symbols support) in
+          if getenv_bool "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY" false then
+            let pred_syms = predicate_symbols_only syms in
+            if Types.StringSet.is_empty pred_syms then syms else pred_syms
+          else
+            syms
       in
       let selected = Hashtbl.create (List.length axioms) in
       let selected_symbols = ref initial_symbols in
@@ -855,16 +866,62 @@ let select_axioms_sine ~enabled ~check_timeout ~support axioms =
       let relevant syms =
         not (Types.StringSet.is_empty (Types.StringSet.inter syms !selected_symbols))
       in
+      let ranked_selection = getenv_bool "IP_AXIOM_SELECTION_RANKED" false in
+      let overlap_count syms =
+        Types.StringSet.cardinal (Types.StringSet.inter syms !selected_symbols)
+      in
+      let min_selected_frequency syms =
+        let overlap = Types.StringSet.inter syms !selected_symbols in
+        if Types.StringSet.is_empty overlap then
+          max_int
+        else
+          Types.StringSet.fold
+            (fun s acc -> min acc (symbol_frequency s))
+            overlap
+            max_int
+      in
+      let compare_candidate (i1, c1, syms1) (i2, c2, syms2) =
+        let r1 = min_selected_frequency syms1 in
+        let r2 = min_selected_frequency syms2 in
+        let c = compare r1 r2 in
+        if c <> 0 then c
+        else
+          let o1 = overlap_count syms1 in
+          let o2 = overlap_count syms2 in
+          let c = compare o2 o1 in
+          if c <> 0 then c
+          else
+            let c = compare (Types.StringSet.cardinal syms1) (Types.StringSet.cardinal syms2) in
+            if c <> 0 then c
+            else
+              let c = compare (List.length c1) (List.length c2) in
+              if c <> 0 then c else compare i1 i2
+      in
       let rec rounds n =
         check_timeout ();
         if n <= 0 then ()
         else
           let changed = ref false in
-          List.iter
-            (fun (i, _c, syms) ->
-              check_timeout ();
-              if relevant syms && add_axiom i syms then changed := true)
-            axiom_infos;
+          if ranked_selection then begin
+            let candidates =
+              axiom_infos
+              |> List.filter
+                   (fun (i, _c, syms) ->
+                     check_timeout ();
+                     (not (Hashtbl.mem selected i)) && relevant syms)
+              |> List.sort compare_candidate
+            in
+            List.iter
+              (fun (i, _c, syms) ->
+                check_timeout ();
+                if add_axiom i syms then changed := true)
+              candidates
+          end else
+            List.iter
+              (fun (i, _c, syms) ->
+                check_timeout ();
+                if relevant syms && add_axiom i syms then changed := true)
+              axiom_infos;
           if !changed then rounds (n - 1)
       in
       if Types.StringSet.is_empty initial_symbols then
@@ -1614,6 +1671,7 @@ let rec run_file ?(config = default_config) filename =
                   "IP_AXIOM_SELECTION_ALL", Some "1";
                   "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "300";
                   "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "128";
+                  "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
                 ]);
             run_experimental_subrun
               ~stage_name:"Experimental large SInE medium"
@@ -1626,6 +1684,7 @@ let rec run_file ?(config = default_config) filename =
                   "IP_AXIOM_SELECTION_ALL", Some "1";
                   "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "1000";
                   "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "256";
+                  "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
                 ]);
             run_experimental_subrun
               ~stage_name:"Experimental large SInE wide"
@@ -1638,6 +1697,7 @@ let rec run_file ?(config = default_config) filename =
                   "IP_AXIOM_SELECTION_ALL", Some "1";
                   "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "2500";
                   "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "512";
+                  "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
                 ]);
           ]
       else if problem_profile = Equality_heavy
@@ -1662,6 +1722,7 @@ let rec run_file ?(config = default_config) filename =
                   "IP_AXIOM_SELECTION_ALL", Some "1";
                   "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "300";
                   "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "128";
+                  "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
                 ]);
             run_experimental_subrun
               ~stage_name:"Experimental equality-heavy full fallback"
@@ -1751,6 +1812,7 @@ let rec run_file ?(config = default_config) filename =
                  "IP_AXIOM_SELECTION_ALL", Some "1";
                  "IP_AXIOM_SELECTION_MAX_AXIOMS", Some max_axioms;
                  "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some max_freq;
+                 "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
                  "IP_FEQ_STABLE_FRACTION", Some "0.10";
                  "IP_FEQ_CLASSIC_FRACTION", Some "0.45";
                  "IP_FEQ_WEIGHT_FRACTION", Some "0.20";
