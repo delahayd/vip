@@ -1651,20 +1651,10 @@ let rec run_file ?(config = default_config) filename =
                    "IP_EXPERIMENTAL_LARGE_LEGACY_PROBE_FRACTION"
                    0.60);
             run_experimental_subrun
-              ~stage_name:"Experimental large unselected first"
-              ~portfolio_mode:Feq_modern
-              ~fraction:
-                (getenv_float "IP_EXPERIMENTAL_LARGE_FULL_FIRST_FRACTION" 0.40)
-              ~env:
-                (feq_subrun_env [
-                  "IP_AXIOM_SELECTION", Some "0";
-                  "IP_AXIOM_SELECTION_ALL", Some "0";
-                ]);
-            run_experimental_subrun
               ~stage_name:"Experimental large SInE narrow"
               ~portfolio_mode:Feq_modern
               ~fraction:
-                (getenv_float "IP_EXPERIMENTAL_SINE_NARROW_FRACTION" 0.0)
+                (getenv_float "IP_EXPERIMENTAL_SINE_NARROW_FRACTION" 0.05)
               ~env:
                 (feq_subrun_env [
                   "IP_AXIOM_SELECTION", Some "1";
@@ -1677,7 +1667,7 @@ let rec run_file ?(config = default_config) filename =
               ~stage_name:"Experimental large SInE medium"
               ~portfolio_mode:Feq_modern
               ~fraction:
-                (getenv_float "IP_EXPERIMENTAL_SINE_MEDIUM_FRACTION" 0.0)
+                (getenv_float "IP_EXPERIMENTAL_SINE_MEDIUM_FRACTION" 0.05)
               ~env:
                 (feq_subrun_env [
                   "IP_AXIOM_SELECTION", Some "1";
@@ -1687,10 +1677,20 @@ let rec run_file ?(config = default_config) filename =
                   "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
                 ]);
             run_experimental_subrun
+              ~stage_name:"Experimental large unselected first"
+              ~portfolio_mode:Feq_modern
+              ~fraction:
+                (getenv_float "IP_EXPERIMENTAL_LARGE_FULL_FIRST_FRACTION" 0.40)
+              ~env:
+                (feq_subrun_env [
+                  "IP_AXIOM_SELECTION", Some "0";
+                  "IP_AXIOM_SELECTION_ALL", Some "0";
+                ]);
+            run_experimental_subrun
               ~stage_name:"Experimental large SInE wide"
               ~portfolio_mode:Feq_modern
               ~fraction:
-                (getenv_float "IP_EXPERIMENTAL_SINE_WIDE_FRACTION" 0.0)
+                (getenv_float "IP_EXPERIMENTAL_SINE_WIDE_FRACTION" 0.05)
               ~env:
                 (feq_subrun_env [
                   "IP_AXIOM_SELECTION", Some "1";
