@@ -1495,6 +1495,14 @@ let rec run_file ?(config = default_config) filename =
         in
         ("IP_FEQ_LEGACY_FLASH_FRACTION", Some legacy_flash) :: extra
       in
+      let feq_standard_env extra =
+        let legacy_flash =
+          match Sys.getenv_opt "IP_EXPERIMENTAL_STANDARD_FEQ_LEGACY_FLASH_FRACTION" with
+          | Some value when String.trim value <> "" -> value
+          | _ -> "0.05"
+        in
+        ("IP_FEQ_LEGACY_FLASH_FRACTION", Some legacy_flash) :: extra
+      in
       let large_general = problem_profile = Large_general in
       if compact_non_unit_non_equality then
         run_schedule
@@ -1670,27 +1678,32 @@ let rec run_file ?(config = default_config) filename =
             (fun () -> avatar_fallback ());
           ]
       else if problem_profile = Equality_light then
-        run_experimental_subrun
-          ~stage_name:"Experimental equality-light FEQ full schedule"
-          ~portfolio_mode:Feq_modern
-          ~fraction:
-            (getenv_float
-               "IP_EXPERIMENTAL_EQUALITY_LIGHT_FEQ_ALL_FRACTION"
-               0.70)
-          ~env:(feq_subrun_env [ "IP_FEQ_MODERN_ALL", Some "1" ])
-          ()
-        |> fun first ->
-        begin
-          match first.stop_reason with
-          | Refutation_found _ -> first
-          | Saturation | Time_limit | Clause_limit -> avatar_fallback ()
-        end
+        run_schedule
+          [
+            run_experimental_subrun
+              ~stage_name:"Experimental equality-light FEQ standard"
+              ~portfolio_mode:Feq_modern
+              ~fraction:
+                (getenv_float
+                   "IP_EXPERIMENTAL_EQUALITY_LIGHT_FEQ_STANDARD_FRACTION"
+                   0.35)
+              ~env:(feq_standard_env []);
+            run_experimental_subrun
+              ~stage_name:"Experimental equality-light FEQ full schedule"
+              ~portfolio_mode:Feq_modern
+              ~fraction:
+                (getenv_float
+                   "IP_EXPERIMENTAL_EQUALITY_LIGHT_FEQ_ALL_FRACTION"
+                   0.35)
+              ~env:(feq_subrun_env [ "IP_FEQ_MODERN_ALL", Some "1" ]);
+            (fun () -> avatar_fallback ());
+          ]
       else
         run_experimental_subrun
           ~stage_name:"Experimental stable fallback"
           ~portfolio_mode:Feq_modern
           ~fraction:(getenv_float "IP_EXPERIMENTAL_STABLE_FRACTION" 0.70)
-          ~env:(feq_subrun_env [])
+          ~env:(feq_standard_env [])
           ()
         |> fun first ->
         match first.stop_reason with
