@@ -1674,6 +1674,18 @@ let rec run_file ?(config = default_config) filename =
                    "IP_EXPERIMENTAL_SMALL_MODERN_PORTFOLIO_FRACTION"
                    0.25);
             run_experimental_subrun
+              ~stage_name:"Experimental small non-equality goal-directed"
+              ~portfolio_mode:Modern_only
+              ~fraction:
+                (getenv_float
+                   "IP_EXPERIMENTAL_SMALL_GOAL_FRACTION"
+                   0.0)
+              ~env:
+                [
+                  "IP_PASSIVE_SELECTION", Some "goal";
+                  "IP_LITERAL_SELECTION", Some "smallest-negative";
+                ];
+            run_experimental_subrun
               ~stage_name:"Experimental small non-equality modern legacy-guided"
               ~portfolio_mode:Modern_only
               ~fraction:
@@ -1740,6 +1752,21 @@ let rec run_file ?(config = default_config) filename =
                   "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "256";
                   "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
                 ]);
+            run_experimental_subrun
+              ~stage_name:"Experimental large goal-directed SInE"
+              ~portfolio_mode:Modern_only
+              ~fraction:
+                (getenv_float "IP_EXPERIMENTAL_LARGE_GOAL_SINE_FRACTION" 0.0)
+              ~env:
+                [
+                  "IP_AXIOM_SELECTION", Some "1";
+                  "IP_AXIOM_SELECTION_ALL", Some "1";
+                  "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "1000";
+                  "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "256";
+                  "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
+                  "IP_PASSIVE_SELECTION", Some "goal";
+                  "IP_LITERAL_SELECTION", Some "smallest-negative";
+                ];
             run_experimental_subrun
               ~stage_name:"Experimental large unselected first"
               ~portfolio_mode:Feq_modern

@@ -276,20 +276,52 @@ let negative_indices c =
   |> List.map fst
 
 let selected_or_maximal_indices ~emulate_v1 c =
-  let legacy_literal_selection =
-    emulate_v1
-    ||
-    match Sys.getenv_opt "IP_LITERAL_SELECTION" with
-    | Some s -> String.equal (String.lowercase_ascii (String.trim s)) "legacy"
-    | None -> false
+  let literal_selection =
+    if emulate_v1 then "legacy"
+    else
+      match Sys.getenv_opt "IP_LITERAL_SELECTION" with
+      | Some s when String.trim s <> "" -> String.lowercase_ascii (String.trim s)
+      | Some _ | None -> "first-negative"
+  in
+  let choose_by_weight cmp indices =
+    match indices with
+    | [] -> []
+    | i :: rest ->
+        let best =
+          List.fold_left
+            (fun best i ->
+              let wb = literal_weight (List.nth c best) in
+              let wi = literal_weight (List.nth c i) in
+              if cmp wi wb then i else best)
+            i
+            rest
+        in
+        [ best ]
   in
   let negs = negative_indices c in
   if negs <> [] then
-    if legacy_literal_selection then negs
-    else
-      (* Efficient selection: pick only the first negative literal. *)
-      [ List.hd negs ]
-  else if legacy_literal_selection then
+    match literal_selection with
+    | "legacy" | "all-negative" | "all-neg" -> negs
+    | "smallest-negative" | "smallest-neg" | "small-neg" ->
+        choose_by_weight ( < ) negs
+    | "largest-negative" | "largest-neg" | "heavy-neg" ->
+        choose_by_weight ( > ) negs
+    | "ground-negative" | "ground-neg" ->
+        begin
+          match
+            List.filter
+              (fun i ->
+                let lit = List.nth c i in
+                vars_of_clause [ lit ] |> Types.StringSet.is_empty)
+              negs
+          with
+          | [] -> [ List.hd negs ]
+          | ground_negs -> choose_by_weight ( < ) ground_negs
+        end
+    | _ ->
+        (* Efficient default: pick only the first negative literal. *)
+        [ List.hd negs ]
+  else if literal_selection = "legacy" then
     Ordering.maximal_literal_indices c
   else
     all_indices c
@@ -874,6 +906,35 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
 
   let clause_has_equality c =
     clause_contains_equality c
+  in
+
+  let rec symbols_of_term acc = function
+    | Var _ -> acc
+    | Fun (f, args) ->
+        List.fold_left symbols_of_term (Types.StringSet.add f acc) args
+  in
+
+  let symbols_of_literal acc = function
+    | Pos a | Neg a ->
+        List.fold_left symbols_of_term (Types.StringSet.add a.pred acc) a.args
+  in
+
+  let symbols_of_clause c =
+    List.fold_left symbols_of_literal Types.StringSet.empty c
+  in
+
+  let support_symbols =
+    support
+    |> List.fold_left
+         (fun acc c -> Types.StringSet.union acc (symbols_of_clause c))
+         Types.StringSet.empty
+  in
+
+  let symbol_overlap_count c =
+    if Types.StringSet.is_empty support_symbols then 0
+    else
+      Types.StringSet.cardinal
+        (Types.StringSet.inter support_symbols (symbols_of_clause c))
   in
 
   let equality_literal_count c =
@@ -1495,6 +1556,17 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
         let negative_bonus = if clause_has_negative c then 12 else 0 in
         let unit_bonus = if len = 1 then 32 else 0 in
         (len * 80) + e.weight + (vars * 12) - negative_bonus - unit_bonus - age_relief
+    | "goal" | "goal-directed" ->
+        let overlap = symbol_overlap_count c in
+        let negative_bonus = if clause_has_negative c then 18 else 0 in
+        let unit_bonus = if len = 1 then 45 else 0 in
+        let goal_bonus = overlap * getenv_int "IP_PASSIVE_GOAL_SYMBOL_BONUS" 35 in
+        (len * 70) + e.weight + (vars * 10) - goal_bonus - negative_bonus
+        - unit_bonus - age_relief
+    | "goal-short" ->
+        let overlap = symbol_overlap_count c in
+        let goal_bonus = overlap * getenv_int "IP_PASSIVE_GOAL_SYMBOL_BONUS" 35 in
+        (len * 95) + e.weight + (vars * 10) - goal_bonus - age_relief
     | "equality" ->
         let eqs = equality_literal_count c in
         let neg_eqs = negative_equality_count c in
