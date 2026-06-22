@@ -68,6 +68,8 @@ type outcome = {
   tstp_prelude : string option;
 }
 
+exception Sat_probe_success of outcome
+
 let default_config = {
   time_limit_s = None;
   max_generated_clauses = None;
@@ -1157,14 +1159,11 @@ let rec run_file ?(config = default_config) filename =
     let remaining_time () = max 0.0 (total_timeout -. elapsed ()) in
     let stage_time requested = min requested (remaining_time ()) in
 
-    let timeout_result wall_clock_s =
+    let zero_resolution_stats wall_clock_s =
       {
-        Resolution.stop_reason = Time_limit;
-        derivation = [];
-        stats = {
-          generated_clauses = 0;
-          processed_clauses = 0;
-          resolution_inferences = 0;
+        generated_clauses = 0;
+        processed_clauses = 0;
+        resolution_inferences = 0;
           factoring_inferences = 0;
           equality_resolution_inferences = 0;
           equality_factoring_inferences = 0;
@@ -1191,10 +1190,16 @@ let rec run_file ?(config = default_config) filename =
           avatar_sat_solves = 0;
           avatar_sat_conflicts = 0;
           avatar_context_sat_tests = 0;
-          avatar_context_sat_failures = 0;
-          avatar_filtered_inferences = 0;
-          wall_clock_s;
-        };
+        avatar_context_sat_failures = 0;
+        avatar_filtered_inferences = 0;
+        wall_clock_s;
+      }
+    in
+    let timeout_result wall_clock_s =
+      {
+        Resolution.stop_reason = Time_limit;
+        derivation = [];
+        stats = zero_resolution_stats wall_clock_s;
       }
     in
 
@@ -1240,6 +1245,65 @@ let rec run_file ?(config = default_config) filename =
         unit_ratio
         negative_ratio
         axiom_selection_enabled;
+
+    let input_has_conjecture =
+      List.exists
+        (function
+          | Fof.Input_fof { role; _ }
+          | Fof.Input_cnf { role; _ } ->
+              role = "conjecture" || role = "negated_conjecture"
+          | Fof.Input_include _ -> false)
+        parsed.inputs
+    in
+
+    if getenv_bool "IP_SAT_PROBE" false then begin
+      let max_instances = getenv_int_global "IP_SAT_PROBE_MAX_INSTANCES" 20_000 in
+      match
+        Sat_probe.run
+          ~max_instances
+          ~check_timeout:check_problem_timeout
+          raw_all_clauses
+      with
+      | Sat_probe.Satisfiable ->
+          let status =
+            if input_has_conjecture then CounterSatisfiable else Satisfiable
+          in
+          if getenv_bool "IP_SAT_PROBE_DEBUG" false then
+            Printf.eprintf
+              "[sat-probe] status=%s clauses=%d max_instances=%d\n%!"
+              (string_of_szs_status status)
+              raw_clause_count
+              max_instances;
+          raise (Sat_probe_success {
+            status;
+            info = {
+              file = Some filename;
+              clause_count = raw_clause_count;
+              generated_clause_count = 0;
+              profile = string_of_problem_profile problem_profile;
+              raw_clause_count;
+              equality_literals = raw_equality_literals;
+              equality_literal_ratio = raw_equality_literal_ratio;
+              avg_literal_term_size = raw_avg_literal_term_size;
+              unit_ratio;
+              negative_ratio;
+              axiom_selection_enabled = false;
+            };
+            derivation = [];
+            empty_clause = None;
+            resolution_stats = Some (zero_resolution_stats (elapsed ()));
+            tstp_prelude = None;
+          })
+      | Sat_probe.Not_applicable reason ->
+          if getenv_bool "IP_SAT_PROBE_DEBUG" false then
+            Printf.eprintf "[sat-probe] not-applicable: %s\n%!" reason
+      | Sat_probe.Too_large reason ->
+          if getenv_bool "IP_SAT_PROBE_DEBUG" false then
+            Printf.eprintf "[sat-probe] too-large: %s\n%!" reason
+      | Sat_probe.Unsat ->
+          if getenv_bool "IP_SAT_PROBE_DEBUG" false then
+            Printf.eprintf "[sat-probe] finite EPR instances unsat\n%!"
+    end;
 
     let compat_mode () =
       if equality_problem then Resolution.Unrestricted else config.inference_mode
@@ -2351,6 +2415,8 @@ let rec run_file ?(config = default_config) filename =
   | Stack_overflow ->
       ignore (Unix.alarm 0);
       timeout_outcome (elapsed ())
+  | Sat_probe_success outcome ->
+      outcome
 
 let print_szs ?(verbose = true) outcome =
   let name =

@@ -11,6 +11,8 @@
   clausify
   ordering
   feature_vector
+  prop_sat
+  sat_probe
   discrimination_index
   term_index
   legacy_resolution
