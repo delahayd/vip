@@ -895,6 +895,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let literal_index = Discrimination_index.create () in
   let term_index = Term_index.create () in
   let fv_index = Feature_vector.create () in
+  let simpl_fv_index = Feature_vector.create () in
 
   let indexed_demodulation_enabled =
     match Sys.getenv_opt "IP_INDEXED_DEMODULATION" with
@@ -1172,6 +1173,14 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let forward_subsumption_resolution_enabled =
     (not emulate_v1) && expensive_simplifications && getenv_bool "IP_FORWARD_SUBSUMPTION_RESOLUTION" true
   in
+  let simplification_set_index_enabled =
+    (not emulate_v1)
+    && expensive_simplifications
+    && getenv_bool "IP_SIMPLIFICATION_SET_INDEX" false
+  in
+  let simplification_set_max_clause_len =
+    getenv_int "IP_SIMPLIFICATION_SET_MAX_CLAUSE_LEN" 32
+  in
   let backward_passive_demodulation_enabled =
     (not emulate_v1)
     && expensive_simplifications
@@ -1436,7 +1445,12 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
           && List.for_all (fun lit -> List.exists (( = ) lit) c_norm) (normalize_clause d.clause_d))
         (active_clauses ())
     else
-      let candidates = Feature_vector.find_subsuming_candidates fv_index c in
+      let subsumption_index =
+        if simplification_set_index_enabled then simpl_fv_index else fv_index
+      in
+      let candidates =
+        Feature_vector.find_subsuming_candidates subsumption_index c
+      in
       let rec aux = function
         | [] -> false
         | id :: tl ->
@@ -1463,6 +1477,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let delete_derived d =
     Hashtbl.remove all_by_id d.id;
     Feature_vector.remove fv_index d.id;
+    Feature_vector.remove simpl_fv_index d.id;
     let key = context_key (context_of d) ^ "|" ^ string_of_clause d.clause_d in
     Hashtbl.remove known key;
     Hashtbl.remove context_by_id d.id
@@ -1901,6 +1916,12 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     index_clause_for_inference d
   in
 
+  let index_simplification_clause d =
+    if simplification_set_index_enabled
+       && List.length d.clause_d <= simplification_set_max_clause_len then
+      Feature_vector.add simpl_fv_index d.clause_d d.id
+  in
+
   let backward_subsume given =
     if emulate_v1 || legacy_subsumption then
       let given_norm = normalize_clause given.clause_d in
@@ -1958,6 +1979,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let activate given =
     backward_subsume given;
     active := given :: !active;
+    index_simplification_clause given;
     if context_of given = [] then register_demodulator given.clause_d;
     index_active_clause given
   in
