@@ -107,6 +107,17 @@ let option_exists f = function
   | Some x -> f x
   | None -> false
 
+let unique_ids ids =
+  let seen = Hashtbl.create (List.length ids + 1) in
+  List.filter
+    (fun id ->
+      if Hashtbl.mem seen id then false
+      else begin
+        Hashtbl.add seen id ();
+        true
+      end)
+    ids
+
 let string_of_prop_lit = function
   | PPos v -> "p" ^ string_of_int v
   | PNeg v -> "~p" ^ string_of_int v
@@ -1179,7 +1190,19 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     && getenv_bool "IP_SIMPLIFICATION_SET_INDEX" false
   in
   let simplification_set_max_clause_len =
-    getenv_int "IP_SIMPLIFICATION_SET_MAX_CLAUSE_LEN" 32
+    getenv_int "IP_SIMPLIFICATION_SET_MAX_CLAUSE_LEN" 8
+  in
+  let simplification_set_unit_only =
+    getenv_bool "IP_SIMPLIFICATION_SET_UNIT_ONLY" true
+  in
+  let simplification_set_negative_max_len =
+    getenv_int "IP_SIMPLIFICATION_SET_NEGATIVE_MAX_LEN" 3
+  in
+  let simplification_set_goal_max_len =
+    getenv_int "IP_SIMPLIFICATION_SET_GOAL_MAX_LEN" 5
+  in
+  let simplification_set_equality_unit =
+    getenv_bool "IP_SIMPLIFICATION_SET_EQUALITY_UNIT" false
   in
   let backward_passive_demodulation_enabled =
     (not emulate_v1)
@@ -1445,11 +1468,16 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
           && List.for_all (fun lit -> List.exists (( = ) lit) c_norm) (normalize_clause d.clause_d))
         (active_clauses ())
     else
-      let subsumption_index =
-        if simplification_set_index_enabled then simpl_fv_index else fv_index
-      in
       let candidates =
-        Feature_vector.find_subsuming_candidates subsumption_index c
+        let global_candidates =
+          Feature_vector.find_subsuming_candidates fv_index c
+        in
+        if simplification_set_index_enabled then
+          unique_ids
+            (global_candidates
+             @ Feature_vector.find_subsuming_candidates simpl_fv_index c)
+        else
+          global_candidates
       in
       let rec aux = function
         | [] -> false
@@ -1587,14 +1615,6 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
                          let test_clause = List.mapi (fun j lit' -> if i = j then negate_literal lit else lit') c_curr in
                          Feature_vector.find_subsuming_candidates fv_index test_clause @ acc)
                        []
-            in
-            let unique_ids ids =
-              let seen = Hashtbl.create 17 in
-              List.filter
-                (fun id ->
-                  if Hashtbl.mem seen id then false
-                  else begin Hashtbl.add seen id (); true end)
-                ids
             in
             let rec reduce c_curr =
               let candidates =
@@ -1917,8 +1937,22 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   in
 
   let index_simplification_clause d =
-    if simplification_set_index_enabled
-       && List.length d.clause_d <= simplification_set_max_clause_len then
+    let c = d.clause_d in
+    let len = List.length c in
+    let should_index =
+      if simplification_set_unit_only then
+        (clause_has_negative c && len = 1)
+        || (simplification_set_equality_unit && unit_positive_equality c)
+      else
+        len <= simplification_set_max_clause_len
+        && ((clause_has_negative c
+             && len <= simplification_set_negative_max_len)
+            || (symbol_overlap_count c > 0
+                && len <= simplification_set_goal_max_len)
+            || (simplification_set_equality_unit
+                && unit_positive_equality c))
+    in
+    if simplification_set_index_enabled && should_index then
       Feature_vector.add simpl_fv_index d.clause_d d.id
   in
 
