@@ -84,6 +84,7 @@ let portfolio_of_string = function
   | "scheduled" | "scheduler" -> Prover.Scheduled_portfolio
   | "experimental-casc" | "casc-experimental" | "exp-casc" -> Prover.Experimental_casc
   | "casc-aggressive" | "aggressive-casc" | "aggressive" -> Prover.Casc_aggressive
+  | "casc-240" | "casc240" | "casc-final" | "final-casc" -> Prover.Casc_240
   | _ -> usage ()
 
 let portfolio_name = function
@@ -96,6 +97,7 @@ let portfolio_name = function
   | Prover.Scheduled_portfolio -> "scheduled"
   | Prover.Experimental_casc -> "experimental-casc"
   | Prover.Casc_aggressive -> "casc-aggressive"
+  | Prover.Casc_240 -> "casc-240"
 
 let split_commas s =
   s
@@ -234,6 +236,7 @@ let () =
         Prover.Feq_modern;
         Prover.Experimental_casc;
         Prover.Casc_aggressive;
+        Prover.Casc_240;
         Prover.Legacy_then_modern;
         Prover.Modern_then_legacy;
         Prover.Scheduled_portfolio;

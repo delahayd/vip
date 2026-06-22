@@ -20,6 +20,7 @@ type portfolio_mode =
   | Scheduled_portfolio
   | Experimental_casc
   | Casc_aggressive
+  | Casc_240
 
 type engine_kind =
   | Legacy_compat
