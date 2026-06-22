@@ -1701,6 +1701,74 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
       None entries
   in
 
+  let split_commas s =
+    s
+    |> String.split_on_char ','
+    |> List.map (fun x -> String.lowercase_ascii (String.trim x))
+    |> List.filter (fun x -> x <> "")
+  in
+
+  let layered_schedule =
+    match Sys.getenv_opt "IP_LAYERED_SELECTION" with
+    | Some s when String.trim s <> "" -> split_commas s
+    | Some _ | None ->
+        [ "unit"; "equality"; "goal"; "short"; "age"; "weight" ]
+  in
+
+  let layered_cursor = ref 0 in
+
+  let layer_entries layer entries =
+    let keep e =
+      let c = e.d.clause_d in
+      match layer with
+      | "unit" -> List.length c = 1
+      | "negative-unit" | "neg-unit" ->
+          List.length c = 1 && clause_has_negative c
+      | "equality-unit" | "eq-unit" ->
+          List.length c = 1 && clause_has_equality c
+      | "equality" | "eq" -> clause_has_equality c
+      | "goal" | "support" -> symbol_overlap_count c > 0
+      | "short" -> List.length c <= getenv_int "IP_LAYERED_SHORT_MAX_LEN" 2
+      | "negative" | "neg" -> clause_has_negative c
+      | "age" | "weight" | "all" | "any" -> true
+      | _ -> true
+    in
+    List.filter keep entries
+  in
+
+  let select_in_layer layer entries =
+    match layer with
+    | "age" -> select_by_age entries
+    | "weight" | "all" | "any" -> select_by_weight entries
+    | "equality" | "eq" | "equality-unit" | "eq-unit" ->
+        select_by_scored "equality" entries
+    | "goal" | "support" -> select_by_scored "goal" entries
+    | "short" -> select_by_scored "short" entries
+    | "unit" | "negative-unit" | "neg-unit" | "negative" | "neg" ->
+        select_by_scored "syn" entries
+    | _ -> select_by_weight entries
+  in
+
+  let select_by_layered entries =
+    match layered_schedule with
+    | [] -> select_by_weight entries
+    | layers ->
+        let n = List.length layers in
+        let rec try_layer attempts =
+          if attempts >= n then select_by_weight entries
+          else
+            let idx = (!layered_cursor + attempts) mod n in
+            let layer = List.nth layers idx in
+            let candidates = layer_entries layer entries in
+            match candidates with
+            | [] -> try_layer (attempts + 1)
+            | _ ->
+                layered_cursor := (idx + 1) mod n;
+                select_in_layer layer candidates
+        in
+        try_layer 0
+  in
+
   let remove_passive_entry selected =
     passive :=
       List.filter (fun e -> e.passive_id <> selected.passive_id) !passive
@@ -1717,6 +1785,8 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
           let selected =
             match enabled_entries with
             | [] -> None
+            | entries when passive_selection = "layered" ->
+                select_by_layered entries
             | entries when passive_selection <> "classic" ->
                 select_by_scored passive_selection entries
             | entries ->

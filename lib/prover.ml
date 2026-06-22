@@ -1781,6 +1781,17 @@ let rec run_file ?(config = default_config) filename =
                   "IP_AXIOM_SELECTION_ALL", Some "0";
                 ]);
             run_experimental_subrun
+              ~stage_name:"Experimental large layered modern"
+              ~portfolio_mode:Modern_only
+              ~fraction:
+                (getenv_float "IP_EXPERIMENTAL_LARGE_LAYERED_FRACTION" 0.0)
+              ~env:
+                [
+                  "IP_PASSIVE_SELECTION", Some "layered";
+                  "IP_LAYERED_SELECTION",
+                  Some "unit,equality,goal,short,age,weight";
+                ];
+            run_experimental_subrun
               ~stage_name:"Experimental large SInE wide"
               ~portfolio_mode:Feq_modern
               ~fraction:
