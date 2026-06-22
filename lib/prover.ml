@@ -1531,38 +1531,41 @@ let rec run_file ?(config = default_config) filename =
 
     let run_experimental_subrun ~stage_name ~portfolio_mode ~fraction
         ?(min_budget_s = 0.0) ?(env = []) () =
-      let budget =
-        min (remaining_time ()) (max (fraction_budget fraction) min_budget_s)
-      in
-      if budget <= 0.1 then
+      if fraction <= 0.0 then
         timeout_result (elapsed ())
-      else begin
-        if config.print_derivation then
-          Printf.printf "%% Stage: %s (%.2fs, subrun)\n%!" stage_name budget;
-        with_envs env (fun () ->
-          let outcome =
-            run_file
-              ~config:
-                {
-                  config with
-                  time_limit_s = Some budget;
-                  portfolio_mode;
-                  print_derivation = false;
-                }
-              filename
-          in
-          let stop_reason =
-            match outcome.empty_clause, outcome.status with
-            | Some d, _ -> Refutation_found d
-            | None, GaveUp -> Saturation
-            | None, ResourceOut -> Clause_limit
-            | None, Timeout -> Time_limit
-            | None, _ -> Time_limit
-          in
-          {
-            Resolution.stop_reason;
-            derivation = outcome.derivation;
-            stats =
+      else
+        let budget =
+          min (remaining_time ()) (max (fraction_budget fraction) min_budget_s)
+        in
+        if budget <= 0.1 then
+          timeout_result (elapsed ())
+        else begin
+          if config.print_derivation then
+            Printf.printf "%% Stage: %s (%.2fs, subrun)\n%!" stage_name budget;
+          with_envs env (fun () ->
+            let outcome =
+              run_file
+                ~config:
+                  {
+                    config with
+                    time_limit_s = Some budget;
+                    portfolio_mode;
+                    print_derivation = false;
+                  }
+                filename
+            in
+            let stop_reason =
+              match outcome.empty_clause, outcome.status with
+              | Some d, _ -> Refutation_found d
+              | None, GaveUp -> Saturation
+              | None, ResourceOut -> Clause_limit
+              | None, Timeout -> Time_limit
+              | None, _ -> Time_limit
+            in
+            {
+              Resolution.stop_reason;
+              derivation = outcome.derivation;
+              stats =
               Option.value
                 outcome.resolution_stats
                 ~default:(empty_resolution_stats budget);
@@ -1832,6 +1835,28 @@ let rec run_file ?(config = default_config) filename =
       else if problem_profile = Equality_light then
         run_schedule
           [
+            run_experimental_subrun
+              ~stage_name:"Experimental equality-light FEQ equality probe"
+              ~portfolio_mode:Feq_modern
+              ~fraction:
+                (getenv_float
+                   "IP_EXPERIMENTAL_EQUALITY_LIGHT_FEQ_EQUALITY_PROBE_FRACTION"
+                   0.10)
+              ~min_budget_s:
+                (getenv_float
+                   "IP_EXPERIMENTAL_EQUALITY_LIGHT_FEQ_EQUALITY_PROBE_MIN_SECONDS"
+                   4.0)
+              ~env:
+                (feq_subrun_env
+                   [
+                     "IP_FEQ_LEGACY_FLASH_FRACTION", Some "0";
+                     "IP_FEQ_MODERN_ALL", Some "1";
+                     "IP_FEQ_STABLE_FRACTION", Some "0.05";
+                     "IP_FEQ_CLASSIC_FRACTION", Some "0.15";
+                     "IP_FEQ_WEIGHT_FRACTION", Some "0.15";
+                     "IP_FEQ_EQUALITY_FRACTION", Some "0.60";
+                     "IP_FEQ_PASSIVE_AW_RATIO", Some "1:8";
+                   ]);
             run_experimental_subrun
               ~stage_name:"Experimental equality-light FEQ standard"
               ~portfolio_mode:Feq_modern

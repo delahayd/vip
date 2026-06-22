@@ -362,7 +362,48 @@ let dedup_clauses_with_parents ?(check_timeout = fun () -> ()) items =
   in
   aux [] items
 
-let rewrite_fix_term ~check_timeout demods count t =
+type demodulator = term * term
+
+type demod_index = {
+  by_root : (string * int, demodulator list ref) Hashtbl.t;
+  mutable variable_lhs : demodulator list;
+  mutable all_rules : demodulator list;
+}
+
+let create_demod_index () =
+  { by_root = Hashtbl.create 251; variable_lhs = []; all_rules = [] }
+
+let root_key_of_term = function
+  | Var _ -> None
+  | Fun (f, args) -> Some (f, List.length args)
+
+let add_demod_index idx ((lhs, _) as rule) =
+  idx.all_rules <- rule :: idx.all_rules;
+  match root_key_of_term lhs with
+  | None -> idx.variable_lhs <- rule :: idx.variable_lhs
+  | Some key ->
+      let bucket =
+        match Hashtbl.find_opt idx.by_root key with
+        | Some r -> r
+        | None ->
+            let r = ref [] in
+            Hashtbl.add idx.by_root key r;
+            r
+      in
+      bucket := rule :: !bucket
+
+let demod_candidates idx t =
+  match root_key_of_term t with
+  | None -> idx.variable_lhs
+  | Some key ->
+      let rooted =
+        match Hashtbl.find_opt idx.by_root key with
+        | None -> []
+        | Some r -> !r
+      in
+      rooted @ idx.variable_lhs
+
+let rewrite_fix_term_with_candidates ~check_timeout ~candidates count t =
   let count = ref count in
   let rec aux t =
     check_timeout ();
@@ -375,7 +416,7 @@ let rewrite_fix_term ~check_timeout demods count t =
             let s = Match.match_terms l t empty_subst in
             Some (apply_subst_term s r)
           with Match.Not_matchable -> None)
-        demods
+        (candidates t)
     with
     | Some t' ->
         incr count;
@@ -387,6 +428,20 @@ let rewrite_fix_term ~check_timeout demods count t =
   in
   let t' = aux t in
   t', !count
+
+let rewrite_fix_term ~check_timeout demods count t =
+  rewrite_fix_term_with_candidates
+    ~check_timeout
+    ~candidates:(fun _ -> demods)
+    count
+    t
+
+let rewrite_fix_term_indexed ~check_timeout idx count t =
+  rewrite_fix_term_with_candidates
+    ~check_timeout
+    ~candidates:(demod_candidates idx)
+    count
+    t
 
 let rewrite_atom ~check_timeout demods count a =
   let args, count =
@@ -413,6 +468,40 @@ let rewrite_clause ~check_timeout demods c =
     (fun (acc, count) lit ->
       check_timeout ();
       let lit', count = rewrite_literal ~check_timeout demods count lit in
+      (lit' :: acc, count))
+    ([], 0)
+    c
+  |> fun (lits, count) -> (List.rev lits, count)
+
+let rewrite_atom_indexed ~check_timeout demod_index count a =
+  let args, count =
+    List.fold_left
+      (fun (acc, count) t ->
+        check_timeout ();
+        let t', count =
+          rewrite_fix_term_indexed ~check_timeout demod_index count t
+        in
+        (t' :: acc, count))
+      ([], count)
+      a.args
+  in
+  ({ a with args = List.rev args }, count)
+
+let rewrite_literal_indexed ~check_timeout demod_index count = function
+  | Pos a ->
+      let a', count = rewrite_atom_indexed ~check_timeout demod_index count a in
+      (Pos a', count)
+  | Neg a ->
+      let a', count = rewrite_atom_indexed ~check_timeout demod_index count a in
+      (Neg a', count)
+
+let rewrite_clause_indexed ~check_timeout demod_index c =
+  List.fold_left
+    (fun (acc, count) lit ->
+      check_timeout ();
+      let lit', count =
+        rewrite_literal_indexed ~check_timeout demod_index count lit
+      in
       (lit' :: acc, count))
     ([], 0)
     c
@@ -801,10 +890,23 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let passive : passive_entry list ref = ref [] in
   let all : derived list ref = ref [] in
   let demodulators : (term * term) list ref = ref [] in
+  let demod_index = create_demod_index () in
 
   let literal_index = Discrimination_index.create () in
   let term_index = Term_index.create () in
   let fv_index = Feature_vector.create () in
+
+  let indexed_demodulation_enabled =
+    match Sys.getenv_opt "IP_INDEXED_DEMODULATION" with
+    | Some s ->
+        begin
+          match String.lowercase_ascii (String.trim s) with
+          | "1" | "true" | "yes" | "on" -> true
+          | "0" | "false" | "no" | "off" -> false
+          | _ -> true
+        end
+    | None -> true
+  in
 
   let generated = ref 0 in
   let processed = ref 0 in
@@ -878,6 +980,13 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
 
   let check_timeout () =
     if time_exceeded () then raise Timeout_hit
+  in
+
+  let rewrite_with_demodulators c =
+    if indexed_demodulation_enabled then
+      rewrite_clause_indexed ~check_timeout demod_index c
+    else
+      rewrite_clause ~check_timeout !demodulators c
   in
 
   let clause_limit_exceeded () =
@@ -1374,7 +1483,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     if clause_limit_exceeded () || !sat_unsat || (avatar_enabled && context <> [] && not (sat_context_sat context)) then None
     else
       let c, rewrites =
-        try rewrite_clause ~check_timeout !demodulators c
+        try rewrite_with_demodulators c
         with Rewrite_limit_hit -> (c, 0)
       in
       demodulation_rewrites := !demodulation_rewrites + rewrites;
@@ -1426,7 +1535,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let simplify_selected d =
     check_timeout ();
     let c, rewrites =
-      try rewrite_clause ~check_timeout !demodulators d.clause_d
+      try rewrite_with_demodulators d.clause_d
       with Rewrite_limit_hit -> (d.clause_d, 0)
     in
     demodulation_rewrites := !demodulation_rewrites + rewrites;
@@ -1668,6 +1777,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     | Some rule ->
         if not (List.exists (( = ) rule) !demodulators) then begin
           demodulators := rule :: !demodulators;
+          add_demod_index demod_index rule;
           if expensive_simplifications then backward_demodulate rule
         end
   in
