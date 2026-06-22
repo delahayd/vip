@@ -1172,6 +1172,14 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let forward_subsumption_resolution_enabled =
     (not emulate_v1) && expensive_simplifications && getenv_bool "IP_FORWARD_SUBSUMPTION_RESOLUTION" true
   in
+  let backward_passive_demodulation_enabled =
+    (not emulate_v1)
+    && expensive_simplifications
+    && getenv_bool "IP_BACKWARD_PASSIVE_DEMODULATION" true
+  in
+  let backward_passive_demodulation_limit =
+    getenv_int "IP_BACKWARD_PASSIVE_DEMODULATION_LIMIT" 256
+  in
   let legacy_candidate_pool =
     (not emulate_v1) && getenv_bool "IP_LEGACY_CANDIDATE_POOL" false
   in
@@ -1837,8 +1845,42 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
         else kept_active := d :: !kept_active)
       !active;
     active := List.rev !kept_active
-    (* We skip backward demodulation on the passive set to be fast.
-       Passive clauses will be simplified by forward demodulation when they are selected. *)
+  in
+
+  let backward_demodulate_passive rule =
+    if backward_passive_demodulation_enabled then begin
+      let rewritten = ref 0 in
+      let kept_passive = ref [] in
+      List.iter
+        (fun e ->
+          check_timeout ();
+          if !rewritten >= backward_passive_demodulation_limit then
+            kept_passive := e :: !kept_passive
+          else
+            let d = e.d in
+            let c', rewrites =
+              try rewrite_clause ~check_timeout [ rule ] d.clause_d
+              with Rewrite_limit_hit -> (d.clause_d, 0)
+            in
+            if rewrites > 0 then begin
+              incr rewritten;
+              let d_context = context_of d in
+              delete_derived d;
+              match simplify_clause_modern c' with
+              | None -> ()
+              | Some c_final ->
+                  ignore
+                    (add_clause
+                       ~context:d_context
+                       ~parents:[ d.id ]
+                       ~rule:"backward_passive_demod"
+                       c_final)
+            end
+            else
+              kept_passive := e :: !kept_passive)
+        !passive;
+      passive := List.rev !kept_passive
+    end
   in
 
   let register_demodulator c =
@@ -1848,7 +1890,10 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
         if not (List.exists (( = ) rule) !demodulators) then begin
           demodulators := rule :: !demodulators;
           add_demod_index demod_index rule;
-          if expensive_simplifications then backward_demodulate rule
+          if expensive_simplifications then begin
+            backward_demodulate rule;
+            backward_demodulate_passive rule
+          end
         end
   in
 
