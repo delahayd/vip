@@ -2110,11 +2110,29 @@ let rec run_file ?(config = default_config) filename =
                  "IP_FEQ_EQUALITY_FRACTION", Some "0.27";
                ])
       in
-      let feq_full name fraction =
+      let feq_sine_compat name fraction max_axioms max_freq =
         run_experimental_subrun
           ~stage_name:name
           ~portfolio_mode:Feq_modern
           ~fraction
+          ~min_budget_s:
+            (getenv_float "IP_CASC_240_FEQ_SINE_NARROW_MIN_SECONDS" 8.0)
+          ~env:
+            (feq_env
+               [
+                 "IP_AXIOM_SELECTION", Some "1";
+                 "IP_AXIOM_SELECTION_ALL", Some "1";
+                 "IP_AXIOM_SELECTION_MAX_AXIOMS", Some max_axioms;
+                 "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some max_freq;
+                 "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
+               ])
+      in
+      let feq_full ?(min_budget_s = 0.0) name fraction =
+        run_experimental_subrun
+          ~stage_name:name
+          ~portfolio_mode:Feq_modern
+          ~fraction
+          ~min_budget_s
           ~env:
             (feq_env
                [
@@ -2175,11 +2193,18 @@ let rec run_file ?(config = default_config) filename =
             run_schedule
               [
                 feq_full
+                  ~min_budget_s:
+                    (getenv_float "IP_CASC_240_FEQ_QUICK_FULL_MIN_SECONDS" 8.0)
                   "CASC-240 FEQ quick full classic/equality"
                   (getenv_float "IP_CASC_240_FEQ_QUICK_FULL_FRACTION" 0.10);
+                feq_sine_compat
+                  "CASC-240 FEQ ranked SInE narrow"
+                  (getenv_float "IP_CASC_240_FEQ_SINE_NARROW_FRACTION" 0.04)
+                  "300"
+                  "128";
                 stable_stage
                   "CASC-240 FEQ stable pass"
-                  (getenv_float "IP_CASC_240_FEQ_STABLE_FRACTION" 0.45);
+                  (getenv_float "IP_CASC_240_FEQ_STABLE_FRACTION" 0.41);
                 feq_sine
                   "CASC-240 FEQ ranked SInE medium"
                   (getenv_float "IP_CASC_240_FEQ_SINE_MEDIUM_FRACTION" 0.14)
