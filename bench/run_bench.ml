@@ -596,14 +596,12 @@ let run_prover config prover file =
   in
 
   let robust_timeout_hit =
-    prover.kind = Ip
-    && config.robust_time_limit
-    && (code = 124 || code = 137)
+    prover.kind = Ip && config.robust_time_limit && code = 124
   in
 
   let status_str =
     if robust_timeout_hit then
-      "Error"
+      "Timeout"
     else if parsed_status <> "Unknown" then
       parsed_status
     else if code <> 0 then
