@@ -2155,7 +2155,7 @@ let rec run_file ?(config = default_config) filename =
           ~stage_name:name
           ~portfolio_mode:Experimental_casc
           ~fraction
-          ~min_budget_s:(getenv_float "IP_CASC_240_STABLE_MIN_SECONDS" 8.0)
+          ~min_budget_s:(getenv_float "IP_CASC_240_STABLE_MIN_SECONDS" 12.0)
           ~env:
             [
               "IP_EXPERIMENTAL_FEQ_LEGACY_FLASH_FRACTION", Some "0";
@@ -2178,7 +2178,7 @@ let rec run_file ?(config = default_config) filename =
                   (getenv_float "IP_CASC_240_FEQ_QUICK_FULL_FRACTION" 0.10);
                 stable_stage
                   "CASC-240 FEQ stable pass"
-                  (getenv_float "IP_CASC_240_FEQ_STABLE_FRACTION" 0.35);
+                  (getenv_float "IP_CASC_240_FEQ_STABLE_FRACTION" 0.45);
                 feq_sine
                   "CASC-240 FEQ ranked SInE medium"
                   (getenv_float "IP_CASC_240_FEQ_SINE_MEDIUM_FRACTION" 0.14)
@@ -2186,14 +2186,14 @@ let rec run_file ?(config = default_config) filename =
                   "256";
                 feq_full
                   "CASC-240 FEQ full classic/equality"
-                  (getenv_float "IP_CASC_240_FEQ_FULL_FRACTION" 0.08);
+                  (getenv_float "IP_CASC_240_FEQ_FULL_FRACTION" 0.06);
                 feq_sine
                   "CASC-240 FEQ ranked SInE wide"
-                  (getenv_float "IP_CASC_240_FEQ_SINE_WIDE_FRACTION" 0.08)
+                  (getenv_float "IP_CASC_240_FEQ_SINE_WIDE_FRACTION" 0.06)
                   "3000"
                   "768";
                 definitional_feq
-                  (getenv_float "IP_CASC_240_FEQ_DEFINITIONAL_FRACTION" 0.05);
+                  (getenv_float "IP_CASC_240_FEQ_DEFINITIONAL_FRACTION" 0.04);
                 avatar_stage
                   "CASC-240 FEQ AVATAR"
                   (getenv_float "IP_CASC_240_FEQ_AVATAR_FRACTION" 0.04);
@@ -2216,10 +2216,10 @@ let rec run_file ?(config = default_config) filename =
                   (getenv_float "IP_CASC_240_EQ_LIGHT_QUICK_FULL_FRACTION" 0.12);
                 stable_stage
                   "CASC-240 equality-light stable pass"
-                  (getenv_float "IP_CASC_240_EQ_LIGHT_STABLE_FRACTION" 0.30);
+                  (getenv_float "IP_CASC_240_EQ_LIGHT_STABLE_FRACTION" 0.40);
                 feq_full
                   "CASC-240 equality-light full FEQ"
-                  (getenv_float "IP_CASC_240_EQ_LIGHT_FULL_FRACTION" 0.12);
+                  (getenv_float "IP_CASC_240_EQ_LIGHT_FULL_FRACTION" 0.08);
                 feq_sine
                   "CASC-240 equality-light SInE medium"
                   (getenv_float "IP_CASC_240_EQ_LIGHT_SINE_FRACTION" 0.10)
@@ -2227,7 +2227,7 @@ let rec run_file ?(config = default_config) filename =
                   "256";
                 avatar_stage
                   "CASC-240 equality-light AVATAR"
-                  (getenv_float "IP_CASC_240_EQ_LIGHT_AVATAR_FRACTION" 0.08);
+                  (getenv_float "IP_CASC_240_EQ_LIGHT_AVATAR_FRACTION" 0.06);
                 definitional_feq
                   (getenv_float "IP_CASC_240_EQ_LIGHT_DEFINITIONAL_FRACTION" 0.05);
                 run_remaining_stage
