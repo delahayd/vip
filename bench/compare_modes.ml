@@ -85,6 +85,7 @@ let portfolio_of_string = function
   | "experimental-casc" | "casc-experimental" | "exp-casc" -> Prover.Experimental_casc
   | "casc-aggressive" | "aggressive-casc" | "aggressive" -> Prover.Casc_aggressive
   | "casc-240" | "casc240" | "casc-final" | "final-casc" -> Prover.Casc_240
+  | "casc-feq-probe" | "feq-probe" | "casc-equality-probe" -> Prover.Casc_feq_probe
   | _ -> usage ()
 
 let portfolio_name = function
@@ -98,6 +99,7 @@ let portfolio_name = function
   | Prover.Experimental_casc -> "experimental-casc"
   | Prover.Casc_aggressive -> "casc-aggressive"
   | Prover.Casc_240 -> "casc-240"
+  | Prover.Casc_feq_probe -> "casc-feq-probe"
 
 let split_commas s =
   s
@@ -237,6 +239,7 @@ let () =
         Prover.Experimental_casc;
         Prover.Casc_aggressive;
         Prover.Casc_240;
+        Prover.Casc_feq_probe;
         Prover.Legacy_then_modern;
         Prover.Modern_then_legacy;
         Prover.Scheduled_portfolio;

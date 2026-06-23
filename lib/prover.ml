@@ -23,6 +23,7 @@ type portfolio_mode =
   | Experimental_casc
   | Casc_aggressive
   | Casc_240
+  | Casc_feq_probe
 
 type engine_kind =
   | Legacy_compat
@@ -2330,6 +2331,129 @@ let rec run_file ?(config = default_config) filename =
               ]
     in
 
+    let run_casc_feq_probe () =
+      let feq_env extra =
+        ("IP_FEQ_LEGACY_FLASH_FRACTION", Some "0") :: extra
+      in
+      let stable_stage fraction =
+        run_experimental_subrun
+          ~stage_name:"FEQ-probe stable guard"
+          ~portfolio_mode:Experimental_casc
+          ~fraction
+          ~min_budget_s:(getenv_float "IP_CASC_FEQ_PROBE_STABLE_MIN_SECONDS" 12.0)
+          ~env:
+            [
+              "IP_EXPERIMENTAL_FEQ_LEGACY_FLASH_FRACTION", Some "0";
+              "IP_SIMPLIFICATION_SET_INDEX", Some "0";
+            ]
+      in
+      let feq_stage name fraction env =
+        run_experimental_subrun
+          ~stage_name:name
+          ~portfolio_mode:Feq_modern
+          ~fraction
+          ~env:(feq_env env)
+      in
+      let avatar_stage fraction =
+        run_experimental_subrun
+          ~stage_name:"FEQ-probe AVATAR"
+          ~portfolio_mode:Modern_only
+          ~fraction
+          ~env:
+            [
+              "IP_AVATAR_SPLITTING", Some "1";
+              "IP_AVATAR_GROUND_ONLY", Some "0";
+              "IP_AVATAR_KEEP_ORIGINAL", Some "1";
+              "IP_AVATAR_MIN_SPLIT", Some "3";
+              "IP_AVATAR_MAX_SPLIT_VARS", Some "10";
+              "IP_AVATAR_MAX_SPLIT_VARS_PER_CLAUSE", Some "4";
+              "IP_AVATAR_MODEL_FALSE_FIRST", Some "1";
+              "IP_PASSIVE_SELECTION", Some "equality";
+            ]
+      in
+      if problem_profile <> Equality_heavy && problem_profile <> Equality_light then
+        run_experimental_casc ()
+      else
+        run_schedule
+          [
+            stable_stage
+              (getenv_float "IP_CASC_FEQ_PROBE_STABLE_FRACTION" 0.30);
+            feq_stage
+              "FEQ-probe full equality-heavy"
+              (getenv_float "IP_CASC_FEQ_PROBE_FULL_FRACTION" 0.18)
+              [
+                "IP_FEQ_MODERN_ALL", Some "1";
+                "IP_AXIOM_SELECTION", Some "0";
+                "IP_AXIOM_SELECTION_ALL", Some "0";
+                "IP_FEQ_STABLE_FRACTION", Some "0.05";
+                "IP_FEQ_CLASSIC_FRACTION", Some "0.28";
+                "IP_FEQ_WEIGHT_FRACTION", Some "0.18";
+                "IP_FEQ_EQUALITY_FRACTION", Some "0.44";
+                "IP_FEQ_PASSIVE_AW_RATIO", Some "1:10";
+              ];
+            feq_stage
+              "FEQ-probe ranked SInE medium"
+              (getenv_float "IP_CASC_FEQ_PROBE_SINE_MEDIUM_FRACTION" 0.15)
+              [
+                "IP_FEQ_MODERN_ALL", Some "1";
+                "IP_AXIOM_SELECTION", Some "1";
+                "IP_AXIOM_SELECTION_ALL", Some "1";
+                "IP_AXIOM_SELECTION_RANKED", Some "1";
+                "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "1500";
+                "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "256";
+                "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
+                "IP_FEQ_STABLE_FRACTION", Some "0.05";
+                "IP_FEQ_CLASSIC_FRACTION", Some "0.35";
+                "IP_FEQ_WEIGHT_FRACTION", Some "0.15";
+                "IP_FEQ_EQUALITY_FRACTION", Some "0.40";
+                "IP_FEQ_PASSIVE_AW_RATIO", Some "1:10";
+              ];
+            feq_stage
+              "FEQ-probe ranked SInE wide"
+              (getenv_float "IP_CASC_FEQ_PROBE_SINE_WIDE_FRACTION" 0.12)
+              [
+                "IP_FEQ_MODERN_ALL", Some "1";
+                "IP_AXIOM_SELECTION", Some "1";
+                "IP_AXIOM_SELECTION_ALL", Some "1";
+                "IP_AXIOM_SELECTION_RANKED", Some "1";
+                "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "4000";
+                "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "1024";
+                "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
+                "IP_FEQ_STABLE_FRACTION", Some "0.03";
+                "IP_FEQ_CLASSIC_FRACTION", Some "0.32";
+                "IP_FEQ_WEIGHT_FRACTION", Some "0.15";
+                "IP_FEQ_EQUALITY_FRACTION", Some "0.45";
+                "IP_FEQ_PASSIVE_AW_RATIO", Some "1:12";
+              ];
+            feq_stage
+              "FEQ-probe definitional equality"
+              (getenv_float "IP_CASC_FEQ_PROBE_DEFINITIONAL_FRACTION" 0.08)
+              [
+                "IP_AUTO_DEFINITIONAL_CNF", Some "1";
+                "IP_CNF_DISTRIBUTION_LIMIT", Some "4096";
+                "IP_FEQ_MODERN_ALL", Some "1";
+                "IP_FEQ_STABLE_FRACTION", Some "0.03";
+                "IP_FEQ_CLASSIC_FRACTION", Some "0.35";
+                "IP_FEQ_WEIGHT_FRACTION", Some "0.17";
+                "IP_FEQ_EQUALITY_FRACTION", Some "0.40";
+                "IP_FEQ_PASSIVE_AW_RATIO", Some "1:10";
+              ];
+            avatar_stage
+              (getenv_float "IP_CASC_FEQ_PROBE_AVATAR_FRACTION" 0.05);
+            run_remaining_stage
+              ~stage_name:"FEQ-probe remaining equality"
+              ~engine:Modern_feq
+              ~env:
+                (feq_env
+                   [
+                     "IP_FEQ_MODERN_ALL", Some "1";
+                     "IP_PASSIVE_SELECTION", Some "equality";
+                     "IP_PASSIVE_AW_RATIO", Some "1:12";
+                     "IP_FORWARD_SUBSUMPTION_RESOLUTION", Some "1";
+                   ]);
+          ]
+    in
+
     let run_scheduled_portfolio () =
       let size_threshold = getenv_int "IP_PORTFOLIO_SIZE_THRESHOLD" 160 in
       let modern_biased_small =
@@ -2682,6 +2806,8 @@ let rec run_file ?(config = default_config) filename =
           run_casc_aggressive ()
       | Casc_240 ->
           run_casc_240 ()
+      | Casc_feq_probe ->
+          run_casc_feq_probe ()
       | Legacy_only ->
           run_stage
             {

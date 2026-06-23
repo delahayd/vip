@@ -21,6 +21,7 @@ type portfolio_mode =
   | Experimental_casc
   | Casc_aggressive
   | Casc_240
+  | Casc_feq_probe
 
 type engine_kind =
   | Legacy_compat
