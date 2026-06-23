@@ -871,8 +871,14 @@ let select_axioms_sine ~enabled ~check_timeout ~support axioms =
         not (Types.StringSet.is_empty (Types.StringSet.inter syms !selected_symbols))
       in
       let ranked_selection = getenv_bool "IP_AXIOM_SELECTION_RANKED" false in
+      let goal_ranked_selection =
+        getenv_bool "IP_AXIOM_SELECTION_GOAL_RANKED" false
+      in
       let overlap_count syms =
         Types.StringSet.cardinal (Types.StringSet.inter syms !selected_symbols)
+      in
+      let goal_overlap_count syms =
+        Types.StringSet.cardinal (Types.StringSet.inter syms initial_symbols)
       in
       let min_selected_frequency syms =
         let overlap = Types.StringSet.inter syms !selected_symbols in
@@ -901,6 +907,32 @@ let select_axioms_sine ~enabled ~check_timeout ~support axioms =
               let c = compare (List.length c1) (List.length c2) in
               if c <> 0 then c else compare i1 i2
       in
+      let compare_goal_candidate (i1, c1, syms1) (i2, c2, syms2) =
+        let g1 = goal_overlap_count syms1 in
+        let g2 = goal_overlap_count syms2 in
+        let c = compare g2 g1 in
+        if c <> 0 then c
+        else
+          let r1 = min_selected_frequency syms1 in
+          let r2 = min_selected_frequency syms2 in
+          let c = compare r1 r2 in
+          if c <> 0 then c
+          else
+            let o1 = overlap_count syms1 in
+            let o2 = overlap_count syms2 in
+            let c = compare o2 o1 in
+            if c <> 0 then c
+            else
+              let c =
+                compare
+                  (Types.StringSet.cardinal syms1)
+                  (Types.StringSet.cardinal syms2)
+              in
+              if c <> 0 then c
+              else
+                let c = compare (List.length c1) (List.length c2) in
+                if c <> 0 then c else compare i1 i2
+      in
       let rec rounds n =
         check_timeout ();
         if n <= 0 then ()
@@ -910,10 +942,12 @@ let select_axioms_sine ~enabled ~check_timeout ~support axioms =
             let candidates =
               axiom_infos
               |> List.filter
-                   (fun (i, _c, syms) ->
-                     check_timeout ();
-                     (not (Hashtbl.mem selected i)) && relevant syms)
-              |> List.sort compare_candidate
+                 (fun (i, _c, syms) ->
+                   check_timeout ();
+                   (not (Hashtbl.mem selected i)) && relevant syms)
+              |> List.sort
+                   (if goal_ranked_selection then compare_goal_candidate
+                    else compare_candidate)
             in
             List.iter
               (fun (i, _c, syms) ->
@@ -1928,11 +1962,12 @@ let rec run_file ?(config = default_config) filename =
           "IP_FORWARD_SUBSUMPTION_RESOLUTION", Some "0";
         ]
       in
-      let feq_sine name fraction max_axioms max_freq =
+      let feq_sine ?(min_budget_s = 0.0) name fraction max_axioms max_freq =
         run_experimental_subrun
           ~stage_name:name
           ~portfolio_mode:Feq_modern
           ~fraction
+          ~min_budget_s
           ~env:
             (feq_env
                [
@@ -2101,6 +2136,7 @@ let rec run_file ?(config = default_config) filename =
                  "IP_AXIOM_SELECTION", Some "1";
                  "IP_AXIOM_SELECTION_ALL", Some "1";
                  "IP_AXIOM_SELECTION_RANKED", Some "1";
+                 "IP_AXIOM_SELECTION_GOAL_RANKED", Some "1";
                  "IP_AXIOM_SELECTION_MAX_AXIOMS", Some max_axioms;
                  "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some max_freq;
                  "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
@@ -2240,17 +2276,19 @@ let rec run_file ?(config = default_config) filename =
                 feq_full
                   "CASC-240 equality-light quick full FEQ"
                   (getenv_float "IP_CASC_240_EQ_LIGHT_QUICK_FULL_FRACTION" 0.12);
-                stable_stage
-                  "CASC-240 equality-light stable pass"
-                  (getenv_float "IP_CASC_240_EQ_LIGHT_STABLE_FRACTION" 0.40);
-                feq_full
-                  "CASC-240 equality-light full FEQ"
-                  (getenv_float "IP_CASC_240_EQ_LIGHT_FULL_FRACTION" 0.08);
                 feq_sine
+                  ~min_budget_s:
+                    (getenv_float "IP_CASC_240_EQ_LIGHT_SINE_MIN_SECONDS" 6.0)
                   "CASC-240 equality-light SInE medium"
                   (getenv_float "IP_CASC_240_EQ_LIGHT_SINE_FRACTION" 0.10)
                   "1200"
                   "256";
+                stable_stage
+                  "CASC-240 equality-light stable pass"
+                  (getenv_float "IP_CASC_240_EQ_LIGHT_STABLE_FRACTION" 0.32);
+                feq_full
+                  "CASC-240 equality-light full FEQ"
+                  (getenv_float "IP_CASC_240_EQ_LIGHT_FULL_FRACTION" 0.08);
                 avatar_stage
                   "CASC-240 equality-light AVATAR"
                   (getenv_float "IP_CASC_240_EQ_LIGHT_AVATAR_FRACTION" 0.06);
@@ -2301,6 +2339,7 @@ let rec run_file ?(config = default_config) filename =
                          "IP_AXIOM_SELECTION", Some "1";
                          "IP_AXIOM_SELECTION_ALL", Some "1";
                          "IP_AXIOM_SELECTION_RANKED", Some "1";
+                         "IP_AXIOM_SELECTION_GOAL_RANKED", Some "1";
                          "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "2500";
                          "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "512";
                          "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
@@ -2424,6 +2463,7 @@ let rec run_file ?(config = default_config) filename =
                 "IP_AXIOM_SELECTION", Some "1";
                 "IP_AXIOM_SELECTION_ALL", Some "1";
                 "IP_AXIOM_SELECTION_RANKED", Some "1";
+                "IP_AXIOM_SELECTION_GOAL_RANKED", Some "1";
                 "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "1500";
                 "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "256";
                 "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
@@ -2441,6 +2481,7 @@ let rec run_file ?(config = default_config) filename =
                 "IP_AXIOM_SELECTION", Some "1";
                 "IP_AXIOM_SELECTION_ALL", Some "1";
                 "IP_AXIOM_SELECTION_RANKED", Some "1";
+                "IP_AXIOM_SELECTION_GOAL_RANKED", Some "1";
                 "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "4000";
                 "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "1024";
                 "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
