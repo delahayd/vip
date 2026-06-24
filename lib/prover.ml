@@ -2357,42 +2357,7 @@ let rec run_file ?(config = default_config) filename =
                   ~engine:Legacy_compat;
               ]
       else
-        match stable_first (getenv_float "IP_CASC_240_NON_EQ_STABLE_FRACTION" 0.45) with
-        | Some res -> res
-        | None ->
-            run_schedule
-              [
-                run_experimental_subrun
-                  ~stage_name:"CASC-240 non-equality legacy probe"
-                  ~portfolio_mode:Legacy_only
-                  ~fraction:
-                    (getenv_float "IP_CASC_240_NON_EQ_LEGACY_FRACTION" 0.25);
-                run_experimental_subrun
-                  ~stage_name:"CASC-240 non-equality legacy-guided modern"
-                  ~portfolio_mode:Modern_only
-                  ~fraction:
-                    (getenv_float
-                       "IP_CASC_240_NON_EQ_LEGACY_GUIDED_FRACTION"
-                       0.12)
-                  ~env:legacy_guided_env;
-                run_experimental_subrun
-                  ~stage_name:"CASC-240 non-equality layered modern"
-                  ~portfolio_mode:Modern_only
-                  ~fraction:
-                    (getenv_float "IP_CASC_240_NON_EQ_LAYERED_FRACTION" 0.08)
-                  ~env:
-                    [
-                      "IP_PASSIVE_SELECTION", Some "layered";
-                      "IP_LAYERED_SELECTION",
-                      Some "unit,goal,short,age,weight";
-                    ];
-                avatar_stage
-                  "CASC-240 non-equality AVATAR"
-                  (getenv_float "IP_CASC_240_NON_EQ_AVATAR_FRACTION" 0.05);
-                run_remaining_stage
-                  ~stage_name:"CASC-240 non-equality remaining legacy"
-                  ~engine:Legacy_compat;
-              ]
+        run_experimental_casc ()
     in
 
     let run_casc_feq_probe () =
