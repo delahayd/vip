@@ -1453,6 +1453,14 @@ let rec run_file ?(config = default_config) filename =
           (try Some (max 0.0 (float_of_string s)) with Failure _ -> None)
     in
 
+    let cleanup_between_stages () =
+      if getenv_bool "IP_GC_BETWEEN_STAGES" true then begin
+        Gc.major ();
+        if getenv_bool "IP_GC_COMPACT_BETWEEN_STAGES" false then
+          Gc.compact ()
+      end
+    in
+
     let clamp_fraction x =
       if x < 0.0 then 0.0 else if x > 1.0 then 1.0 else x
     in
@@ -1508,6 +1516,7 @@ let rec run_file ?(config = default_config) filename =
       match legacy_res.stop_reason with
       | Refutation_found _ -> legacy_res
       | Saturation | Time_limit | Clause_limit ->
+          cleanup_between_stages ();
           let modern_res =
             let remaining_time = remaining_time () in
             if remaining_time <= 0.1 then legacy_res
@@ -1522,6 +1531,7 @@ let rec run_file ?(config = default_config) filename =
           match modern_res.stop_reason with
           | Refutation_found _ -> modern_res
           | Saturation | Time_limit | Clause_limit ->
+              cleanup_between_stages ();
               let remaining_time = remaining_time () in
               if remaining_time <= 0.1 then modern_res
               else
@@ -1576,7 +1586,9 @@ let rec run_file ?(config = default_config) filename =
               let res = run () in
               match res.stop_reason with
               | Refutation_found _ -> res
-              | Saturation | Time_limit | Clause_limit -> loop res tl
+              | Saturation | Time_limit | Clause_limit ->
+                  cleanup_between_stages ();
+                  loop res tl
       in
       match stages with
       | [] -> timeout_result (elapsed ())
