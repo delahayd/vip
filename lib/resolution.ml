@@ -1506,6 +1506,8 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     Hashtbl.remove all_by_id d.id;
     Feature_vector.remove fv_index d.id;
     Feature_vector.remove simpl_fv_index d.id;
+    Discrimination_index.remove_clause literal_index ~clause_id:d.id;
+    Term_index.remove_clause term_index ~clause_id:d.id;
     let key = context_key (context_of d) ^ "|" ^ string_of_clause d.clause_d in
     Hashtbl.remove known key;
     Hashtbl.remove context_by_id d.id

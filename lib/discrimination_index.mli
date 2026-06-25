@@ -10,5 +10,6 @@ type t
 
 val create : unit -> t
 val add_clause : t -> clause_id:int -> clause -> unit
+val remove_clause : t -> clause_id:int -> unit
 val find_complementary : t -> literal -> entry list
 val find_same_sign_unifiable : t -> literal -> entry list

@@ -30,6 +30,11 @@ val add_clause :
   clause ->
   unit
 
+val remove_clause :
+  t ->
+  clause_id:int ->
+  unit
+
 val find_terms_unifiable_with :
   t ->
   term ->

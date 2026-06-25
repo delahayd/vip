@@ -29,3 +29,7 @@
 (test
  (name test_ordering)
  (libraries prover_lib alcotest))
+
+(test
+ (name test_indexes)
+ (libraries prover_lib alcotest))

@@ -28,6 +28,8 @@ type t = {
   equalities : (root_key, equality_entry list ref) Hashtbl.t;
   mutable all_terms : term_entry list;
   mutable all_equalities : equality_entry list;
+  clause_terms : (int, term_entry list) Hashtbl.t;
+  clause_equalities : (int, equality_entry list) Hashtbl.t;
 }
 
 let create () =
@@ -36,6 +38,8 @@ let create () =
     equalities = Hashtbl.create 251;
     all_terms = [];
     all_equalities = [];
+    clause_terms = Hashtbl.create 4099;
+    clause_equalities = Hashtbl.create 4099;
   }
 
 let bucket tbl key =
@@ -93,6 +97,8 @@ let equality_orientations orientation_mode l r =
       end
 
 let add_clause idx ~clause_id ~orientation_mode clause =
+  let indexed_terms = ref [] in
+  let indexed_equalities = ref [] in
   List.iteri
     (fun lit_index lit ->
       let a = atom_of_literal lit in
@@ -101,9 +107,9 @@ let add_clause idx ~clause_id ~orientation_mode clause =
         (fun arg_index arg ->
           List.iter
             (fun (path, subterm) ->
-              add_term_entry
-                idx
-                { clause_id; lit_index; arg_index; path; subterm })
+              let entry = { clause_id; lit_index; arg_index; path; subterm } in
+              indexed_terms := entry :: !indexed_terms;
+              add_term_entry idx entry)
             (non_variable_subterms arg))
         a.args;
 
@@ -112,9 +118,55 @@ let add_clause idx ~clause_id ~orientation_mode clause =
       | Some (l, r) ->
           List.iter
             (fun (lhs, rhs) ->
-              add_equality_entry idx { clause_id; lit_index; lhs; rhs })
+              let entry = { clause_id; lit_index; lhs; rhs } in
+              indexed_equalities := entry :: !indexed_equalities;
+              add_equality_entry idx entry)
             (equality_orientations orientation_mode l r))
-    clause
+    clause;
+  Hashtbl.replace idx.clause_terms clause_id !indexed_terms;
+  Hashtbl.replace idx.clause_equalities clause_id !indexed_equalities
+
+let remove_from_bucket tbl key predicate =
+  match Hashtbl.find_opt tbl key with
+  | None -> ()
+  | Some bucket ->
+      bucket := List.filter predicate !bucket;
+      if !bucket = [] then
+        Hashtbl.remove tbl key
+
+let remove_clause idx ~clause_id =
+  idx.all_terms <-
+    List.filter (fun (e : term_entry) -> e.clause_id <> clause_id) idx.all_terms;
+  idx.all_equalities <-
+    List.filter
+      (fun (e : equality_entry) -> e.clause_id <> clause_id)
+      idx.all_equalities;
+  begin
+    match Hashtbl.find_opt idx.clause_terms clause_id with
+    | None -> ()
+    | Some entries ->
+        List.iter
+          (fun (entry : term_entry) ->
+            remove_from_bucket
+              idx.terms
+              (root_key_of_term entry.subterm)
+              (fun (e : term_entry) -> e.clause_id <> clause_id))
+          entries;
+        Hashtbl.remove idx.clause_terms clause_id
+  end;
+  begin
+    match Hashtbl.find_opt idx.clause_equalities clause_id with
+    | None -> ()
+    | Some entries ->
+        List.iter
+          (fun (entry : equality_entry) ->
+            remove_from_bucket
+              idx.equalities
+              (root_key_of_term entry.lhs)
+              (fun (e : equality_entry) -> e.clause_id <> clause_id))
+          entries;
+        Hashtbl.remove idx.clause_equalities clause_id
+  end
 
 let find_bucket_or_all tbl all term =
   match term with

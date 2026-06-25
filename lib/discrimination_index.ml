@@ -24,13 +24,18 @@ type node = {
 type t = {
   root : node;
   buckets : ((sign * string * int), entry list ref) Hashtbl.t;
+  clause_entries : (int, entry list) Hashtbl.t;
 }
 
 let create_node () =
   { entries = []; children = Hashtbl.create 17 }
 
 let create () =
-  { root = create_node (); buckets = Hashtbl.create 251 }
+  {
+    root = create_node ();
+    buckets = Hashtbl.create 251;
+    clause_entries = Hashtbl.create 4099;
+  }
 
 let sign_of_literal = function
   | Pos _ -> Positive
@@ -99,10 +104,49 @@ let add_literal idx entry =
   b := entry :: !b
 
 let add_clause idx ~clause_id clause =
-  List.iteri
-    (fun lit_index literal ->
-      add_literal idx { clause_id; lit_index; literal })
-    clause
+  let entries =
+    List.mapi
+      (fun lit_index literal -> { clause_id; lit_index; literal })
+      clause
+  in
+  List.iter (add_literal idx) entries;
+  Hashtbl.replace idx.clause_entries clause_id entries
+
+let remove_clause idx ~clause_id =
+  let entry_matches e candidate =
+    e.clause_id = candidate.clause_id
+    && e.lit_index = candidate.lit_index
+  in
+  let rec remove_from_path node toks entry =
+    match toks with
+    | [] ->
+        node.entries <- List.filter (fun e -> not (entry_matches e entry)) node.entries;
+        node.entries = [] && Hashtbl.length node.children = 0
+    | tok :: rest ->
+        begin
+          match Hashtbl.find_opt node.children tok with
+          | None -> false
+          | Some child ->
+              if remove_from_path child rest entry then
+                Hashtbl.remove node.children tok;
+              node.entries = [] && Hashtbl.length node.children = 0
+        end
+  in
+  match Hashtbl.find_opt idx.clause_entries clause_id with
+  | None -> ()
+  | Some entries ->
+      List.iter
+        (fun entry ->
+          ignore (remove_from_path idx.root (tokens_of_literal entry.literal) entry);
+          let key = bucket_key entry.literal in
+          match Hashtbl.find_opt idx.buckets key with
+          | None -> ()
+          | Some bucket ->
+              bucket := List.filter (fun e -> not (entry_matches e entry)) !bucket;
+              if !bucket = [] then
+                Hashtbl.remove idx.buckets key)
+        entries;
+      Hashtbl.remove idx.clause_entries clause_id
 
 let rec collect_all node acc =
   let acc = List.rev_append node.entries acc in
