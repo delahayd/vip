@@ -48,11 +48,11 @@ name_list:
 
 cnf_entry:
   | KW_CNF LPAREN ann_name COMMA ann_role COMMA cnf_formula RPAREN DOT
-      { Input_cnf { name = $3; role = $5; clause = normalize_clause $7 } }
+      { Input_cnf { name = $3; role = $5; clause = normalize_clause $7; source_file = None } }
 
 fof_entry:
   | KW_FOF LPAREN ann_name COMMA ann_role COMMA formula RPAREN DOT
-      { Input_fof { name = $3; role = $5; formula = $7 } }
+      { Input_fof { name = $3; role = $5; formula = $7; source_file = None } }
 
 atomic_word:
   | IDENT { $1 }

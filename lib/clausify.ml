@@ -762,7 +762,7 @@ let partition_input_clauses_with_trace ?(check_timeout = fun () -> ()) inputs =
         { partition; trace = { origins = List.rev origins } }
     | Input_include _ :: xs ->
         aux (input_index + 1) axioms support origins produced xs
-    | Input_cnf { name; role; clause } :: xs ->
+    | Input_cnf { name; role; clause; _ } :: xs ->
         let raw_clauses =
           if role_requires_negation role then
             List.map
@@ -789,7 +789,7 @@ let partition_input_clauses_with_trace ?(check_timeout = fun () -> ()) inputs =
             origins
         in
         aux (input_index + 1) axioms support origins (produced + List.length clauses) xs
-    | Input_fof { name; role; formula } :: xs ->
+    | Input_fof { name; role; formula; _ } :: xs ->
         let f = if role_requires_negation role then Not formula else formula in
         let formulas =
           if role_requires_negation role then [ f ] else split_top_level_conjuncts f

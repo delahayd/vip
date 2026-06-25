@@ -44,6 +44,11 @@ let parse_file filename =
     ~finally:(fun () -> close_in ic)
     (fun () -> parse_channel ic)
 
+let with_source_file filename = function
+  | Input_cnf data -> Input_cnf { data with source_file = Some filename }
+  | Input_fof data -> Input_fof { data with source_file = Some filename }
+  | Input_include _ as input -> input
+
 let input_name = function
   | Input_cnf { name; _ } -> Some name
   | Input_fof { name; _ } -> Some name
@@ -140,7 +145,7 @@ let rec expand_file config visited filename =
   if StringSet.mem filename visited then
     raise (Error ("Boucle d'inclusion détectée: " ^ filename));
   let visited = StringSet.add filename visited in
-  let entries = parse_file filename in
+  let entries = parse_file filename |> List.map (with_source_file filename) in
   let rec expand_entries acc = function
     | [] -> List.rev acc
     | Input_include { include_file; include_only } :: tl ->

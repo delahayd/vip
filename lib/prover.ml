@@ -179,6 +179,10 @@ let proof_clause_name id =
   else
     Printf.sprintf "ip_%d" id
 
+let tptp_source_annotation name = function
+  | None -> ""
+  | Some file -> Printf.sprintf ",file(%s,%s)" (tptp_quote file) (tptp_name name)
+
 let clause_key clause =
   clause
   |> Clause.normalize_clause
@@ -203,20 +207,22 @@ let build_tstp_prelude inputs (trace : Clausify.clausification_trace) derivation
       Hashtbl.add printed_inputs origin.input_index ();
       let source_name = proof_input_name origin.input_index in
       match Hashtbl.find_opt input_by_index origin.input_index with
-      | Some (Fof.Input_fof { role; formula; _ }) ->
+      | Some (Fof.Input_fof { name; role; formula; source_file }) ->
           Printf.bprintf
             b
-            "fof(%s,%s,(%s)).\n"
+            "fof(%s,%s,(%s)%s).\n"
             source_name
             role
             (tptp_formula formula)
-      | Some (Fof.Input_cnf { role; clause; _ }) ->
+            (tptp_source_annotation name source_file)
+      | Some (Fof.Input_cnf { name; role; clause; source_file }) ->
           Printf.bprintf
             b
-            "cnf(%s,%s,(%s)).\n"
+            "cnf(%s,%s,(%s)%s).\n"
             source_name
             role
             (Resolution.tstp_clause_formula clause)
+            (tptp_source_annotation name source_file)
       | Some (Fof.Input_include _) | None -> ()
     end
   in

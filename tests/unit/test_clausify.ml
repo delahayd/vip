@@ -49,6 +49,7 @@ let test_one_way_definition () =
               Iff
                 ( Atom { pred = "p"; args = [ Var "X" ] },
                   Atom { pred = "q"; args = [ Var "X" ] } ) );
+        source_file = None;
       }
   in
   let baseline, _ = Clausify.clauses_of_input_with_report [ input ] in
@@ -73,6 +74,7 @@ let test_guarded_one_way_definition () =
                   Iff
                     ( Atom { pred = "p"; args = [ Var "X" ] },
                       Atom { pred = "q"; args = [ Var "X" ] } ) ) );
+        source_file = None;
       }
   in
   let baseline, _ = Clausify.clauses_of_input_with_report [ input ] in
@@ -100,6 +102,7 @@ let test_dmt_definition_expansion () =
               Iff
                 ( Atom { pred = "p"; args = [ Var "X" ] },
                   Atom { pred = "q"; args = [ Var "X" ] } ) );
+        source_file = None;
       }
   in
   let use =
@@ -108,6 +111,7 @@ let test_dmt_definition_expansion () =
         name = "use_p";
         role = "axiom";
         formula = Atom { pred = "p"; args = [ Fun ("a", []) ] };
+        source_file = None;
       }
   in
   let baseline, _ = Clausify.clauses_of_input_with_report [ def; use ] in
