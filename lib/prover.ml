@@ -844,10 +844,17 @@ let select_axioms_sine ~enabled ~check_timeout ~support axioms =
           (fun s -> String.length s >= 2 && String.sub s 0 2 = "p:")
           syms
       in
-      let initial_symbols =
+      let support_seed_symbols =
         if support = [] then rare_seed_symbols ()
         else
-          let syms = selectable_symbols (clauses_symbols support) in
+          selectable_symbols (clauses_symbols support)
+      in
+      let initial_symbols =
+        if support = [] then support_seed_symbols
+        else if getenv_bool "IP_AXIOM_SELECTION_SEED_ALL_SYMBOLS" false then
+          support_seed_symbols
+        else
+          let syms = support_seed_symbols in
           if getenv_bool "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY" false then
             let pred_syms = predicate_symbols_only syms in
             if Types.StringSet.is_empty pred_syms then syms else pred_syms
@@ -874,11 +881,16 @@ let select_axioms_sine ~enabled ~check_timeout ~support axioms =
       let goal_ranked_selection =
         getenv_bool "IP_AXIOM_SELECTION_GOAL_RANKED" false
       in
+      let goal_ranking_symbols =
+        if getenv_bool "IP_AXIOM_SELECTION_GOAL_RANK_ALL_SYMBOLS" false
+        then support_seed_symbols
+        else initial_symbols
+      in
       let overlap_count syms =
         Types.StringSet.cardinal (Types.StringSet.inter syms !selected_symbols)
       in
       let goal_overlap_count syms =
-        Types.StringSet.cardinal (Types.StringSet.inter syms initial_symbols)
+        Types.StringSet.cardinal (Types.StringSet.inter syms goal_ranking_symbols)
       in
       let min_selected_frequency syms =
         let overlap = Types.StringSet.inter syms !selected_symbols in
@@ -2146,6 +2158,29 @@ let rec run_file ?(config = default_config) filename =
                  "IP_FEQ_EQUALITY_FRACTION", Some "0.27";
                ])
       in
+      let feq_sine_all_symbols name fraction max_axioms max_freq =
+        run_experimental_subrun
+          ~stage_name:name
+          ~portfolio_mode:Feq_modern
+          ~fraction
+          ~env:
+            (feq_env
+               [
+                 "IP_FEQ_MODERN_ALL", Some "1";
+                 "IP_AXIOM_SELECTION", Some "1";
+                 "IP_AXIOM_SELECTION_ALL", Some "1";
+                 "IP_AXIOM_SELECTION_RANKED", Some "1";
+                 "IP_AXIOM_SELECTION_GOAL_RANKED", Some "1";
+                 "IP_AXIOM_SELECTION_GOAL_RANK_ALL_SYMBOLS", Some "1";
+                 "IP_AXIOM_SELECTION_SEED_ALL_SYMBOLS", Some "1";
+                 "IP_AXIOM_SELECTION_MAX_AXIOMS", Some max_axioms;
+                 "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some max_freq;
+                 "IP_FEQ_STABLE_FRACTION", Some "0.08";
+                 "IP_FEQ_CLASSIC_FRACTION", Some "0.42";
+                 "IP_FEQ_WEIGHT_FRACTION", Some "0.18";
+                 "IP_FEQ_EQUALITY_FRACTION", Some "0.27";
+               ])
+      in
       let feq_sine_compat name fraction max_axioms max_freq =
         run_experimental_subrun
           ~stage_name:name
@@ -2254,6 +2289,11 @@ let rec run_file ?(config = default_config) filename =
                   (getenv_float "IP_CASC_240_FEQ_SINE_WIDE_FRACTION" 0.06)
                   "3000"
                   "768";
+                feq_sine_all_symbols
+                  "CASC-240 FEQ all-symbol SInE probe"
+                  (getenv_float "IP_CASC_240_FEQ_ALL_SYMBOL_SINE_FRACTION" 0.0)
+                  "1800"
+                  "384";
                 definitional_feq
                   (getenv_float "IP_CASC_240_FEQ_DEFINITIONAL_FRACTION" 0.04);
                 avatar_stage
@@ -2294,6 +2334,11 @@ let rec run_file ?(config = default_config) filename =
                   (getenv_float "IP_CASC_240_EQ_LIGHT_AVATAR_FRACTION" 0.06);
                 definitional_feq
                   (getenv_float "IP_CASC_240_EQ_LIGHT_DEFINITIONAL_FRACTION" 0.05);
+                feq_sine_all_symbols
+                  "CASC-240 equality-light all-symbol SInE probe"
+                  (getenv_float "IP_CASC_240_EQ_LIGHT_ALL_SYMBOL_SINE_FRACTION" 0.0)
+                  "1800"
+                  "384";
                 run_remaining_stage
                   ~stage_name:"CASC-240 equality-light remaining FEQ"
                   ~engine:Modern_feq
