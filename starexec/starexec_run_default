@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+  echo "Usage: $0 PROBLEM" >&2
+  exit 2
+fi
+
+PROBLEM="$1"
+DIR="$(cd "$(dirname "$0")" && pwd)"
+
+if [[ -n "${IP_BINARY:-}" ]]; then
+  IP_BIN="$IP_BINARY"
+elif [[ -x "$DIR/ip" ]]; then
+  IP_BIN="$DIR/ip"
+elif [[ -x "$DIR/../bin/ip" ]]; then
+  IP_BIN="$DIR/../bin/ip"
+elif [[ -x "$DIR/../_build/install/default/bin/ip" ]]; then
+  IP_BIN="$DIR/../_build/install/default/bin/ip"
+elif [[ -x "$DIR/../_build/default/src/main.exe" ]]; then
+  IP_BIN="$DIR/../_build/default/src/main.exe"
+else
+  echo "Could not find ip executable. Set IP_BINARY or place ip next to this script." >&2
+  exit 127
+fi
+
+PORTFOLIO="${IP_PORTFOLIO:-casc-240}"
+TIME_LIMIT="${IP_TIME_LIMIT:-120}"
+MAX_CLAUSES="${IP_MAX_CLAUSES:-75000}"
+
+ARGS=(
+  --competition-output
+  --portfolio "$PORTFOLIO"
+  --time-limit "$TIME_LIMIT"
+  --max-clauses "$MAX_CLAUSES"
+)
+
+if [[ -n "${TPTP:-}" ]]; then
+  ARGS+=(--tptp "$TPTP")
+elif [[ -d "$DIR/TPTP" ]]; then
+  ARGS+=(--tptp "$DIR/TPTP")
+elif [[ -d "$DIR/../TPTP" ]]; then
+  ARGS+=(--tptp "$DIR/../TPTP")
+fi
+
+exec "$IP_BIN" "${ARGS[@]}" "$PROBLEM"
