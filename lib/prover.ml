@@ -368,8 +368,14 @@ let clauses_of_file filename =
   let clauses, _report = clauses_of_input_with_report parsed.inputs in
   clauses
 
-let infer_status_from_stop_reason = function
-  | Refutation_found _ -> Unsatisfiable
+let input_is_conjecture = function
+  | Fof.Input_fof { role; _ } | Fof.Input_cnf { role; _ } ->
+      role = "conjecture"
+  | Fof.Input_include _ -> false
+
+let infer_status_from_stop_reason ~has_conjecture = function
+  | Refutation_found _ ->
+      if has_conjecture then Theorem else Unsatisfiable
   | Saturation -> GaveUp
   | Time_limit -> Timeout
   | Clause_limit -> ResourceOut
@@ -1129,6 +1135,7 @@ let rec run_file ?(config = default_config) filename =
       | Some d -> { include_paths = [ d ]; use_tptp_env = true }
     in
     let parsed = load_problem ~config:load_config filename in
+    let has_conjecture = List.exists input_is_conjecture parsed.inputs in
     check_problem_timeout ();
     let traced_part =
       partition_input_clauses_with_trace
@@ -3086,7 +3093,7 @@ let rec run_file ?(config = default_config) filename =
     in
 
     {
-      status = infer_status_from_stop_reason res.stop_reason;
+      status = infer_status_from_stop_reason ~has_conjecture res.stop_reason;
       info = {
         file = Some filename;
         clause_count;
