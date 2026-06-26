@@ -14,6 +14,8 @@ HOME_DIR=""
 LOGS_DIR=""
 CASC=""
 TPTP_DIR=""
+MEM=""
+MEM_PER_CPU=""
 ONLYIP=0
 LOCAL=0
 
@@ -32,6 +34,8 @@ Options:
   --logs <répertoire>
   --casc <nom>
   --tptp <répertoire>
+  --mem <mémoire SLURM, ex: 16G>
+  --mem-per-cpu <mémoire SLURM par CPU, ex: 16G>
   --onlyip
   --local
 EOF
@@ -89,6 +93,16 @@ while [[ $# -gt 0 ]]; do
       TPTP_DIR="$2"
       shift 2
       ;;
+    --mem)
+      [[ $# -ge 2 ]] || usage
+      MEM="$2"
+      shift 2
+      ;;
+    --mem-per-cpu)
+      [[ $# -ge 2 ]] || usage
+      MEM_PER_CPU="$2"
+      shift 2
+      ;;
     --onlyip)
       ONLYIP=1
       shift
@@ -106,6 +120,11 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ -n "$MEM" && -n "$MEM_PER_CPU" ]]; then
+  echo "[ERROR] Use either --mem or --mem-per-cpu, not both." >&2
+  exit 1
+fi
 
 if [[ "$ONLYIP" -eq 1 && -z "$CASC" ]]; then
   MAKE_TARGET="bench"
@@ -168,6 +187,7 @@ cat > "$SLURM_SCRIPT" <<EOF
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --partition=cpu-dedicated
+$(if [[ -n "$MEM" ]]; then printf '#SBATCH --mem=%s\n' "$MEM"; fi)$(if [[ -n "$MEM_PER_CPU" ]]; then printf '#SBATCH --mem-per-cpu=%s\n' "$MEM_PER_CPU"; fi)
 
 module load bioinfo-cirad
 module load opam/2.1.2
