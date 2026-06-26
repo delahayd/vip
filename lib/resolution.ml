@@ -1648,14 +1648,51 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
             if is_subsumed_by ~ignore_id:d.id ~context:d_context (active_clauses ()) c_final then begin
               incr subsumption_rejections;
               None
-            end else
-              let d' = { d with clause_d = c_final } in
+            end else if c_final = d.clause_d then
+              Some d
+            else begin
+              let rule =
+                if c <> d.clause_d then
+                  "selected_simplification"
+                else
+                  "forward_subsumption_resolution"
+              in
+              let d' =
+                {
+                  id = next_id ();
+                  parents = [ d.id ];
+                  rule;
+                  clause_d = c_final;
+                  is_active = false;
+                }
+              in
+              let key = context_key d_context ^ "|" ^ string_of_clause c_final in
+              Hashtbl.replace known key d'.id;
+              Hashtbl.replace context_by_id d'.id d_context;
               Hashtbl.replace all_by_id d'.id d';
+              all := d' :: !all;
               Some d'
+            end
           end else
-            let d' = { d with clause_d = c } in
-            Hashtbl.replace all_by_id d'.id d';
-            Some d'
+            if c = d.clause_d then
+              Some d
+            else begin
+              let d' =
+                {
+                  id = next_id ();
+                  parents = [ d.id ];
+                  rule = "selected_simplification";
+                  clause_d = c;
+                  is_active = false;
+                }
+              in
+              let key = context_key d_context ^ "|" ^ string_of_clause c in
+              Hashtbl.replace known key d'.id;
+              Hashtbl.replace context_by_id d'.id d_context;
+              Hashtbl.replace all_by_id d'.id d';
+              all := d' :: !all;
+              Some d'
+            end
         end
   in
 

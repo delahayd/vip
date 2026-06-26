@@ -248,6 +248,24 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
       if not (Hashtbl.mem origins_by_clause key) then
         Hashtbl.add origins_by_clause key origin)
     trace.origins;
+  let origin_count_by_input = Hashtbl.create 97 in
+  List.iter
+    (fun origin ->
+      let n =
+        match Hashtbl.find_opt origin_count_by_input origin.Clausify.input_index with
+        | Some n -> n
+        | None -> 0
+      in
+      Hashtbl.replace origin_count_by_input origin.input_index (n + 1))
+    trace.origins;
+  let find_condensed_origin clause =
+    let clause = Clause.normalize_clause clause in
+    List.find_opt
+      (fun origin ->
+        let source = Clause.normalize_clause origin.Clausify.clause in
+        List.length clause < List.length source && Clause.subsumes clause source)
+      trace.origins
+  in
   let printed_inputs = Hashtbl.create 97 in
   let b = Buffer.create 4096 in
   let print_source origin =
@@ -314,7 +332,13 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
               clause
               source_name
         | Some origin ->
-            if gdv_can_match_source_name origin.input_name
+            let source_is_single_clause =
+              match Hashtbl.find_opt origin_count_by_input origin.input_index with
+              | Some 1 -> gdv_can_match_source_name origin.input_name
+              | Some _ | None -> false
+            in
+            if role_requires_negation origin.input_role
+               || source_is_single_clause
                || clause_has_skolem d.clause_d then begin
               print_source origin;
               let source_name =
@@ -358,7 +382,46 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
                 clause
             end
         | None ->
-            Printf.bprintf b "cnf(%s,axiom,(%s)).\n" (proof_clause_name d.id) clause
+            begin
+              match find_condensed_origin d.clause_d with
+              | Some origin ->
+                  print_source origin;
+                  let source_name =
+                    proof_source_name ~fallback:origin.input_index origin.input_name
+                  in
+                  let raw_clause = Resolution.tstp_clause_formula origin.clause in
+                  let raw_clause_name = proof_clause_name d.id ^ "_raw" in
+                  let role =
+                    if role_requires_negation origin.input_role then
+                      "negated_conjecture"
+                    else
+                      "plain"
+                  in
+                  let status =
+                    if origin.Clausify.transformation_status <> "" then
+                      origin.transformation_status
+                    else if role_requires_negation origin.input_role then
+                      "cth"
+                    else
+                      "esa"
+                  in
+                  Printf.bprintf
+                    b
+                    "cnf(%s,%s,(%s),inference(cnf_transformation,[status(%s)],[%s])).\n"
+                    raw_clause_name
+                    role
+                    raw_clause
+                    status
+                    source_name;
+                  Printf.bprintf
+                    b
+                    "cnf(%s,plain,(%s),inference(condensation,[status(thm)],[%s])).\n"
+                    (proof_clause_name d.id)
+                    clause
+                    raw_clause_name
+              | None ->
+                  Printf.bprintf b "cnf(%s,axiom,(%s)).\n" (proof_clause_name d.id) clause
+            end
       end)
     derivation;
   Buffer.contents b
@@ -1637,6 +1700,8 @@ let rec run_file ?(config = default_config) filename =
       | run :: tl -> loop (run ()) tl
     in
 
+    let winning_tstp_prelude = ref None in
+
     let run_experimental_subrun ~stage_name ~portfolio_mode ~fraction
         ?(min_budget_s = 0.0) ?(env = []) () =
       if fraction <= 0.0 then
@@ -1662,6 +1727,9 @@ let rec run_file ?(config = default_config) filename =
                   }
                 filename
             in
+            (match outcome.empty_clause with
+             | Some _ -> winning_tstp_prelude := outcome.tstp_prelude
+             | None -> ());
             let stop_reason =
               match outcome.empty_clause, outcome.status with
               | Some d, _ -> Refutation_found d
@@ -3114,12 +3182,15 @@ let rec run_file ?(config = default_config) filename =
         (match empty_clause with
          | None -> None
          | Some _ ->
-             Some
-               (build_tstp_prelude
-                  ~problem:filename
-                  parsed.inputs
-                  traced_part.trace
-                  proof_derivation));
+             (match !winning_tstp_prelude with
+              | Some prelude -> Some prelude
+              | None ->
+                  Some
+                    (build_tstp_prelude
+                       ~problem:filename
+                       parsed.inputs
+                       traced_part.trace
+                       proof_derivation)));
     }
   with
   | Clausify.Timeout_hit
