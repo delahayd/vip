@@ -85,6 +85,7 @@ let portfolio_of_string = function
   | "experimental-casc" | "casc-experimental" | "exp-casc" -> Prover.Experimental_casc
   | "casc-aggressive" | "aggressive-casc" | "aggressive" -> Prover.Casc_aggressive
   | "casc-240" | "casc240" | "casc-final" | "final-casc" -> Prover.Casc_240
+  | "casc-150" | "casc150" | "casc-plus" | "casc-240-plus" -> Prover.Casc_150
   | "casc-feq-probe" | "feq-probe" | "casc-equality-probe" -> Prover.Casc_feq_probe
   | _ -> usage ()
 
@@ -99,6 +100,7 @@ let portfolio_name = function
   | Prover.Experimental_casc -> "experimental-casc"
   | Prover.Casc_aggressive -> "casc-aggressive"
   | Prover.Casc_240 -> "casc-240"
+  | Prover.Casc_150 -> "casc-150"
   | Prover.Casc_feq_probe -> "casc-feq-probe"
 
 let split_commas s =

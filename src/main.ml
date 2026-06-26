@@ -85,7 +85,7 @@ let play_timeout_safely () =
 
 let usage () =
   prerr_endline
-    "Usage: ip [--version] [--duke] [--proof] [--proof-format none|internal|tstp] [--proof-tstp] [--competition-output] [--time-limit SECONDS] [--max-clauses N] [--mode MODE] [--portfolio legacy-modern|modern-legacy|legacy-only|modern-only|modern-compat-only|scheduled|feq-modern|experimental-casc|casc-aggressive|casc-240|casc-feq-probe] [--tptp DIR] [--sos|--no-sos] FILE";
+    "Usage: ip [--version] [--duke] [--proof] [--proof-format none|internal|tstp] [--proof-tstp] [--competition-output] [--time-limit SECONDS] [--max-clauses N] [--mode MODE] [--portfolio legacy-modern|modern-legacy|legacy-only|modern-only|modern-compat-only|scheduled|feq-modern|experimental-casc|casc-aggressive|casc-240|casc-150|casc-feq-probe] [--tptp DIR] [--sos|--no-sos] FILE";
   exit 2
 
 type proof_format =
@@ -117,6 +117,8 @@ let portfolio_of_string = function
       Prover_lib.Prover.Casc_aggressive
   | "casc-240" | "casc240" | "casc-final" | "final-casc" ->
       Prover_lib.Prover.Casc_240
+  | "casc-150" | "casc150" | "casc-plus" | "casc-240-plus" ->
+      Prover_lib.Prover.Casc_150
   | "casc-feq-probe" | "feq-probe" | "casc-equality-probe" ->
       Prover_lib.Prover.Casc_feq_probe
   | s ->

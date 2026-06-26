@@ -23,6 +23,7 @@ type portfolio_mode =
   | Experimental_casc
   | Casc_aggressive
   | Casc_240
+  | Casc_150
   | Casc_feq_probe
 
 type engine_kind =
@@ -1513,7 +1514,7 @@ let rec run_file ?(config = default_config) filename =
       else with_envs env (fun () -> run_stage { stage_name; engine; time_limit_s = budget })
     in
 
-    let run_schedule stages =
+    let run_schedule (stages : (unit -> run_result) list) =
       let rec loop last = function
         | [] -> last
         | _ when (match last.stop_reason with Refutation_found _ -> true | _ -> false) -> last
@@ -2064,7 +2065,7 @@ let rec run_file ?(config = default_config) filename =
           ]
     in
 
-    let run_casc_240 () =
+    let run_casc_240 ?(extended = false) () =
       let feq_env extra =
         ("IP_FEQ_LEGACY_FLASH_FRACTION", Some "0") :: extra
       in
@@ -2127,7 +2128,36 @@ let rec run_file ?(config = default_config) filename =
                  "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
                ])
       in
-      let feq_full ?(min_budget_s = 0.0) name fraction =
+      let feq_simplification_probe name fraction =
+        run_experimental_subrun
+          ~stage_name:name
+          ~portfolio_mode:Feq_modern
+          ~fraction
+          ~min_budget_s:
+            (getenv_float "IP_CASC_150_FEQ_SIMPL_MIN_SECONDS" 5.0)
+          ~env:
+            (feq_env
+               [
+                 "IP_FEQ_MODERN_ALL", Some "1";
+                 "IP_AXIOM_SELECTION", Some "0";
+                 "IP_AXIOM_SELECTION_ALL", Some "0";
+                 "IP_SIMPLIFICATION_SET_INDEX", Some "1";
+                 "IP_SIMPLIFICATION_SET_UNIT_ONLY", Some "0";
+                 "IP_SIMPLIFICATION_SET_MAX_CLAUSE_LEN", Some "6";
+                 "IP_SIMPLIFICATION_SET_NEGATIVE_MAX_LEN", Some "4";
+                 "IP_SIMPLIFICATION_SET_GOAL_MAX_LEN", Some "6";
+                 "IP_SIMPLIFICATION_SET_EQUALITY_UNIT", Some "1";
+                 "IP_FORWARD_SUBSUMPTION_RESOLUTION", Some "1";
+               ])
+      in
+      let legacy_guided_probe name fraction =
+        run_experimental_subrun
+          ~stage_name:name
+          ~portfolio_mode:Modern_only
+          ~fraction
+          ~env:legacy_guided_env
+      in
+      let feq_full_with_min min_budget_s name fraction =
         run_experimental_subrun
           ~stage_name:name
           ~portfolio_mode:Feq_modern
@@ -2142,9 +2172,10 @@ let rec run_file ?(config = default_config) filename =
                  "IP_FEQ_STABLE_FRACTION", Some "0.08";
                  "IP_FEQ_CLASSIC_FRACTION", Some "0.40";
                  "IP_FEQ_WEIGHT_FRACTION", Some "0.20";
-                 "IP_FEQ_EQUALITY_FRACTION", Some "0.27";
-               ])
+	                 "IP_FEQ_EQUALITY_FRACTION", Some "0.27";
+	               ])
       in
+      let feq_full name fraction = feq_full_with_min 0.0 name fraction in
       let definitional_feq fraction =
         run_experimental_subrun
           ~stage_name:"CASC-240 definitional FEQ"
@@ -2191,39 +2222,61 @@ let rec run_file ?(config = default_config) filename =
       in
       if problem_profile = Equality_heavy then
             run_schedule
-              [
-                feq_full
-                  ~min_budget_s:
-                    (getenv_float "IP_CASC_240_FEQ_QUICK_FULL_MIN_SECONDS" 8.0)
+              ([
+                (fun () -> feq_full_with_min
+                  (getenv_float "IP_CASC_240_FEQ_QUICK_FULL_MIN_SECONDS" 8.0)
                   "CASC-240 FEQ quick full classic/equality"
-                  (getenv_float "IP_CASC_240_FEQ_QUICK_FULL_FRACTION" 0.10);
-                feq_sine_compat
+                  (getenv_float "IP_CASC_240_FEQ_QUICK_FULL_FRACTION" 0.10) ());
+                (fun () -> feq_sine_compat
                   "CASC-240 FEQ ranked SInE narrow"
                   (getenv_float "IP_CASC_240_FEQ_SINE_NARROW_FRACTION" 0.04)
                   "300"
-                  "128";
-                stable_stage
+                  "128" ());
+                (fun () -> stable_stage
                   "CASC-240 FEQ stable pass"
-                  (getenv_float "IP_CASC_240_FEQ_STABLE_FRACTION" 0.41);
-                feq_sine
+                  (getenv_float "IP_CASC_240_FEQ_STABLE_FRACTION" 0.41) ());
+                (fun () -> feq_sine
                   "CASC-240 FEQ ranked SInE medium"
                   (getenv_float "IP_CASC_240_FEQ_SINE_MEDIUM_FRACTION" 0.14)
                   "1200"
-                  "256";
-                feq_full
+                  "256" ());
+                (fun () -> feq_full
                   "CASC-240 FEQ full classic/equality"
-                  (getenv_float "IP_CASC_240_FEQ_FULL_FRACTION" 0.06);
-                feq_sine
+                  (getenv_float "IP_CASC_240_FEQ_FULL_FRACTION" 0.06) ());
+                (fun () -> feq_sine
                   "CASC-240 FEQ ranked SInE wide"
                   (getenv_float "IP_CASC_240_FEQ_SINE_WIDE_FRACTION" 0.06)
                   "3000"
-                  "768";
-                definitional_feq
-                  (getenv_float "IP_CASC_240_FEQ_DEFINITIONAL_FRACTION" 0.04);
-                avatar_stage
+                  "768" ());
+              ]
+              @
+              (if extended then
+                 [
+                   (fun () -> feq_sine
+                     "CASC-150 FEQ ranked SInE extra wide"
+                     (getenv_float
+                        "IP_CASC_150_FEQ_SINE_EXTRA_WIDE_FRACTION"
+                        0.04)
+                     "5000"
+                     "1024" ());
+                   (fun () -> feq_simplification_probe
+                     "CASC-150 FEQ simplification-set probe"
+                     (getenv_float "IP_CASC_150_FEQ_SIMPL_FRACTION" 0.025) ());
+                   (fun () -> legacy_guided_probe
+                     "CASC-150 FEQ legacy-guided probe"
+                     (getenv_float
+                        "IP_CASC_150_FEQ_LEGACY_GUIDED_FRACTION"
+                        0.025) ());
+                 ]
+               else [])
+              @
+              [
+                (fun () -> definitional_feq
+                  (getenv_float "IP_CASC_240_FEQ_DEFINITIONAL_FRACTION" 0.04) ());
+                (fun () -> avatar_stage
                   "CASC-240 FEQ AVATAR"
-                  (getenv_float "IP_CASC_240_FEQ_AVATAR_FRACTION" 0.04);
-                run_remaining_stage
+                  (getenv_float "IP_CASC_240_FEQ_AVATAR_FRACTION" 0.04) ());
+                (fun () -> run_remaining_stage
                   ~stage_name:"CASC-240 FEQ remaining full"
                   ~engine:Modern_feq
                   ~env:
@@ -2232,31 +2285,51 @@ let rec run_file ?(config = default_config) filename =
                          "IP_FEQ_MODERN_ALL", Some "1";
                          "IP_PASSIVE_SELECTION", Some "equality";
                          "IP_PASSIVE_AW_RATIO", Some "1:8";
-                       ]);
-              ]
+                       ]) ());
+              ])
       else if problem_profile = Equality_light then
             run_schedule
-              [
-                feq_full
+              ([
+                (fun () -> feq_full
                   "CASC-240 equality-light quick full FEQ"
-                  (getenv_float "IP_CASC_240_EQ_LIGHT_QUICK_FULL_FRACTION" 0.12);
-                stable_stage
+                  (getenv_float "IP_CASC_240_EQ_LIGHT_QUICK_FULL_FRACTION" 0.12) ());
+                (fun () -> stable_stage
                   "CASC-240 equality-light stable pass"
-                  (getenv_float "IP_CASC_240_EQ_LIGHT_STABLE_FRACTION" 0.40);
-                feq_full
+                  (getenv_float "IP_CASC_240_EQ_LIGHT_STABLE_FRACTION" 0.40) ());
+                (fun () -> feq_full
                   "CASC-240 equality-light full FEQ"
-                  (getenv_float "IP_CASC_240_EQ_LIGHT_FULL_FRACTION" 0.08);
-                feq_sine
+                  (getenv_float "IP_CASC_240_EQ_LIGHT_FULL_FRACTION" 0.08) ());
+                (fun () -> feq_sine
                   "CASC-240 equality-light SInE medium"
                   (getenv_float "IP_CASC_240_EQ_LIGHT_SINE_FRACTION" 0.10)
                   "1200"
-                  "256";
-                avatar_stage
+                  "256" ());
+                (fun () -> avatar_stage
                   "CASC-240 equality-light AVATAR"
-                  (getenv_float "IP_CASC_240_EQ_LIGHT_AVATAR_FRACTION" 0.06);
-                definitional_feq
-                  (getenv_float "IP_CASC_240_EQ_LIGHT_DEFINITIONAL_FRACTION" 0.05);
-                run_remaining_stage
+                  (getenv_float "IP_CASC_240_EQ_LIGHT_AVATAR_FRACTION" 0.06) ());
+                (fun () -> definitional_feq
+                  (getenv_float "IP_CASC_240_EQ_LIGHT_DEFINITIONAL_FRACTION" 0.05) ());
+              ]
+              @
+              (if extended then
+                 [
+                   (fun () -> feq_sine
+                     "CASC-150 equality-light SInE wide"
+                     (getenv_float
+                        "IP_CASC_150_EQ_LIGHT_SINE_WIDE_FRACTION"
+                        0.05)
+                     "3000"
+                     "768" ());
+                   (fun () -> feq_simplification_probe
+                     "CASC-150 equality-light simplification-set probe"
+                     (getenv_float
+                        "IP_CASC_150_EQ_LIGHT_SIMPL_FRACTION"
+                        0.04) ());
+                 ]
+               else [])
+              @
+              [
+                (fun () -> run_remaining_stage
                   ~stage_name:"CASC-240 equality-light remaining FEQ"
                   ~engine:Modern_feq
                   ~env:
@@ -2265,20 +2338,20 @@ let rec run_file ?(config = default_config) filename =
                          "IP_FEQ_MODERN_ALL", Some "1";
                          "IP_PASSIVE_SELECTION", Some "classic";
                          "IP_PASSIVE_AW_RATIO", Some "1:6";
-                       ]);
-              ]
+                       ]) ());
+              ])
       else if problem_profile = Large_general then
         match stable_first (getenv_float "IP_CASC_240_LARGE_STABLE_FRACTION" 0.45) with
         | Some res -> res
         | None ->
             run_schedule
-              [
-                run_experimental_subrun
+              ([
+                (fun () -> run_experimental_subrun
                   ~stage_name:"CASC-240 large legacy probe"
                   ~portfolio_mode:Legacy_only
                   ~fraction:
-                    (getenv_float "IP_CASC_240_LARGE_LEGACY_FRACTION" 0.22);
-                run_experimental_subrun
+                    (getenv_float "IP_CASC_240_LARGE_LEGACY_FRACTION" 0.22) ());
+                (fun () -> run_experimental_subrun
                   ~stage_name:"CASC-240 large full modern"
                   ~portfolio_mode:Feq_modern
                   ~fraction:
@@ -2286,10 +2359,10 @@ let rec run_file ?(config = default_config) filename =
                   ~env:
                     (feq_env
                        [
-                         "IP_AXIOM_SELECTION", Some "0";
-                         "IP_AXIOM_SELECTION_ALL", Some "0";
-                       ]);
-                run_experimental_subrun
+	                         "IP_AXIOM_SELECTION", Some "0";
+	                         "IP_AXIOM_SELECTION_ALL", Some "0";
+	                       ]) ());
+                (fun () -> run_experimental_subrun
                   ~stage_name:"CASC-240 large ranked SInE"
                   ~portfolio_mode:Feq_modern
                   ~fraction:
@@ -2302,58 +2375,96 @@ let rec run_file ?(config = default_config) filename =
                          "IP_AXIOM_SELECTION_ALL", Some "1";
                          "IP_AXIOM_SELECTION_RANKED", Some "1";
                          "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "2500";
-                         "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "512";
-                         "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
-                       ]);
-                run_experimental_subrun
+	                         "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "512";
+	                         "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
+	                       ]) ());
+                (fun () -> run_experimental_subrun
                   ~stage_name:"CASC-240 large legacy-guided modern"
                   ~portfolio_mode:Modern_only
                   ~fraction:
                     (getenv_float
-                       "IP_CASC_240_LARGE_LEGACY_GUIDED_FRACTION"
-                       0.08)
-                  ~env:legacy_guided_env;
-                run_remaining_stage
-                  ~stage_name:"CASC-240 large remaining legacy"
-                  ~engine:Legacy_compat;
+	                       "IP_CASC_240_LARGE_LEGACY_GUIDED_FRACTION"
+	                       0.08)
+                  ~env:legacy_guided_env ());
               ]
+              @
+              (if extended then
+                 [
+                   (fun () -> run_experimental_subrun
+                     ~stage_name:"CASC-150 large layered/goal probe"
+                     ~portfolio_mode:Modern_only
+                     ~fraction:
+                       (getenv_float
+                          "IP_CASC_150_LARGE_LAYERED_GOAL_FRACTION"
+                          0.03)
+                     ~env:
+                       [
+                         "IP_PASSIVE_SELECTION", Some "layered";
+	                         "IP_LAYERED_SELECTION",
+	                         Some "unit,equality,goal,short,age,weight";
+	                         "IP_LITERAL_SELECTION", Some "smallest-negative";
+	                       ] ());
+                 ]
+               else [])
+              @
+              [
+                (fun () -> run_remaining_stage
+                  ~stage_name:"CASC-240 large remaining legacy"
+                  ~engine:Legacy_compat ());
+              ])
       else
         match stable_first (getenv_float "IP_CASC_240_NON_EQ_STABLE_FRACTION" 0.45) with
         | Some res -> res
         | None ->
             run_schedule
-              [
-                run_experimental_subrun
+              ([
+                (fun () -> run_experimental_subrun
                   ~stage_name:"CASC-240 non-equality legacy probe"
                   ~portfolio_mode:Legacy_only
                   ~fraction:
-                    (getenv_float "IP_CASC_240_NON_EQ_LEGACY_FRACTION" 0.25);
-                run_experimental_subrun
+                    (getenv_float "IP_CASC_240_NON_EQ_LEGACY_FRACTION" 0.25) ());
+                (fun () -> run_experimental_subrun
                   ~stage_name:"CASC-240 non-equality legacy-guided modern"
                   ~portfolio_mode:Modern_only
                   ~fraction:
                     (getenv_float
-                       "IP_CASC_240_NON_EQ_LEGACY_GUIDED_FRACTION"
-                       0.12)
-                  ~env:legacy_guided_env;
-                run_experimental_subrun
+	                       "IP_CASC_240_NON_EQ_LEGACY_GUIDED_FRACTION"
+	                       0.12)
+                  ~env:legacy_guided_env ());
+                (fun () -> run_experimental_subrun
                   ~stage_name:"CASC-240 non-equality layered modern"
                   ~portfolio_mode:Modern_only
                   ~fraction:
                     (getenv_float "IP_CASC_240_NON_EQ_LAYERED_FRACTION" 0.08)
                   ~env:
                     [
-                      "IP_PASSIVE_SELECTION", Some "layered";
-                      "IP_LAYERED_SELECTION",
-                      Some "unit,goal,short,age,weight";
-                    ];
-                avatar_stage
+	                      "IP_PASSIVE_SELECTION", Some "layered";
+	                      "IP_LAYERED_SELECTION",
+	                      Some "unit,goal,short,age,weight";
+	                    ] ());
+                (fun () -> avatar_stage
                   "CASC-240 non-equality AVATAR"
-                  (getenv_float "IP_CASC_240_NON_EQ_AVATAR_FRACTION" 0.05);
-                run_remaining_stage
-                  ~stage_name:"CASC-240 non-equality remaining legacy"
-                  ~engine:Legacy_compat;
+                  (getenv_float "IP_CASC_240_NON_EQ_AVATAR_FRACTION" 0.05) ());
               ]
+              @
+              (if extended then
+                 [
+                   (fun () -> run_experimental_subrun
+                     ~stage_name:"CASC-150 non-equality FNE legacy-guided probe"
+                     ~portfolio_mode:Modern_only
+                     ~fraction:
+                       (getenv_float
+	                          "IP_CASC_150_NON_EQ_LEGACY_GUIDED_FRACTION"
+	                          0.03)
+                     ~env:legacy_guided_env ());
+                 ]
+               else [])
+              @
+              [
+                (fun () -> run_remaining_stage
+                  ~stage_name:"CASC-240 non-equality remaining legacy"
+                  ~engine:Legacy_compat ());
+              ])
     in
 
     let run_casc_feq_probe () =
@@ -2831,6 +2942,8 @@ let rec run_file ?(config = default_config) filename =
           run_casc_aggressive ()
       | Casc_240 ->
           run_casc_240 ()
+      | Casc_150 ->
+          run_casc_240 ~extended:true ()
       | Casc_feq_probe ->
           run_casc_feq_probe ()
       | Legacy_only ->
