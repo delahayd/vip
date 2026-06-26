@@ -20,8 +20,18 @@ type include_spec = {
 }
 
 type annotated_input =
-  | Input_cnf of { name : string; role : string; clause : clause }
-  | Input_fof of { name : string; role : string; formula : formula }
+  | Input_cnf of {
+      name : string;
+      role : string;
+      clause : clause;
+      source_file : string option;
+    }
+  | Input_fof of {
+      name : string;
+      role : string;
+      formula : formula;
+      source_file : string option;
+    }
   | Input_include of include_spec
 
 val vars_of_term : Types.StringSet.t -> term -> Types.StringSet.t

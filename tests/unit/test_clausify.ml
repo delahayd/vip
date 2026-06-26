@@ -42,6 +42,7 @@ let test_one_way_definition () =
     Input_fof
       {
         name = "def_p";
+        source_file = None;
         role = "axiom";
         formula =
           Forall
@@ -64,6 +65,7 @@ let test_guarded_one_way_definition () =
     Input_fof
       {
         name = "guarded_def_p";
+        source_file = None;
         role = "axiom";
         formula =
           Forall
@@ -93,6 +95,7 @@ let test_dmt_definition_expansion () =
     Input_fof
       {
         name = "def_p";
+        source_file = None;
         role = "axiom";
         formula =
           Forall
@@ -106,6 +109,7 @@ let test_dmt_definition_expansion () =
     Input_fof
       {
         name = "use_p";
+        source_file = None;
         role = "axiom";
         formula = Atom { pred = "p"; args = [ Fun ("a", []) ] };
       }

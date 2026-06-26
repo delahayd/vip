@@ -174,6 +174,17 @@ let role_requires_negation role =
 let proof_input_name index =
   Printf.sprintf "ip_input_%d" index
 
+let proof_source_name ~fallback = function
+  | "" -> proof_input_name fallback
+  | name -> tptp_name name
+
+let proof_source_reference ~fallback = function
+  | "" -> "unknown"
+  | name -> tptp_name name
+
+let gdv_can_match_source_name name =
+  not (tptp_needs_quotes name)
+
 let proof_clause_name id =
   if id < 0 then
     Printf.sprintf "ip_m%d" (-id)
@@ -185,7 +196,47 @@ let clause_key clause =
   |> Clause.normalize_clause
   |> Pretty.string_of_clause
 
-let build_tstp_prelude inputs (trace : Clausify.clausification_trace) derivation =
+let rec term_has_skolem = function
+  | Types.Var _ -> false
+  | Types.Fun (f, args) ->
+      String.length f >= 2
+      && String.sub f 0 2 = "sk"
+      || List.exists term_has_skolem args
+
+let atom_has_skolem (a : Types.atom) =
+  List.exists term_has_skolem a.args
+
+let literal_has_skolem = function
+  | Types.Pos a | Types.Neg a -> atom_has_skolem a
+
+let clause_has_skolem clause =
+  List.exists literal_has_skolem clause
+
+let proof_slice_to_root (root : Resolution.derived) derivation =
+  let by_id = Hashtbl.create (List.length derivation + 1) in
+  List.iter (fun (d : Resolution.derived) -> Hashtbl.replace by_id d.id d) derivation;
+  Hashtbl.replace by_id root.id root;
+  let needed = Hashtbl.create 257 in
+  let rec mark id =
+    if not (Hashtbl.mem needed id) then begin
+      Hashtbl.add needed id ();
+      match Hashtbl.find_opt by_id id with
+      | None -> ()
+      | Some d -> List.iter mark d.parents
+    end
+  in
+  mark root.id;
+  let sliced =
+    List.filter
+      (fun (d : Resolution.derived) -> Hashtbl.mem needed d.id)
+      derivation
+  in
+  if List.exists (fun (d : Resolution.derived) -> d.id = root.id) sliced then
+    sliced
+  else
+    sliced @ [ root ]
+
+let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) derivation =
   let input_by_index = Hashtbl.create 97 in
   List.iteri
     (fun i input -> Hashtbl.replace input_by_index (i + 1) input)
@@ -202,22 +253,47 @@ let build_tstp_prelude inputs (trace : Clausify.clausification_trace) derivation
   let print_source origin =
     if not (Hashtbl.mem printed_inputs origin.Clausify.input_index) then begin
       Hashtbl.add printed_inputs origin.input_index ();
-      let source_name = proof_input_name origin.input_index in
+      let source_name =
+        proof_source_name ~fallback:origin.input_index origin.input_name
+      in
+      let source_reference =
+        proof_source_reference ~fallback:origin.input_index origin.input_name
+      in
       match Hashtbl.find_opt input_by_index origin.input_index with
-      | Some (Fof.Input_fof { role; formula; _ }) ->
+      | Some (Fof.Input_fof { role; formula; source_file; _ }) ->
+          let source_suffix =
+            match source_file, problem with
+            | Some p, _ | None, Some p ->
+                Printf.sprintf
+                  ",file(%s,%s)"
+                  (tptp_name p)
+                  source_reference
+            | None, None -> ""
+          in
           Printf.bprintf
             b
-            "fof(%s,%s,(%s)).\n"
+            "fof(%s,%s,(%s)%s).\n"
             source_name
             role
             (tptp_formula formula)
-      | Some (Fof.Input_cnf { role; clause; _ }) ->
+            source_suffix
+      | Some (Fof.Input_cnf { role; clause; source_file; _ }) ->
+          let source_suffix =
+            match source_file, problem with
+            | Some p, _ | None, Some p ->
+                Printf.sprintf
+                  ",file(%s,%s)"
+                  (tptp_name p)
+                  source_reference
+            | None, None -> ""
+          in
           Printf.bprintf
             b
-            "cnf(%s,%s,(%s)).\n"
+            "cnf(%s,%s,(%s)%s).\n"
             source_name
             role
             (Resolution.tstp_clause_formula clause)
+            source_suffix
       | Some (Fof.Input_include _) | None -> ()
     end
   in
@@ -227,38 +303,60 @@ let build_tstp_prelude inputs (trace : Clausify.clausification_trace) derivation
         let clause = Resolution.tstp_clause_formula d.clause_d in
         match Hashtbl.find_opt origins_by_clause (clause_key d.clause_d) with
         | Some origin when origin.input_is_cnf && not (role_requires_negation origin.input_role) ->
-            Printf.bprintf
-              b
-              "cnf(%s,%s,(%s)).\n"
-              (proof_clause_name d.id)
-              origin.input_role
-              clause
-        | Some origin ->
+            let source_name =
+              proof_source_name ~fallback:origin.input_index origin.input_name
+            in
             print_source origin;
-            let source_name = proof_input_name origin.input_index in
-            let role =
-              if role_requires_negation origin.input_role then
-                "negated_conjecture"
-              else
-                "plain"
-            in
-            let status =
-              if role_requires_negation origin.input_role then "cth" else "esa"
-            in
-            let status =
-              if origin.Clausify.transformation_status <> "" then
-                origin.transformation_status
-              else
-                status
-            in
             Printf.bprintf
               b
-              "cnf(%s,%s,(%s),inference(cnf_transformation,[status(%s)],[%s])).\n"
+              "cnf(%s,plain,(%s),inference(input_clause_copy,[status(thm)],[%s])).\n"
               (proof_clause_name d.id)
-              role
               clause
-              status
               source_name
+        | Some origin ->
+            if gdv_can_match_source_name origin.input_name
+               || clause_has_skolem d.clause_d then begin
+              print_source origin;
+              let source_name =
+                proof_source_name ~fallback:origin.input_index origin.input_name
+              in
+              let role =
+                if role_requires_negation origin.input_role then
+                  "negated_conjecture"
+                else
+                  "plain"
+              in
+              let status =
+                if role_requires_negation origin.input_role then "cth" else "esa"
+              in
+              let status =
+                if origin.Clausify.transformation_status <> "" then
+                  origin.transformation_status
+                else
+                  status
+              in
+              Printf.bprintf
+                b
+                "cnf(%s,%s,(%s),inference(cnf_transformation,[status(%s)],[%s])).\n"
+                (proof_clause_name d.id)
+                role
+                clause
+                status
+                source_name
+            end else begin
+              let role =
+                if role_requires_negation origin.input_role then
+                  "negated_conjecture"
+                else
+                  "plain"
+              in
+              Printf.bprintf
+                b
+                "cnf(%s,%s,(%s)).\n"
+                (proof_clause_name d.id)
+                role
+                clause
+            end
         | None ->
             Printf.bprintf b "cnf(%s,axiom,(%s)).\n" (proof_clause_name d.id) clause
       end)
@@ -2981,6 +3079,11 @@ let rec run_file ?(config = default_config) filename =
       | Refutation_found d -> Some d
       | Saturation | Time_limit | Clause_limit -> None
     in
+    let proof_derivation =
+      match empty_clause with
+      | Some root -> proof_slice_to_root root res.derivation
+      | None -> res.derivation
+    in
 
     {
       status = infer_status_from_stop_reason res.stop_reason;
@@ -2997,14 +3100,19 @@ let rec run_file ?(config = default_config) filename =
         negative_ratio;
         axiom_selection_enabled;
       };
-      derivation = res.derivation;
+      derivation = proof_derivation;
       empty_clause;
       resolution_stats = Some res.stats;
       tstp_prelude =
         (match empty_clause with
          | None -> None
          | Some _ ->
-             Some (build_tstp_prelude parsed.inputs traced_part.trace res.derivation));
+             Some
+               (build_tstp_prelude
+                  ~problem:filename
+                  parsed.inputs
+                  traced_part.trace
+                  proof_derivation));
     }
   with
   | Clausify.Timeout_hit

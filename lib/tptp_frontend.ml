@@ -60,6 +60,11 @@ let filter_by_name only xs =
           | Some n -> List.mem n names)
         xs
 
+let set_source_file filename = function
+  | Input_cnf r -> Input_cnf { r with source_file = Some filename }
+  | Input_fof r -> Input_fof { r with source_file = Some filename }
+  | Input_include _ as input -> input
+
 let is_file path =
   try Sys.file_exists path && not (Sys.is_directory path)
   with Sys_error _ -> false
@@ -140,7 +145,7 @@ let rec expand_file config visited filename =
   if StringSet.mem filename visited then
     raise (Error ("Boucle d'inclusion détectée: " ^ filename));
   let visited = StringSet.add filename visited in
-  let entries = parse_file filename in
+  let entries = parse_file filename |> List.map (set_source_file filename) in
   let rec expand_entries acc = function
     | [] -> List.rev acc
     | Input_include { include_file; include_only } :: tl ->
