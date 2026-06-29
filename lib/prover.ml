@@ -2293,6 +2293,21 @@ let rec run_file ?(config = default_config) filename =
                 (fun () -> feq_full
                   "CASC-240 equality-light quick full FEQ"
                   (getenv_float "IP_CASC_240_EQ_LIGHT_QUICK_FULL_FRACTION" 0.12) ());
+              ]
+              @
+              (if extended then
+                 [
+                   (fun () -> feq_sine_compat
+                     "CASC-150 equality-light SInE narrow compat"
+                     (getenv_float
+                        "IP_CASC_150_EQ_LIGHT_SINE_NARROW_COMPAT_FRACTION"
+                        0.04)
+                     "300"
+                     "128" ());
+                 ]
+               else [])
+              @
+              [
                 (fun () -> stable_stage
                   "CASC-240 equality-light stable pass"
                   (getenv_float "IP_CASC_240_EQ_LIGHT_STABLE_FRACTION" 0.40) ());
@@ -2341,6 +2356,27 @@ let rec run_file ?(config = default_config) filename =
                        ]) ());
               ])
       else if problem_profile = Large_general then
+        let early_legacy_recovery () =
+          if not extended then
+            None
+          else
+            let res =
+              run_experimental_subrun
+                ~stage_name:"CASC-150 large early legacy recovery"
+                ~portfolio_mode:Legacy_only
+                ~fraction:
+                  (getenv_float
+                     "IP_CASC_150_LARGE_EARLY_LEGACY_FRACTION"
+                     0.42)
+                ()
+            in
+            match res.stop_reason with
+            | Refutation_found _ -> Some res
+            | Saturation | Time_limit | Clause_limit -> None
+        in
+        match early_legacy_recovery () with
+        | Some res -> res
+        | None ->
         match stable_first (getenv_float "IP_CASC_240_LARGE_STABLE_FRACTION" 0.45) with
         | Some res -> res
         | None ->
