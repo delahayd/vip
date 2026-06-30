@@ -63,7 +63,7 @@ let fresh_skolem_name () =
 
 let fresh_def_name () =
   incr def_counter;
-  "ip_def_" ^ string_of_int !def_counter
+  "vip_def_" ^ string_of_int !def_counter
 
 let rec elim_imp f =
   poll_timeout ();
@@ -302,14 +302,30 @@ let definitional_clauses_of_nnf f =
   clauses @ [ [ top ] ]
   |> List.filter_map simplify_clause
 
-let getenv_bool name default =
+let legacy_env_name name =
+  let prefix = "VIP_" in
+  let lp = String.length prefix in
+  if String.length name >= lp && String.sub name 0 lp = prefix then
+    Some ("IP_" ^ String.sub name lp (String.length name - lp))
+  else
+    None
+
+let env_opt name =
   match Sys.getenv_opt name with
+  | Some _ as v -> v
+  | None ->
+      match legacy_env_name name with
+      | Some legacy -> Sys.getenv_opt legacy
+      | None -> None
+
+let getenv_bool name default =
+  match env_opt name with
   | Some ("1" | "true" | "TRUE" | "yes" | "YES" | "on" | "ON") -> true
   | Some ("0" | "false" | "FALSE" | "no" | "NO" | "off" | "OFF") -> false
   | _ -> default
 
 let getenv_int name default =
-  match Sys.getenv_opt name with
+  match env_opt name with
   | Some value -> (
       match int_of_string_opt value with
       | Some n when n > 0 -> n
@@ -374,7 +390,7 @@ let safe_definition_atom atom body =
   && vars_subset
        (Fof.vars_of_formula Types.StringSet.empty body)
        (vars_of_atom_set atom)
-  && formula_size body <= getenv_int "IP_ONE_WAY_DEFINITION_MAX_BODY_SIZE" 80
+  && formula_size body <= getenv_int "VIP_ONE_WAY_DEFINITION_MAX_BODY_SIZE" 80
 
 let conjoin a b =
   match a, b with
@@ -390,15 +406,15 @@ let safe_guarded_definition_atom atom guard body =
        (Fof.vars_of_formula Types.StringSet.empty (conjoin guard body))
        (vars_of_atom_set atom)
   && formula_size (conjoin guard body)
-     <= getenv_int "IP_ONE_WAY_DEFINITION_MAX_BODY_SIZE" 80
+     <= getenv_int "VIP_ONE_WAY_DEFINITION_MAX_BODY_SIZE" 80
 
 let one_way_definition_formula f =
-  if not (getenv_bool "IP_ONE_WAY_DEFINITIONS" false) then
+  if not (getenv_bool "VIP_ONE_WAY_DEFINITIONS" false) then
     f
   else
     let vars, body = peel_forall f in
     let orientation =
-      match Sys.getenv_opt "IP_ONE_WAY_DEFINITION_ORIENTATION" with
+      match env_opt "VIP_ONE_WAY_DEFINITION_ORIENTATION" with
       | Some value when String.lowercase_ascii value = "compress" -> `Compress
       | _ -> `Expand
     in
@@ -471,7 +487,7 @@ let atom_definition_of_formula name f =
         None
 
 let collect_formula_definitions inputs =
-  let max_rules = getenv_int "IP_DMT_MAX_DEFINITIONS" 64 in
+  let max_rules = getenv_int "VIP_DMT_MAX_DEFINITIONS" 64 in
   let rec aux acc = function
     | [] -> List.rev acc
     | _ when List.length acc >= max_rules -> List.rev acc
@@ -539,8 +555,8 @@ let rec rewrite_formula_once defs f =
       (Exists (vs, f'), changed)
 
 let rewrite_formula_fixpoint defs f =
-  let max_passes = getenv_int "IP_DMT_REWRITE_PASSES" 4 in
-  let max_size = getenv_int "IP_DMT_MAX_REWRITTEN_FORMULA_SIZE" 240 in
+  let max_passes = getenv_int "VIP_DMT_REWRITE_PASSES" 4 in
+  let max_size = getenv_int "VIP_DMT_MAX_REWRITTEN_FORMULA_SIZE" 240 in
   let rec loop n f =
     if n <= 0 || formula_size f > max_size then
       f
@@ -567,7 +583,7 @@ let input_mentions_definition defs = function
   | Input_include _ -> false
 
 let dmt_expand_inputs inputs =
-  if not (getenv_bool "IP_DMT_EXPAND_DEFINITIONS" false) then
+  if not (getenv_bool "VIP_DMT_EXPAND_DEFINITIONS" false) then
     inputs
   else
     let defs = collect_formula_definitions inputs in
@@ -580,7 +596,7 @@ let dmt_expand_inputs inputs =
           inputs
       in
       let remove_definitions =
-        getenv_bool "IP_DMT_REMOVE_DEFINITIONS" true && not has_cnf
+        getenv_bool "VIP_DMT_REMOVE_DEFINITIONS" true && not has_cnf
       in
       let is_definition_input name =
         List.exists (fun d -> d.def_input_name = name) defs
@@ -625,9 +641,9 @@ let clausify_formula ?(check_timeout = fun () -> ()) f =
         |> skolem []
         |> drop_forall
       in
-      let force_definitional = getenv_bool "IP_DEFINITIONAL_CNF" false in
-      let auto_definitional = getenv_bool "IP_AUTO_DEFINITIONAL_CNF" false in
-      let distribution_limit = getenv_int "IP_CNF_DISTRIBUTION_LIMIT" 4096 in
+      let force_definitional = getenv_bool "VIP_DEFINITIONAL_CNF" false in
+      let auto_definitional = getenv_bool "VIP_AUTO_DEFINITIONAL_CNF" false in
+      let distribution_limit = getenv_int "VIP_CNF_DISTRIBUTION_LIMIT" 4096 in
       let use_definitional =
         force_definitional
         || (auto_definitional

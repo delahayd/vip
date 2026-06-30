@@ -1,5 +1,5 @@
 type prover_kind =
-  | Ip
+  | Vip
   | External
 
 type prover = {
@@ -44,14 +44,17 @@ type bench_row = {
   results : (string * result) list;
 }
 
-let ip_binary () =
-  try Sys.getenv "IP_BIN" with Not_found -> "./bin/ip"
+let vip_binary () =
+  try Sys.getenv "VIP_BIN"
+  with Not_found ->
+    try Sys.getenv "IP_BIN" with Not_found ->
+      if Sys.file_exists "./bin/vip" then "./bin/vip" else "./bin/ip"
 
 let provers =
   [
     {
-      name = "ip";
-      kind = Ip;
+      name = "vip";
+      kind = Vip;
       cmd =
         (fun file timeout max_clauses mode portfolio ->
           let max_clause_arg =
@@ -77,7 +80,7 @@ let provers =
           in
           Printf.sprintf
             "%s --time-limit %d%s%s%s%s %s"
-            (Filename.quote (ip_binary ()))
+            (Filename.quote (vip_binary ()))
             timeout
             max_clause_arg
             mode_arg
@@ -128,7 +131,7 @@ let provers =
 
 let active_provers config =
   if config.only_ip then
-    List.filter (fun p -> p.name = "ip") provers
+    List.filter (fun p -> p.name = "vip") provers
   else
     provers
 
@@ -178,7 +181,7 @@ let shell_quote s =
 
 let usage () =
   prerr_endline
-    "Usage: run_bench [--debug] [--onlyip] [--robust-time-limit] [--casc REP] [--logs DIR] [--dir DIR] [--home DIR] --time-limit SECONDS [--max-clauses N] [--mode MODE] [--portfolio MODE] [--size-limit GB]";
+    "Usage: run_bench [--debug] [--onlyvip|--onlyip] [--robust-time-limit] [--casc REP] [--logs DIR] [--dir DIR] [--home DIR] --time-limit SECONDS [--max-clauses N] [--mode MODE] [--portfolio MODE] [--size-limit GB]";
   exit 2
 
 let parse_args () =
@@ -202,7 +205,7 @@ let parse_args () =
       | "--debug" ->
           debug := true;
           loop (i + 1)
-      | "--onlyip" ->
+      | "--onlyvip" | "--onlyip" ->
           only_ip := true;
           loop (i + 1)
       | "--robust-time-limit" ->
@@ -566,7 +569,7 @@ let command_for_run config prover file =
   in
   let with_robust_timeout =
     match prover.kind, config.robust_time_limit with
-    | Ip, true ->
+    | Vip, true ->
         Printf.sprintf
           "timeout %d %s"
           (robust_timeout_seconds config.time_limit)
@@ -591,12 +594,12 @@ let run_prover config prover file =
         unit_ratio,
         negative_ratio,
         axiom_selection_enabled ) =
-    if prover.kind = Ip then profile_info_of_output output
+    if prover.kind = Vip then profile_info_of_output output
     else ("", None, None, None, None, None, None, None)
   in
 
   let robust_timeout_hit =
-    prover.kind = Ip
+    prover.kind = Vip
     && config.robust_time_limit
     && (code = 124 || code = 137)
   in
@@ -859,10 +862,10 @@ let write_metadata oc ~stamp ~config ~versions =
 let write_results_header oc config =
   if config.only_ip then
     Printf.fprintf oc
-      "section,problem,expected_status,rating,ip,ip_time_s,ip_profile,ip_axiom_selection,ip_raw_clauses,ip_equality_literals,ip_equality_ratio,ip_avg_term,ip_unit_ratio,ip_negative_ratio\n%!"
+      "section,problem,expected_status,rating,vip,vip_time_s,vip_profile,vip_axiom_selection,vip_raw_clauses,vip_equality_literals,vip_equality_ratio,vip_avg_term,vip_unit_ratio,vip_negative_ratio\n%!"
   else
     Printf.fprintf oc
-      "section,problem,expected_status,rating,ip,ip_time_s,ip_profile,ip_axiom_selection,ip_raw_clauses,ip_equality_literals,ip_equality_ratio,ip_avg_term,ip_unit_ratio,ip_negative_ratio,vampire,vampire_time_s,e,e_time_s,zenon,zenon_time_s\n%!"
+      "section,problem,expected_status,rating,vip,vip_time_s,vip_profile,vip_axiom_selection,vip_raw_clauses,vip_equality_literals,vip_equality_ratio,vip_avg_term,vip_unit_ratio,vip_negative_ratio,vampire,vampire_time_s,e,e_time_s,zenon,zenon_time_s\n%!"
 
 let write_result_row oc config row =
   let problem_name = displayed_problem config row.problem in
@@ -872,32 +875,32 @@ let write_result_row oc config row =
       (csv_escape problem_name)
       (csv_escape row.expected_status)
       (csv_escape row.rating)
-      (csv_escape (result_status "ip" row.results))
-      (result_time "ip" row.results)
-      (csv_escape (result_profile "ip" row.results))
-      (csv_escape (csv_bool_opt (result_axiom_selection_enabled "ip" row.results)))
-      (csv_escape (csv_int_opt (result_raw_clause_count "ip" row.results)))
-      (csv_escape (csv_int_opt (result_equality_literals "ip" row.results)))
-      (csv_escape (csv_float_opt (result_equality_literal_ratio "ip" row.results)))
-      (csv_escape (csv_float_opt (result_avg_literal_term_size "ip" row.results)))
-      (csv_escape (csv_float_opt (result_unit_ratio "ip" row.results)))
-      (csv_escape (csv_float_opt (result_negative_ratio "ip" row.results)))
+      (csv_escape (result_status "vip" row.results))
+      (result_time "vip" row.results)
+      (csv_escape (result_profile "vip" row.results))
+      (csv_escape (csv_bool_opt (result_axiom_selection_enabled "vip" row.results)))
+      (csv_escape (csv_int_opt (result_raw_clause_count "vip" row.results)))
+      (csv_escape (csv_int_opt (result_equality_literals "vip" row.results)))
+      (csv_escape (csv_float_opt (result_equality_literal_ratio "vip" row.results)))
+      (csv_escape (csv_float_opt (result_avg_literal_term_size "vip" row.results)))
+      (csv_escape (csv_float_opt (result_unit_ratio "vip" row.results)))
+      (csv_escape (csv_float_opt (result_negative_ratio "vip" row.results)))
   else
     Printf.fprintf oc
       "result,%s,%s,%s,%s,%.6f,%s,%s,%s,%s,%s,%s,%s,%s,%s,%.6f,%s,%.6f,%s,%.6f\n%!"
       (csv_escape problem_name)
       (csv_escape row.expected_status)
       (csv_escape row.rating)
-      (csv_escape (result_status "ip" row.results))
-      (result_time "ip" row.results)
-      (csv_escape (result_profile "ip" row.results))
-      (csv_escape (csv_bool_opt (result_axiom_selection_enabled "ip" row.results)))
-      (csv_escape (csv_int_opt (result_raw_clause_count "ip" row.results)))
-      (csv_escape (csv_int_opt (result_equality_literals "ip" row.results)))
-      (csv_escape (csv_float_opt (result_equality_literal_ratio "ip" row.results)))
-      (csv_escape (csv_float_opt (result_avg_literal_term_size "ip" row.results)))
-      (csv_escape (csv_float_opt (result_unit_ratio "ip" row.results)))
-      (csv_escape (csv_float_opt (result_negative_ratio "ip" row.results)))
+      (csv_escape (result_status "vip" row.results))
+      (result_time "vip" row.results)
+      (csv_escape (result_profile "vip" row.results))
+      (csv_escape (csv_bool_opt (result_axiom_selection_enabled "vip" row.results)))
+      (csv_escape (csv_int_opt (result_raw_clause_count "vip" row.results)))
+      (csv_escape (csv_int_opt (result_equality_literals "vip" row.results)))
+      (csv_escape (csv_float_opt (result_equality_literal_ratio "vip" row.results)))
+      (csv_escape (csv_float_opt (result_avg_literal_term_size "vip" row.results)))
+      (csv_escape (csv_float_opt (result_unit_ratio "vip" row.results)))
+      (csv_escape (csv_float_opt (result_negative_ratio "vip" row.results)))
       (csv_escape (result_status "vampire" row.results))
       (result_time "vampire" row.results)
       (csv_escape (result_status "e" row.results))
@@ -1120,7 +1123,7 @@ let write_html_header oc ~stamp ~config ~versions =
         Printf.fprintf oc "<tr><td>CASC</td><td>%s</td></tr>" (html_escape rep)
   end;
 
-  Printf.fprintf oc "<tr><td>Only ip</td><td>%b</td></tr>" config.only_ip;
+  Printf.fprintf oc "<tr><td>Only VIP</td><td>%b</td></tr>" config.only_ip;
 
   List.iter
     (fun (name, version) ->
@@ -1133,22 +1136,22 @@ let write_html_header oc ~stamp ~config ~versions =
     Printf.fprintf oc
       "</table><h2>Résultats</h2>\
        <table><tr>\
-       <th>Problème</th><th>Status attendu</th><th>Rating</th><th>ip</th><th>Profil</th>\
+       <th>Problème</th><th>Status attendu</th><th>Rating</th><th>VIP</th><th>Profil</th>\
        </tr>%!"
   else
     Printf.fprintf oc
       "</table><h2>Résultats</h2>\
        <table><tr>\
        <th>Problème</th><th>Status attendu</th><th>Rating</th>\
-       <th>ip</th><th>Profil</th><th>Vampire</th><th>E</th><th>Zenon</th>\
+       <th>VIP</th><th>Profil</th><th>Vampire</th><th>E</th><th>Zenon</th>\
        </tr>%!"
 
 let html_profile_cell results =
-  let profile = result_profile "ip" results in
-  let axiom_selection = csv_bool_opt (result_axiom_selection_enabled "ip" results) in
-  let raw_clauses = csv_int_opt (result_raw_clause_count "ip" results) in
-  let eq_ratio = csv_float_opt (result_equality_literal_ratio "ip" results) in
-  let avg_term = csv_float_opt (result_avg_literal_term_size "ip" results) in
+  let profile = result_profile "vip" results in
+  let axiom_selection = csv_bool_opt (result_axiom_selection_enabled "vip" results) in
+  let raw_clauses = csv_int_opt (result_raw_clause_count "vip" results) in
+  let eq_ratio = csv_float_opt (result_equality_literal_ratio "vip" results) in
+  let avg_term = csv_float_opt (result_avg_literal_term_size "vip" results) in
   Printf.sprintf
     "<td class=\"meta\">%s<br/><small>axioms=%s raw=%s eq=%s term=%s</small></td>"
     (html_escape profile)
@@ -1172,8 +1175,8 @@ let write_html_row oc config row =
       (html_escape row.expected_status)
       (html_escape row.rating)
       (html_status_cell row.expected_status
-         (result_status "ip" row.results)
-         (result_time "ip" row.results))
+         (result_status "vip" row.results)
+         (result_time "vip" row.results))
       (html_profile_cell row.results)
   else
     Printf.fprintf oc
@@ -1182,8 +1185,8 @@ let write_html_row oc config row =
       (html_escape row.expected_status)
       (html_escape row.rating)
       (html_status_cell row.expected_status
-         (result_status "ip" row.results)
-         (result_time "ip" row.results))
+         (result_status "vip" row.results)
+         (result_time "vip" row.results))
       (html_profile_cell row.results)
       (html_status_cell row.expected_status
          (result_status "vampire" row.results)
@@ -1285,12 +1288,12 @@ let write_html_stats oc config rows =
 let print_header config =
   if config.only_ip then begin
     Printf.printf "%-60s | %-18s | %-12s | %-22s\n%!"
-      "problem" "expected" "rating" "ip";
+      "problem" "expected" "rating" "vip";
     Printf.printf "%s\n%!" (String.make 121 '-')
   end else begin
     Printf.printf
       "%-60s | %-18s | %-12s | %-22s | %-22s | %-22s | %-22s\n%!"
-      "problem" "expected" "rating" "ip" "vampire" "e" "zenon";
+      "problem" "expected" "rating" "vip" "vampire" "e" "zenon";
     Printf.printf "%s\n%!" (String.make 179 '-')
   end
 
@@ -1306,14 +1309,14 @@ let print_row config row =
       problem_name
       row.expected_status
       row.rating
-      (print_status_with_time "ip" row)
+      (print_status_with_time "vip" row)
   else
     Printf.printf
       "%-60s | %-18s | %-12s | %-22s | %-22s | %-22s | %-22s\n%!"
       problem_name
       row.expected_status
       row.rating
-      (print_status_with_time "ip" row)
+      (print_status_with_time "vip" row)
       (print_status_with_time "vampire" row)
       (print_status_with_time "e" row)
       (print_status_with_time "zenon" row)

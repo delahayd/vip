@@ -1,10 +1,10 @@
 type row = {
   problem : string;
   expected : string;
-  ip_status : string;
-  ip_time_s : float;
-  ip_profile : string;
-  ip_axiom_selection : bool option;
+  vip_status : string;
+  vip_time_s : float;
+  vip_profile : string;
+  vip_axiom_selection : bool option;
 }
 
 type bench = {
@@ -62,6 +62,9 @@ let opt_col header cols name =
   | None -> None
   | Some i -> nth_opt cols i
 
+let opt_col_any header cols names =
+  List.find_map (fun name -> opt_col header cols name) names
+
 let float_col header cols name =
   match opt_col header cols name with
   | Some s -> (try float_of_string s with Failure _ -> 0.0)
@@ -101,16 +104,16 @@ let read_bench file =
               begin
                 match opt_col h cols "problem",
                       opt_col h cols "expected_status",
-                      opt_col h cols "ip" with
-                | Some problem, Some expected, Some ip_status ->
+                      opt_col_any h cols [ "vip"; "ip" ] with
+                | Some problem, Some expected, Some vip_status ->
                     rows :=
                       {
                         problem;
                         expected;
-                        ip_status;
-                        ip_time_s = float_col h cols "ip_time_s";
-                        ip_profile = string_col h cols "ip_profile" "unknown";
-                        ip_axiom_selection = bool_col h cols "ip_axiom_selection";
+                        vip_status;
+                        vip_time_s = (match opt_col_any h cols [ "vip_time_s"; "ip_time_s" ] with Some x -> (try float_of_string x with Failure _ -> 0.0) | None -> 0.0);
+                        vip_profile = (match opt_col_any h cols [ "vip_profile"; "ip_profile" ] with Some x -> x | None -> "unknown");
+                        vip_axiom_selection = (match opt_col_any h cols [ "vip_axiom_selection"; "ip_axiom_selection" ] with Some "true" -> Some true | Some "false" -> Some false | _ -> None);
                       }
                       :: !rows
                 | _ -> ()
@@ -126,7 +129,7 @@ let row_map rows =
   List.iter (fun r -> Hashtbl.replace tbl r.problem r) rows;
   tbl
 
-let is_ip_success expected actual =
+let is_vip_success expected actual =
   let expected_unsat =
     match expected with
     | "Theorem" | "Unsatisfiable" | "ContradictoryAxioms" -> true
@@ -259,11 +262,11 @@ let print_rows title rows limit =
          Printf.printf
            "  %s profile=%s old=%s new=%s time=%.3fs axiom_selection=%s\n"
            new_r.problem
-           new_r.ip_profile
-           old_r.ip_status
-           new_r.ip_status
-           new_r.ip_time_s
-           (match new_r.ip_axiom_selection with
+           new_r.vip_profile
+           old_r.vip_status
+           new_r.vip_status
+           new_r.vip_time_s
+           (match new_r.vip_axiom_selection with
             | Some b -> string_of_bool b
             | None -> ""))
 
@@ -280,17 +283,17 @@ let () =
   let common = ref 0 in
   let timeout_limit =
     new_b.rows
-    |> List.fold_left (fun acc r -> max acc r.ip_time_s) 0.0
+    |> List.fold_left (fun acc r -> max acc r.vip_time_s) 0.0
   in
   let near_timeout_s = timeout_limit *. near_timeout_ratio in
   List.iter
     (fun new_r ->
       let profile =
-        if new_r.ip_profile = "" then "unknown" else new_r.ip_profile
+        if new_r.vip_profile = "" then "unknown" else new_r.vip_profile
       in
       let profile_b = bucket by_profile profile in
       let axiom_key =
-        match new_r.ip_axiom_selection with
+        match new_r.vip_axiom_selection with
         | Some true -> "axiom-selection=true"
         | Some false -> "axiom-selection=false"
         | None -> "axiom-selection=unknown"
@@ -298,22 +301,22 @@ let () =
       let axiom_b = bucket by_axiom axiom_key in
       let buckets = [ global; profile_b; axiom_b ] in
       List.iter (fun b -> b.total <- b.total + 1) buckets;
-      if is_ip_success new_r.expected new_r.ip_status then
+      if is_vip_success new_r.expected new_r.vip_status then
         List.iter (fun b -> b.solved <- b.solved + 1) buckets;
-      if is_timeout new_r.ip_status then
+      if is_timeout new_r.vip_status then
         List.iter (fun b -> b.timeout <- b.timeout + 1) buckets;
-      if is_error new_r.ip_status then
+      if is_error new_r.vip_status then
         List.iter (fun b -> b.error <- b.error + 1) buckets;
-      if new_r.ip_axiom_selection = Some true then
+      if new_r.vip_axiom_selection = Some true then
         List.iter (fun b -> b.axiom_selection <- b.axiom_selection + 1) buckets;
-      if new_r.ip_time_s >= near_timeout_s && near_timeout_s > 0.0 then
+      if new_r.vip_time_s >= near_timeout_s && near_timeout_s > 0.0 then
         List.iter (fun b -> b.near_timeout <- b.near_timeout + 1) buckets;
       match Hashtbl.find_opt base_map new_r.problem with
       | None -> ()
       | Some old_r ->
           incr common;
-          let old_ok = is_ip_success old_r.expected old_r.ip_status in
-          let new_ok = is_ip_success new_r.expected new_r.ip_status in
+          let old_ok = is_vip_success old_r.expected old_r.vip_status in
+          let new_ok = is_vip_success new_r.expected new_r.vip_status in
           if old_ok && not new_ok then begin
             regressions := (old_r, new_r) :: !regressions;
             List.iter (fun b -> b.regressions <- b.regressions + 1) buckets
@@ -325,12 +328,12 @@ let () =
   let regressions =
     List.rev !regressions
     |> List.sort (fun (_, a) (_, b) ->
-         compare (a.ip_profile, a.problem) (b.ip_profile, b.problem))
+         compare (a.vip_profile, a.problem) (b.vip_profile, b.problem))
   in
   let improvements =
     List.rev !improvements
     |> List.sort (fun (_, a) (_, b) ->
-         compare (a.ip_profile, a.problem) (b.ip_profile, b.problem))
+         compare (a.vip_profile, a.problem) (b.vip_profile, b.problem))
   in
   Printf.printf "Base: %s (%s)\n" base.file base.date;
   Printf.printf "New : %s (%s)\n" new_b.file new_b.date;

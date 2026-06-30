@@ -172,7 +172,7 @@ let role_requires_negation role =
   role = "conjecture"
 
 let proof_input_name index =
-  Printf.sprintf "ip_input_%d" index
+  Printf.sprintf "vip_input_%d" index
 
 let proof_source_name ~fallback = function
   | "" -> proof_input_name fallback
@@ -187,9 +187,9 @@ let gdv_can_match_source_name name =
 
 let proof_clause_name id =
   if id < 0 then
-    Printf.sprintf "ip_m%d" (-id)
+    Printf.sprintf "vip_m%d" (-id)
   else
-    Printf.sprintf "ip_%d" id
+    Printf.sprintf "vip_%d" id
 
 let clause_key clause =
   clause
@@ -505,8 +505,24 @@ let result_of_legacy (l_res : Legacy_resolution.run_result) : Resolution.run_res
   }
 
 
-let getenv_bool name default =
+let legacy_env_name name =
+  let prefix = "VIP_" in
+  let lp = String.length prefix in
+  if String.length name >= lp && String.sub name 0 lp = prefix then
+    Some ("IP_" ^ String.sub name lp (String.length name - lp))
+  else
+    None
+
+let env_opt name =
   match Sys.getenv_opt name with
+  | Some _ as v -> v
+  | None ->
+      match legacy_env_name name with
+      | Some legacy -> Sys.getenv_opt legacy
+      | None -> None
+
+let getenv_bool name default =
+  match env_opt name with
   | None -> default
   | Some s ->
       begin
@@ -517,7 +533,7 @@ let getenv_bool name default =
       end
 
 let getenv_int_global name default =
-  match Sys.getenv_opt name with
+  match env_opt name with
   | None -> default
   | Some s ->
       (try max 0 (int_of_string s) with Failure _ -> default)
@@ -776,7 +792,7 @@ let ground_sat_unsat clauses =
     in
     search ()
   in
-  let debug = getenv_bool "IP_GROUND_SAT_DEBUG" false in
+  let debug = getenv_bool "VIP_GROUND_SAT_DEBUG" false in
   if debug then Printf.eprintf "[ground-sat] encoding clauses\n%!";
   match encode [] clauses with
   | None -> None
@@ -898,7 +914,7 @@ let epr_ground_instances ~max_instances clauses =
       Some grounded
 
 let epr_ground_sat_unsat ~max_instances clauses =
-  let debug = getenv_bool "IP_GROUND_SAT_DEBUG" false in
+  let debug = getenv_bool "VIP_GROUND_SAT_DEBUG" false in
   if debug then
     Printf.eprintf "[ground-sat] attempting epr grounding, max_instances=%d\n%!" max_instances;
   match epr_ground_instances ~max_instances clauses with
@@ -950,14 +966,14 @@ let select_axioms_sine ~enabled ~check_timeout ~support axioms =
   if not enabled then
     axioms
   else
-    let min_axioms = getenv_int_global "IP_AXIOM_SELECTION_MIN_AXIOMS" 100 in
+    let min_axioms = getenv_int_global "VIP_AXIOM_SELECTION_MIN_AXIOMS" 100 in
     if List.length axioms < min_axioms then
       axioms
     else
       let default_rounds = if support = [] then 1 else 6 in
-      let max_rounds = getenv_int_global "IP_AXIOM_SELECTION_ROUNDS" default_rounds in
+      let max_rounds = getenv_int_global "VIP_AXIOM_SELECTION_ROUNDS" default_rounds in
       let max_axioms =
-        match Sys.getenv_opt "IP_AXIOM_SELECTION_MAX_AXIOMS" with
+        match env_opt "VIP_AXIOM_SELECTION_MAX_AXIOMS" with
         | None -> 300
         | Some s -> (try max 0 (int_of_string s) with Failure _ -> 300)
       in
@@ -979,7 +995,7 @@ let select_axioms_sine ~enabled ~check_timeout ~support axioms =
         Option.value (Hashtbl.find_opt symbol_counts s) ~default:0
       in
       let max_symbol_freq =
-        getenv_int_global "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ" 128
+        getenv_int_global "VIP_AXIOM_SELECTION_MAX_SYMBOL_FREQ" 128
       in
       let selectable_symbols syms =
         Types.StringSet.filter
@@ -989,8 +1005,8 @@ let select_axioms_sine ~enabled ~check_timeout ~support axioms =
           syms
       in
       let rare_seed_symbols () =
-        let max_freq = getenv_int_global "IP_AXIOM_SELECTION_RARE_MAX_FREQ" 2 in
-        let max_seeds = getenv_int_global "IP_AXIOM_SELECTION_RARE_MAX_SYMBOLS" 64 in
+        let max_freq = getenv_int_global "VIP_AXIOM_SELECTION_RARE_MAX_FREQ" 2 in
+        let max_seeds = getenv_int_global "VIP_AXIOM_SELECTION_RARE_MAX_SYMBOLS" 64 in
         let candidates =
           Hashtbl.fold
             (fun s n acc ->
@@ -1016,7 +1032,7 @@ let select_axioms_sine ~enabled ~check_timeout ~support axioms =
         if support = [] then rare_seed_symbols ()
         else
           let syms = selectable_symbols (clauses_symbols support) in
-          if getenv_bool "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY" false then
+          if getenv_bool "VIP_AXIOM_SELECTION_SEED_PREDICATES_ONLY" false then
             let pred_syms = predicate_symbols_only syms in
             if Types.StringSet.is_empty pred_syms then syms else pred_syms
           else
@@ -1038,7 +1054,7 @@ let select_axioms_sine ~enabled ~check_timeout ~support axioms =
       let relevant syms =
         not (Types.StringSet.is_empty (Types.StringSet.inter syms !selected_symbols))
       in
-      let ranked_selection = getenv_bool "IP_AXIOM_SELECTION_RANKED" false in
+      let ranked_selection = getenv_bool "VIP_AXIOM_SELECTION_RANKED" false in
       let overlap_count syms =
         Types.StringSet.cardinal (Types.StringSet.inter syms !selected_symbols)
       in
@@ -1100,7 +1116,7 @@ let select_axioms_sine ~enabled ~check_timeout ~support axioms =
         axioms
       else begin
         rounds max_rounds;
-        if getenv_bool "IP_AXIOM_SELECTION_DEBUG" false then
+        if getenv_bool "VIP_AXIOM_SELECTION_DEBUG" false then
           Printf.eprintf
             "[axiom-selection] axioms=%d selected=%d support=%d rounds=%d seed_symbols=%d\n%!"
             (List.length axioms)
@@ -1299,25 +1315,25 @@ let rec run_file ?(config = default_config) filename =
     in
     let raw_equality_problem = raw_equality_literals > 0 in
     let equality_heavy =
-      raw_equality_literals >= getenv_int_global "IP_PROFILE_EQ_HEAVY_MIN_LITERALS" 4
+      raw_equality_literals >= getenv_int_global "VIP_PROFILE_EQ_HEAVY_MIN_LITERALS" 4
       && raw_equality_literal_ratio
-         >= (match Sys.getenv_opt "IP_PROFILE_EQ_HEAVY_MIN_RATIO" with
+         >= (match env_opt "VIP_PROFILE_EQ_HEAVY_MIN_RATIO" with
              | Some s -> (try float_of_string s with Failure _ -> 0.12)
              | None -> 0.12)
       && raw_avg_literal_term_size
-         >= (match Sys.getenv_opt "IP_PROFILE_EQ_HEAVY_MIN_AVG_TERM" with
+         >= (match env_opt "VIP_PROFILE_EQ_HEAVY_MIN_AVG_TERM" with
              | Some s -> (try float_of_string s with Failure _ -> 3.5)
              | None -> 3.5)
     in
     let problem_profile =
       if equality_heavy then Equality_heavy
       else if raw_equality_problem then Equality_light
-      else if raw_clause_count >= getenv_int_global "IP_PROFILE_LARGE_MIN_CLAUSES" 500 then Large_general
+      else if raw_clause_count >= getenv_int_global "VIP_PROFILE_LARGE_MIN_CLAUSES" 500 then Large_general
       else Non_equality
     in
     let axiom_selection_enabled =
-      getenv_bool "IP_AXIOM_SELECTION" false
-      && (problem_profile = Equality_heavy || getenv_bool "IP_AXIOM_SELECTION_ALL" false)
+      getenv_bool "VIP_AXIOM_SELECTION" false
+      && (problem_profile = Equality_heavy || getenv_bool "VIP_AXIOM_SELECTION_ALL" false)
     in
     let axioms =
       select_axioms_sine
@@ -1403,7 +1419,7 @@ let rec run_file ?(config = default_config) filename =
       clause_stats all_clauses
     in
     let equality_problem = equality_literals > 0 in
-    if getenv_bool "IP_PROFILE_DEBUG" false then
+    if getenv_bool "VIP_PROFILE_DEBUG" false then
       Printf.eprintf
         "[profile] profile=%s raw_clauses=%d clauses=%d literals=%d eq_literals=%d eq_ratio=%.3f avg_term=%.2f unit_ratio=%.2f negative_ratio=%.2f axiom_selection=%b\n%!"
         (string_of_problem_profile problem_profile)
@@ -1427,8 +1443,8 @@ let rec run_file ?(config = default_config) filename =
         parsed.inputs
     in
 
-    if getenv_bool "IP_SAT_PROBE" false then begin
-      let max_instances = getenv_int_global "IP_SAT_PROBE_MAX_INSTANCES" 20_000 in
+    if getenv_bool "VIP_SAT_PROBE" false then begin
+      let max_instances = getenv_int_global "VIP_SAT_PROBE_MAX_INSTANCES" 20_000 in
       match
         Sat_probe.run
           ~max_instances
@@ -1439,7 +1455,7 @@ let rec run_file ?(config = default_config) filename =
           let status =
             if input_has_conjecture then CounterSatisfiable else Satisfiable
           in
-          if getenv_bool "IP_SAT_PROBE_DEBUG" false then
+          if getenv_bool "VIP_SAT_PROBE_DEBUG" false then
             Printf.eprintf
               "[sat-probe] status=%s clauses=%d max_instances=%d\n%!"
               (string_of_szs_status status)
@@ -1466,13 +1482,13 @@ let rec run_file ?(config = default_config) filename =
             tstp_prelude = None;
           })
       | Sat_probe.Not_applicable reason ->
-          if getenv_bool "IP_SAT_PROBE_DEBUG" false then
+          if getenv_bool "VIP_SAT_PROBE_DEBUG" false then
             Printf.eprintf "[sat-probe] not-applicable: %s\n%!" reason
       | Sat_probe.Too_large reason ->
-          if getenv_bool "IP_SAT_PROBE_DEBUG" false then
+          if getenv_bool "VIP_SAT_PROBE_DEBUG" false then
             Printf.eprintf "[sat-probe] too-large: %s\n%!" reason
       | Sat_probe.Unsat ->
-          if getenv_bool "IP_SAT_PROBE_DEBUG" false then
+          if getenv_bool "VIP_SAT_PROBE_DEBUG" false then
             Printf.eprintf "[sat-probe] finite EPR instances unsat\n%!"
     end;
 
@@ -1550,21 +1566,21 @@ let rec run_file ?(config = default_config) filename =
     in
 
     let getenv_float name default =
-      match Sys.getenv_opt name with
+      match env_opt name with
       | None -> default
       | Some s ->
           (try max 0.0 (float_of_string s) with Failure _ -> default)
     in
 
     let getenv_int name default =
-      match Sys.getenv_opt name with
+      match env_opt name with
       | None -> default
       | Some s ->
           (try max 0 (int_of_string s) with Failure _ -> default)
     in
 
     let getenv_float_opt name =
-      match Sys.getenv_opt name with
+      match env_opt name with
       | None -> None
       | Some s ->
           (try Some (max 0.0 (float_of_string s)) with Failure _ -> None)
@@ -1579,36 +1595,36 @@ let rec run_file ?(config = default_config) filename =
     in
 
     let run_legacy_then_modern () =
-      let size_threshold = getenv_int "IP_PORTFOLIO_SIZE_THRESHOLD" 160 in
+      let size_threshold = getenv_int "VIP_PORTFOLIO_SIZE_THRESHOLD" 160 in
       let modern_biased_small =
-        clause_count <= getenv_int "IP_PORTFOLIO_TINY_MODERN_MAX_CLAUSES" 4
-        || ((clause_count >= getenv_int "IP_PORTFOLIO_MEDIUM_MODERN_MIN_CLAUSES" 13
-             && clause_count <= getenv_int "IP_PORTFOLIO_MEDIUM_MODERN_MAX_CLAUSES" 24)
-            && not (clause_count >= getenv_int "IP_PORTFOLIO_MEDIUM_LEGACY_MIN_CLAUSES" 18
-                    && clause_count <= getenv_int "IP_PORTFOLIO_MEDIUM_LEGACY_MAX_CLAUSES" 20))
+        clause_count <= getenv_int "VIP_PORTFOLIO_TINY_MODERN_MAX_CLAUSES" 4
+        || ((clause_count >= getenv_int "VIP_PORTFOLIO_MEDIUM_MODERN_MIN_CLAUSES" 13
+             && clause_count <= getenv_int "VIP_PORTFOLIO_MEDIUM_MODERN_MAX_CLAUSES" 24)
+            && not (clause_count >= getenv_int "VIP_PORTFOLIO_MEDIUM_LEGACY_MIN_CLAUSES" 18
+                    && clause_count <= getenv_int "VIP_PORTFOLIO_MEDIUM_LEGACY_MAX_CLAUSES" 20))
       in
-      let modern_only_threshold = getenv_int "IP_PORTFOLIO_MODERN_ONLY_MIN_CLAUSES" 80 in
+      let modern_only_threshold = getenv_int "VIP_PORTFOLIO_MODERN_ONLY_MIN_CLAUSES" 80 in
       let default_flash_fraction, default_modern_fraction =
         if clause_count >= modern_only_threshold then
-          (getenv_float "IP_PORTFOLIO_LARGE_LEGACY_FLASH_FRACTION" 0.0,
-           getenv_float "IP_PORTFOLIO_LARGE_MODERN_FRACTION" 1.0)
+          (getenv_float "VIP_PORTFOLIO_LARGE_LEGACY_FLASH_FRACTION" 0.0,
+           getenv_float "VIP_PORTFOLIO_LARGE_MODERN_FRACTION" 1.0)
         else if clause_count < size_threshold && modern_biased_small then
-          (getenv_float "IP_PORTFOLIO_SMALL_LEGACY_FRACTION" 0.05,
-           getenv_float "IP_PORTFOLIO_SMALL_MODERN_FRACTION" 0.95)
+          (getenv_float "VIP_PORTFOLIO_SMALL_LEGACY_FRACTION" 0.05,
+           getenv_float "VIP_PORTFOLIO_SMALL_MODERN_FRACTION" 0.95)
         else if clause_count < size_threshold then
-          (getenv_float "IP_PORTFOLIO_SMALL_LEGACY_FRACTION" 0.50,
-           getenv_float "IP_PORTFOLIO_SMALL_MODERN_FRACTION" 0.50)
+          (getenv_float "VIP_PORTFOLIO_SMALL_LEGACY_FRACTION" 0.50,
+           getenv_float "VIP_PORTFOLIO_SMALL_MODERN_FRACTION" 0.50)
         else
-          (getenv_float "IP_PORTFOLIO_LARGE_LEGACY_FLASH_FRACTION" 0.0,
-           getenv_float "IP_PORTFOLIO_LARGE_MODERN_FRACTION" 1.0)
+          (getenv_float "VIP_PORTFOLIO_LARGE_LEGACY_FLASH_FRACTION" 0.0,
+           getenv_float "VIP_PORTFOLIO_LARGE_MODERN_FRACTION" 1.0)
       in
       let flash_fraction =
-        match getenv_float_opt "IP_PORTFOLIO_LEGACY_FLASH_FRACTION" with
+        match getenv_float_opt "VIP_PORTFOLIO_LEGACY_FLASH_FRACTION" with
         | Some f -> f
         | None -> default_flash_fraction
       in
       let modern_fraction =
-        match getenv_float_opt "IP_PORTFOLIO_MODERN_FRACTION" with
+        match getenv_float_opt "VIP_PORTFOLIO_MODERN_FRACTION" with
         | Some f -> f
         | None -> default_modern_fraction
       in
@@ -1651,7 +1667,7 @@ let rec run_file ?(config = default_config) filename =
     in
 
     let with_env name value f =
-      let old = Sys.getenv_opt name in
+      let old = env_opt name in
       Option.iter (fun v -> Unix.putenv name v) value;
       Fun.protect
         ~finally:(fun () ->
@@ -1751,25 +1767,25 @@ let rec run_file ?(config = default_config) filename =
 
     let run_experimental_casc () =
       let experimental_feq_legacy_flash =
-        match Sys.getenv_opt "IP_EXPERIMENTAL_FEQ_LEGACY_FLASH_FRACTION" with
+        match env_opt "VIP_EXPERIMENTAL_FEQ_LEGACY_FLASH_FRACTION" with
         | Some value when String.trim value <> "" -> value
         | _ -> "0"
       in
       with_env
-        "IP_FEQ_LEGACY_FLASH_FRACTION"
+        "VIP_FEQ_LEGACY_FLASH_FRACTION"
         (Some experimental_feq_legacy_flash)
         (fun () ->
       let small_non_equality =
         problem_profile = Non_equality
         && raw_clause_count
-           <= getenv_int "IP_EXPERIMENTAL_SMALL_NON_EQ_MAX_CLAUSES" 200
+           <= getenv_int "VIP_EXPERIMENTAL_SMALL_NON_EQ_MAX_CLAUSES" 200
         && raw_equality_literals = 0
       in
       let compact_non_unit_non_equality =
         small_non_equality
         && raw_clause_count
-           <= getenv_int "IP_EXPERIMENTAL_COMPACT_NON_UNIT_MAX_CLAUSES" 30
-        && unit_ratio <= getenv_float "IP_EXPERIMENTAL_COMPACT_NON_UNIT_MAX_UNIT_RATIO" 0.05
+           <= getenv_int "VIP_EXPERIMENTAL_COMPACT_NON_UNIT_MAX_CLAUSES" 30
+        && unit_ratio <= getenv_float "VIP_EXPERIMENTAL_COMPACT_NON_UNIT_MAX_UNIT_RATIO" 0.05
       in
       let avatar_fallback () =
         run_remaining_stage
@@ -1777,31 +1793,31 @@ let rec run_file ?(config = default_config) filename =
           ~engine:Modern_deep
           ~env:
             [
-              "IP_AVATAR_SPLITTING", Some "1";
-              "IP_AVATAR_GROUND_ONLY", Some "0";
-              "IP_AVATAR_KEEP_ORIGINAL", Some "1";
-              "IP_AVATAR_MIN_SPLIT", Some "4";
-              "IP_AVATAR_MAX_SPLIT_VARS", Some "8";
-              "IP_AVATAR_MAX_SPLIT_VARS_PER_CLAUSE", Some "3";
-              "IP_AVATAR_MODEL_FALSE_FIRST", Some "1";
+              "VIP_AVATAR_SPLITTING", Some "1";
+              "VIP_AVATAR_GROUND_ONLY", Some "0";
+              "VIP_AVATAR_KEEP_ORIGINAL", Some "1";
+              "VIP_AVATAR_MIN_SPLIT", Some "4";
+              "VIP_AVATAR_MAX_SPLIT_VARS", Some "8";
+              "VIP_AVATAR_MAX_SPLIT_VARS_PER_CLAUSE", Some "3";
+              "VIP_AVATAR_MODEL_FALSE_FIRST", Some "1";
             ]
           ()
       in
       let feq_subrun_env extra =
         let legacy_flash =
-          match Sys.getenv_opt "IP_EXPERIMENTAL_FEQ_LEGACY_FLASH_FRACTION" with
+          match env_opt "VIP_EXPERIMENTAL_FEQ_LEGACY_FLASH_FRACTION" with
           | Some value when String.trim value <> "" -> value
           | _ -> "0"
         in
-        ("IP_FEQ_LEGACY_FLASH_FRACTION", Some legacy_flash) :: extra
+        ("VIP_FEQ_LEGACY_FLASH_FRACTION", Some legacy_flash) :: extra
       in
       let feq_standard_env extra =
         let legacy_flash =
-          match Sys.getenv_opt "IP_EXPERIMENTAL_STANDARD_FEQ_LEGACY_FLASH_FRACTION" with
+          match env_opt "VIP_EXPERIMENTAL_STANDARD_FEQ_LEGACY_FLASH_FRACTION" with
           | Some value when String.trim value <> "" -> value
           | _ -> "0.05"
         in
-        ("IP_FEQ_LEGACY_FLASH_FRACTION", Some legacy_flash) :: extra
+        ("VIP_FEQ_LEGACY_FLASH_FRACTION", Some legacy_flash) :: extra
       in
       let large_general = problem_profile = Large_general in
       if compact_non_unit_non_equality then
@@ -1812,24 +1828,24 @@ let rec run_file ?(config = default_config) filename =
               ~portfolio_mode:Modern_only
               ~fraction:
                 (getenv_float
-                   "IP_EXPERIMENTAL_COMPACT_NON_UNIT_MODERN_FRACTION"
+                   "VIP_EXPERIMENTAL_COMPACT_NON_UNIT_MODERN_FRACTION"
                    0.85)
-              ~env:[ "IP_PASSIVE_SELECTION", Some "classic" ];
+              ~env:[ "VIP_PASSIVE_SELECTION", Some "classic" ];
             run_experimental_subrun
               ~stage_name:"Experimental compact non-unit legacy-guided"
               ~portfolio_mode:Modern_only
               ~fraction:
                 (getenv_float
-                   "IP_EXPERIMENTAL_COMPACT_NON_UNIT_LEGACY_GUIDED_FRACTION"
+                   "VIP_EXPERIMENTAL_COMPACT_NON_UNIT_LEGACY_GUIDED_FRACTION"
                    0.10)
               ~env:
                 [
-                  "IP_PASSIVE_SELECTION", Some "legacy";
-                  "IP_LITERAL_SELECTION", Some "legacy";
-                  "IP_RESOLUTION_LITERAL_SELECTION", Some "legacy";
-                  "IP_LEGACY_SUBSUMPTION", Some "1";
-                  "IP_FAST_CONDENSATION", Some "0";
-                  "IP_FORWARD_SUBSUMPTION_RESOLUTION", Some "0";
+                  "VIP_PASSIVE_SELECTION", Some "legacy";
+                  "VIP_LITERAL_SELECTION", Some "legacy";
+                  "VIP_RESOLUTION_LITERAL_SELECTION", Some "legacy";
+                  "VIP_LEGACY_SUBSUMPTION", Some "1";
+                  "VIP_FAST_CONDENSATION", Some "0";
+                  "VIP_FORWARD_SUBSUMPTION_RESOLUTION", Some "0";
                 ];
             run_remaining_stage
               ~stage_name:"Experimental compact non-unit legacy fallback"
@@ -1843,54 +1859,54 @@ let rec run_file ?(config = default_config) filename =
               ~portfolio_mode:Legacy_only
               ~fraction:
                 (getenv_float
-                   "IP_EXPERIMENTAL_SMALL_LEGACY_PROBE_FRACTION"
+                   "VIP_EXPERIMENTAL_SMALL_LEGACY_PROBE_FRACTION"
                    0.50);
             run_experimental_subrun
               ~stage_name:"Experimental small non-equality modern portfolio"
               ~portfolio_mode:Feq_modern
               ~fraction:
                 (getenv_float
-                   "IP_EXPERIMENTAL_SMALL_MODERN_PORTFOLIO_FRACTION"
+                   "VIP_EXPERIMENTAL_SMALL_MODERN_PORTFOLIO_FRACTION"
                    0.25);
             run_experimental_subrun
               ~stage_name:"Experimental small non-equality goal-directed"
               ~portfolio_mode:Modern_only
               ~fraction:
                 (getenv_float
-                   "IP_EXPERIMENTAL_SMALL_GOAL_FRACTION"
+                   "VIP_EXPERIMENTAL_SMALL_GOAL_FRACTION"
                    0.0)
               ~env:
                 [
-                  "IP_PASSIVE_SELECTION", Some "goal";
-                  "IP_LITERAL_SELECTION", Some "smallest-negative";
+                  "VIP_PASSIVE_SELECTION", Some "goal";
+                  "VIP_LITERAL_SELECTION", Some "smallest-negative";
                 ];
             run_experimental_subrun
               ~stage_name:"Experimental small non-equality modern legacy-guided"
               ~portfolio_mode:Modern_only
               ~fraction:
                 (getenv_float
-                   "IP_EXPERIMENTAL_SMALL_LEGACY_GUIDED_FRACTION"
+                   "VIP_EXPERIMENTAL_SMALL_LEGACY_GUIDED_FRACTION"
                    0.15)
               ~env:
                 [
-                  "IP_PASSIVE_SELECTION", Some "legacy";
-                  "IP_LITERAL_SELECTION", Some "legacy";
-                  "IP_RESOLUTION_LITERAL_SELECTION", Some "legacy";
-                  "IP_LEGACY_SUBSUMPTION", Some "1";
-                  "IP_FAST_CONDENSATION", Some "0";
-                  "IP_FORWARD_SUBSUMPTION_RESOLUTION", Some "0";
+                  "VIP_PASSIVE_SELECTION", Some "legacy";
+                  "VIP_LITERAL_SELECTION", Some "legacy";
+                  "VIP_RESOLUTION_LITERAL_SELECTION", Some "legacy";
+                  "VIP_LEGACY_SUBSUMPTION", Some "1";
+                  "VIP_FAST_CONDENSATION", Some "0";
+                  "VIP_FORWARD_SUBSUMPTION_RESOLUTION", Some "0";
                 ];
             run_experimental_subrun
               ~stage_name:"Experimental small non-equality legacy fallback"
               ~portfolio_mode:Legacy_only
               ~fraction:
-                (getenv_float "IP_EXPERIMENTAL_SMALL_LEGACY_FRACTION" 0.05);
+                (getenv_float "VIP_EXPERIMENTAL_SMALL_LEGACY_FRACTION" 0.05);
             run_experimental_subrun
               ~stage_name:"Experimental small non-equality modern classic"
               ~portfolio_mode:Modern_only
               ~fraction:
-                (getenv_float "IP_EXPERIMENTAL_SMALL_MODERN_FRACTION" 0.10)
-              ~env:[ "IP_PASSIVE_SELECTION", Some "classic" ];
+                (getenv_float "VIP_EXPERIMENTAL_SMALL_MODERN_FRACTION" 0.10)
+              ~env:[ "VIP_PASSIVE_SELECTION", Some "classic" ];
             run_remaining_stage
               ~stage_name:"Experimental small non-equality stable fallback"
               ~engine:Legacy_compat;
@@ -1903,87 +1919,87 @@ let rec run_file ?(config = default_config) filename =
               ~portfolio_mode:Legacy_only
               ~fraction:
                 (getenv_float
-                   "IP_EXPERIMENTAL_LARGE_LEGACY_PROBE_FRACTION"
+                   "VIP_EXPERIMENTAL_LARGE_LEGACY_PROBE_FRACTION"
                    0.60);
             run_experimental_subrun
               ~stage_name:"Experimental large SInE narrow"
               ~portfolio_mode:Feq_modern
               ~fraction:
-                (getenv_float "IP_EXPERIMENTAL_SINE_NARROW_FRACTION" 0.05)
+                (getenv_float "VIP_EXPERIMENTAL_SINE_NARROW_FRACTION" 0.05)
               ~env:
                 (feq_subrun_env [
-                  "IP_AXIOM_SELECTION", Some "1";
-                  "IP_AXIOM_SELECTION_ALL", Some "1";
-                  "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "300";
-                  "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "128";
-                  "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
+                  "VIP_AXIOM_SELECTION", Some "1";
+                  "VIP_AXIOM_SELECTION_ALL", Some "1";
+                  "VIP_AXIOM_SELECTION_MAX_AXIOMS", Some "300";
+                  "VIP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "128";
+                  "VIP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
                 ]);
             run_experimental_subrun
               ~stage_name:"Experimental large SInE medium"
               ~portfolio_mode:Feq_modern
               ~fraction:
-                (getenv_float "IP_EXPERIMENTAL_SINE_MEDIUM_FRACTION" 0.05)
+                (getenv_float "VIP_EXPERIMENTAL_SINE_MEDIUM_FRACTION" 0.05)
               ~env:
                 (feq_subrun_env [
-                  "IP_AXIOM_SELECTION", Some "1";
-                  "IP_AXIOM_SELECTION_ALL", Some "1";
-                  "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "1000";
-                  "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "256";
-                  "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
+                  "VIP_AXIOM_SELECTION", Some "1";
+                  "VIP_AXIOM_SELECTION_ALL", Some "1";
+                  "VIP_AXIOM_SELECTION_MAX_AXIOMS", Some "1000";
+                  "VIP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "256";
+                  "VIP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
                 ]);
             run_experimental_subrun
               ~stage_name:"Experimental large goal-directed SInE"
               ~portfolio_mode:Modern_only
               ~fraction:
-                (getenv_float "IP_EXPERIMENTAL_LARGE_GOAL_SINE_FRACTION" 0.0)
+                (getenv_float "VIP_EXPERIMENTAL_LARGE_GOAL_SINE_FRACTION" 0.0)
               ~env:
                 [
-                  "IP_AXIOM_SELECTION", Some "1";
-                  "IP_AXIOM_SELECTION_ALL", Some "1";
-                  "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "1000";
-                  "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "256";
-                  "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
-                  "IP_PASSIVE_SELECTION", Some "goal";
-                  "IP_LITERAL_SELECTION", Some "smallest-negative";
+                  "VIP_AXIOM_SELECTION", Some "1";
+                  "VIP_AXIOM_SELECTION_ALL", Some "1";
+                  "VIP_AXIOM_SELECTION_MAX_AXIOMS", Some "1000";
+                  "VIP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "256";
+                  "VIP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
+                  "VIP_PASSIVE_SELECTION", Some "goal";
+                  "VIP_LITERAL_SELECTION", Some "smallest-negative";
                 ];
             run_experimental_subrun
               ~stage_name:"Experimental large unselected first"
               ~portfolio_mode:Feq_modern
               ~fraction:
-                (getenv_float "IP_EXPERIMENTAL_LARGE_FULL_FIRST_FRACTION" 0.40)
+                (getenv_float "VIP_EXPERIMENTAL_LARGE_FULL_FIRST_FRACTION" 0.40)
               ~env:
                 (feq_subrun_env [
-                  "IP_AXIOM_SELECTION", Some "0";
-                  "IP_AXIOM_SELECTION_ALL", Some "0";
+                  "VIP_AXIOM_SELECTION", Some "0";
+                  "VIP_AXIOM_SELECTION_ALL", Some "0";
                 ]);
             run_experimental_subrun
               ~stage_name:"Experimental large layered modern"
               ~portfolio_mode:Modern_only
               ~fraction:
-                (getenv_float "IP_EXPERIMENTAL_LARGE_LAYERED_FRACTION" 0.0)
+                (getenv_float "VIP_EXPERIMENTAL_LARGE_LAYERED_FRACTION" 0.0)
               ~env:
                 [
-                  "IP_PASSIVE_SELECTION", Some "layered";
-                  "IP_LAYERED_SELECTION",
+                  "VIP_PASSIVE_SELECTION", Some "layered";
+                  "VIP_LAYERED_SELECTION",
                   Some "unit,equality,goal,short,age,weight";
                 ];
             run_experimental_subrun
               ~stage_name:"Experimental large SInE wide"
               ~portfolio_mode:Feq_modern
               ~fraction:
-                (getenv_float "IP_EXPERIMENTAL_SINE_WIDE_FRACTION" 0.05)
+                (getenv_float "VIP_EXPERIMENTAL_SINE_WIDE_FRACTION" 0.05)
               ~env:
                 (feq_subrun_env [
-                  "IP_AXIOM_SELECTION", Some "1";
-                  "IP_AXIOM_SELECTION_ALL", Some "1";
-                  "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "2500";
-                  "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "512";
-                  "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
+                  "VIP_AXIOM_SELECTION", Some "1";
+                  "VIP_AXIOM_SELECTION_ALL", Some "1";
+                  "VIP_AXIOM_SELECTION_MAX_AXIOMS", Some "2500";
+                  "VIP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "512";
+                  "VIP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
                 ]);
           ]
       else if problem_profile = Equality_heavy
               && raw_clause_count
-                 >= getenv_int "IP_EXPERIMENTAL_EQ_HEAVY_SINE_MIN_CLAUSES" 500 then
+                 >= getenv_int "VIP_EXPERIMENTAL_EQ_HEAVY_SINE_MIN_CLAUSES" 500 then
         run_schedule
           [
             run_experimental_subrun
@@ -1991,31 +2007,31 @@ let rec run_file ?(config = default_config) filename =
               ~portfolio_mode:Feq_modern
               ~fraction:
                 (getenv_float
-                   "IP_EXPERIMENTAL_EQ_HEAVY_SINE_FRACTION"
+                   "VIP_EXPERIMENTAL_EQ_HEAVY_SINE_FRACTION"
                    0.25)
               ~min_budget_s:
                 (getenv_float
-                   "IP_EXPERIMENTAL_EQ_HEAVY_SINE_MIN_SECONDS"
+                   "VIP_EXPERIMENTAL_EQ_HEAVY_SINE_MIN_SECONDS"
                    4.2)
               ~env:
                 (feq_subrun_env [
-                  "IP_AXIOM_SELECTION", Some "1";
-                  "IP_AXIOM_SELECTION_ALL", Some "1";
-                  "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "300";
-                  "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "128";
-                  "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
+                  "VIP_AXIOM_SELECTION", Some "1";
+                  "VIP_AXIOM_SELECTION_ALL", Some "1";
+                  "VIP_AXIOM_SELECTION_MAX_AXIOMS", Some "300";
+                  "VIP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "128";
+                  "VIP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
                 ]);
             run_experimental_subrun
               ~stage_name:"Experimental equality-heavy full fallback"
               ~portfolio_mode:Feq_modern
               ~fraction:
                 (getenv_float
-                   "IP_EXPERIMENTAL_EQ_HEAVY_FULL_FRACTION"
+                   "VIP_EXPERIMENTAL_EQ_HEAVY_FULL_FRACTION"
                    0.50)
               ~env:
                 (feq_subrun_env [
-                  "IP_AXIOM_SELECTION", Some "0";
-                  "IP_AXIOM_SELECTION_ALL", Some "0";
+                  "VIP_AXIOM_SELECTION", Some "0";
+                  "VIP_AXIOM_SELECTION_ALL", Some "0";
                 ]);
             (fun () -> avatar_fallback ());
           ]
@@ -2027,29 +2043,29 @@ let rec run_file ?(config = default_config) filename =
               ~portfolio_mode:Feq_modern
               ~fraction:
                 (getenv_float
-                   "IP_EXPERIMENTAL_EQUALITY_LIGHT_FEQ_EQUALITY_PROBE_FRACTION"
+                   "VIP_EXPERIMENTAL_EQUALITY_LIGHT_FEQ_EQUALITY_PROBE_FRACTION"
                    0.10)
               ~min_budget_s:
                 (getenv_float
-                   "IP_EXPERIMENTAL_EQUALITY_LIGHT_FEQ_EQUALITY_PROBE_MIN_SECONDS"
+                   "VIP_EXPERIMENTAL_EQUALITY_LIGHT_FEQ_EQUALITY_PROBE_MIN_SECONDS"
                    4.0)
               ~env:
                 (feq_subrun_env
                    [
-                     "IP_FEQ_LEGACY_FLASH_FRACTION", Some "0";
-                     "IP_FEQ_MODERN_ALL", Some "1";
-                     "IP_FEQ_STABLE_FRACTION", Some "0.05";
-                     "IP_FEQ_CLASSIC_FRACTION", Some "0.15";
-                     "IP_FEQ_WEIGHT_FRACTION", Some "0.15";
-                     "IP_FEQ_EQUALITY_FRACTION", Some "0.60";
-                     "IP_FEQ_PASSIVE_AW_RATIO", Some "1:8";
+                     "VIP_FEQ_LEGACY_FLASH_FRACTION", Some "0";
+                     "VIP_FEQ_MODERN_ALL", Some "1";
+                     "VIP_FEQ_STABLE_FRACTION", Some "0.05";
+                     "VIP_FEQ_CLASSIC_FRACTION", Some "0.15";
+                     "VIP_FEQ_WEIGHT_FRACTION", Some "0.15";
+                     "VIP_FEQ_EQUALITY_FRACTION", Some "0.60";
+                     "VIP_FEQ_PASSIVE_AW_RATIO", Some "1:8";
                    ]);
             run_experimental_subrun
               ~stage_name:"Experimental equality-light FEQ standard"
               ~portfolio_mode:Feq_modern
               ~fraction:
                 (getenv_float
-                   "IP_EXPERIMENTAL_EQUALITY_LIGHT_FEQ_STANDARD_FRACTION"
+                   "VIP_EXPERIMENTAL_EQUALITY_LIGHT_FEQ_STANDARD_FRACTION"
                    0.35)
               ~env:(feq_standard_env []);
             run_experimental_subrun
@@ -2057,16 +2073,16 @@ let rec run_file ?(config = default_config) filename =
               ~portfolio_mode:Feq_modern
               ~fraction:
                 (getenv_float
-                   "IP_EXPERIMENTAL_EQUALITY_LIGHT_FEQ_ALL_FRACTION"
+                   "VIP_EXPERIMENTAL_EQUALITY_LIGHT_FEQ_ALL_FRACTION"
                    0.35)
-              ~env:(feq_subrun_env [ "IP_FEQ_MODERN_ALL", Some "1" ]);
+              ~env:(feq_subrun_env [ "VIP_FEQ_MODERN_ALL", Some "1" ]);
             (fun () -> avatar_fallback ());
           ]
       else
         run_experimental_subrun
           ~stage_name:"Experimental stable fallback"
           ~portfolio_mode:Feq_modern
-          ~fraction:(getenv_float "IP_EXPERIMENTAL_STABLE_FRACTION" 0.70)
+          ~fraction:(getenv_float "VIP_EXPERIMENTAL_STABLE_FRACTION" 0.70)
           ~env:(feq_standard_env [])
           ()
         |> fun first ->
@@ -2079,27 +2095,27 @@ let rec run_file ?(config = default_config) filename =
 
     let run_casc_aggressive () =
       let feq_env extra =
-        ("IP_FEQ_LEGACY_FLASH_FRACTION", Some "0") :: extra
+        ("VIP_FEQ_LEGACY_FLASH_FRACTION", Some "0") :: extra
       in
       let avatar_env =
         [
-          "IP_AVATAR_SPLITTING", Some "1";
-          "IP_AVATAR_GROUND_ONLY", Some "0";
-          "IP_AVATAR_KEEP_ORIGINAL", Some "1";
-          "IP_AVATAR_MIN_SPLIT", Some "3";
-          "IP_AVATAR_MAX_SPLIT_VARS", Some "10";
-          "IP_AVATAR_MAX_SPLIT_VARS_PER_CLAUSE", Some "4";
-          "IP_AVATAR_MODEL_FALSE_FIRST", Some "1";
+          "VIP_AVATAR_SPLITTING", Some "1";
+          "VIP_AVATAR_GROUND_ONLY", Some "0";
+          "VIP_AVATAR_KEEP_ORIGINAL", Some "1";
+          "VIP_AVATAR_MIN_SPLIT", Some "3";
+          "VIP_AVATAR_MAX_SPLIT_VARS", Some "10";
+          "VIP_AVATAR_MAX_SPLIT_VARS_PER_CLAUSE", Some "4";
+          "VIP_AVATAR_MODEL_FALSE_FIRST", Some "1";
         ]
       in
       let legacy_guided_env =
         [
-          "IP_PASSIVE_SELECTION", Some "legacy";
-          "IP_LITERAL_SELECTION", Some "legacy";
-          "IP_RESOLUTION_LITERAL_SELECTION", Some "legacy";
-          "IP_LEGACY_SUBSUMPTION", Some "1";
-          "IP_FAST_CONDENSATION", Some "0";
-          "IP_FORWARD_SUBSUMPTION_RESOLUTION", Some "0";
+          "VIP_PASSIVE_SELECTION", Some "legacy";
+          "VIP_LITERAL_SELECTION", Some "legacy";
+          "VIP_RESOLUTION_LITERAL_SELECTION", Some "legacy";
+          "VIP_LEGACY_SUBSUMPTION", Some "1";
+          "VIP_FAST_CONDENSATION", Some "0";
+          "VIP_FORWARD_SUBSUMPTION_RESOLUTION", Some "0";
         ]
       in
       let feq_sine name fraction max_axioms max_freq =
@@ -2110,16 +2126,16 @@ let rec run_file ?(config = default_config) filename =
           ~env:
             (feq_env
                [
-                 "IP_FEQ_MODERN_ALL", Some "1";
-                 "IP_AXIOM_SELECTION", Some "1";
-                 "IP_AXIOM_SELECTION_ALL", Some "1";
-                 "IP_AXIOM_SELECTION_MAX_AXIOMS", Some max_axioms;
-                 "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some max_freq;
-                 "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
-                 "IP_FEQ_STABLE_FRACTION", Some "0.10";
-                 "IP_FEQ_CLASSIC_FRACTION", Some "0.45";
-                 "IP_FEQ_WEIGHT_FRACTION", Some "0.20";
-                 "IP_FEQ_EQUALITY_FRACTION", Some "0.20";
+                 "VIP_FEQ_MODERN_ALL", Some "1";
+                 "VIP_AXIOM_SELECTION", Some "1";
+                 "VIP_AXIOM_SELECTION_ALL", Some "1";
+                 "VIP_AXIOM_SELECTION_MAX_AXIOMS", Some max_axioms;
+                 "VIP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some max_freq;
+                 "VIP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
+                 "VIP_FEQ_STABLE_FRACTION", Some "0.10";
+                 "VIP_FEQ_CLASSIC_FRACTION", Some "0.45";
+                 "VIP_FEQ_WEIGHT_FRACTION", Some "0.20";
+                 "VIP_FEQ_EQUALITY_FRACTION", Some "0.20";
                ])
       in
       let avatar_stage fraction =
@@ -2137,13 +2153,13 @@ let rec run_file ?(config = default_config) filename =
           ~env:
             (feq_env
                [
-                 "IP_AUTO_DEFINITIONAL_CNF", Some "1";
-                 "IP_CNF_DISTRIBUTION_LIMIT", Some "4096";
-                 "IP_FEQ_MODERN_ALL", Some "1";
-                 "IP_FEQ_STABLE_FRACTION", Some "0.05";
-                 "IP_FEQ_CLASSIC_FRACTION", Some "0.45";
-                 "IP_FEQ_WEIGHT_FRACTION", Some "0.25";
-                 "IP_FEQ_EQUALITY_FRACTION", Some "0.20";
+                 "VIP_AUTO_DEFINITIONAL_CNF", Some "1";
+                 "VIP_CNF_DISTRIBUTION_LIMIT", Some "4096";
+                 "VIP_FEQ_MODERN_ALL", Some "1";
+                 "VIP_FEQ_STABLE_FRACTION", Some "0.05";
+                 "VIP_FEQ_CLASSIC_FRACTION", Some "0.45";
+                 "VIP_FEQ_WEIGHT_FRACTION", Some "0.25";
+                 "VIP_FEQ_EQUALITY_FRACTION", Some "0.20";
                ])
       in
       let legacy_probe fraction =
@@ -2163,8 +2179,8 @@ let rec run_file ?(config = default_config) filename =
         run_experimental_subrun
           ~stage_name:"Aggressive stable first pass"
           ~portfolio_mode:Experimental_casc
-          ~fraction:(getenv_float "IP_AGGRESSIVE_STABLE_FIRST_FRACTION" 0.75)
-          ~env:[ "IP_EXPERIMENTAL_FEQ_LEGACY_FLASH_FRACTION", Some "0" ]
+          ~fraction:(getenv_float "VIP_AGGRESSIVE_STABLE_FIRST_FRACTION" 0.75)
+          ~env:[ "VIP_EXPERIMENTAL_FEQ_LEGACY_FLASH_FRACTION", Some "0" ]
           ()
       in
       match stable_first.stop_reason with
@@ -2175,18 +2191,18 @@ let rec run_file ?(config = default_config) filename =
           [
             feq_sine
               "Aggressive FEQ SInE medium"
-              (getenv_float "IP_AGGRESSIVE_FEQ_SINE_MEDIUM_FRACTION" 0.16)
+              (getenv_float "VIP_AGGRESSIVE_FEQ_SINE_MEDIUM_FRACTION" 0.16)
               "1200"
               "256";
             avatar_stage
-              (getenv_float "IP_AGGRESSIVE_FEQ_AVATAR_FRACTION" 0.12);
+              (getenv_float "VIP_AGGRESSIVE_FEQ_AVATAR_FRACTION" 0.12);
             feq_sine
               "Aggressive FEQ SInE wide"
-              (getenv_float "IP_AGGRESSIVE_FEQ_SINE_WIDE_FRACTION" 0.10)
+              (getenv_float "VIP_AGGRESSIVE_FEQ_SINE_WIDE_FRACTION" 0.10)
               "3000"
               "768";
             definitional_stage
-              (getenv_float "IP_AGGRESSIVE_FEQ_DEFINITIONAL_FRACTION" 0.06);
+              (getenv_float "VIP_AGGRESSIVE_FEQ_DEFINITIONAL_FRACTION" 0.06);
             run_remaining_stage
               ~stage_name:"Aggressive FEQ remaining AVATAR"
               ~engine:Modern_deep
@@ -2196,22 +2212,22 @@ let rec run_file ?(config = default_config) filename =
         run_schedule
           [
             legacy_probe
-              (getenv_float "IP_AGGRESSIVE_LARGE_LEGACY_FRACTION" 0.35);
+              (getenv_float "VIP_AGGRESSIVE_LARGE_LEGACY_FRACTION" 0.35);
             run_experimental_subrun
               ~stage_name:"Aggressive large full modern"
               ~portfolio_mode:Feq_modern
-              ~fraction:(getenv_float "IP_AGGRESSIVE_LARGE_FULL_FRACTION" 0.25)
+              ~fraction:(getenv_float "VIP_AGGRESSIVE_LARGE_FULL_FRACTION" 0.25)
               ~env:
                 (feq_env
                    [
-                     "IP_AXIOM_SELECTION", Some "0";
-                     "IP_AXIOM_SELECTION_ALL", Some "0";
+                     "VIP_AXIOM_SELECTION", Some "0";
+                     "VIP_AXIOM_SELECTION_ALL", Some "0";
                    ]);
             legacy_guided
-              (getenv_float "IP_AGGRESSIVE_LARGE_LEGACY_GUIDED_FRACTION" 0.18);
+              (getenv_float "VIP_AGGRESSIVE_LARGE_LEGACY_GUIDED_FRACTION" 0.18);
             feq_sine
               "Aggressive large SInE wide"
-              (getenv_float "IP_AGGRESSIVE_LARGE_SINE_FRACTION" 0.15)
+              (getenv_float "VIP_AGGRESSIVE_LARGE_SINE_FRACTION" 0.15)
               "3000"
               "768";
             run_remaining_stage
@@ -2222,16 +2238,16 @@ let rec run_file ?(config = default_config) filename =
         run_schedule
           [
             legacy_probe
-              (getenv_float "IP_AGGRESSIVE_GENERAL_LEGACY_FRACTION" 0.45);
+              (getenv_float "VIP_AGGRESSIVE_GENERAL_LEGACY_FRACTION" 0.45);
             legacy_guided
-              (getenv_float "IP_AGGRESSIVE_GENERAL_LEGACY_GUIDED_FRACTION" 0.25);
+              (getenv_float "VIP_AGGRESSIVE_GENERAL_LEGACY_GUIDED_FRACTION" 0.25);
             run_experimental_subrun
               ~stage_name:"Aggressive general modern classic"
               ~portfolio_mode:Modern_only
-              ~fraction:(getenv_float "IP_AGGRESSIVE_GENERAL_CLASSIC_FRACTION" 0.15)
-              ~env:[ "IP_PASSIVE_SELECTION", Some "classic" ];
+              ~fraction:(getenv_float "VIP_AGGRESSIVE_GENERAL_CLASSIC_FRACTION" 0.15)
+              ~env:[ "VIP_PASSIVE_SELECTION", Some "classic" ];
             avatar_stage
-              (getenv_float "IP_AGGRESSIVE_GENERAL_AVATAR_FRACTION" 0.10);
+              (getenv_float "VIP_AGGRESSIVE_GENERAL_AVATAR_FRACTION" 0.10);
             run_remaining_stage
               ~stage_name:"Aggressive general remaining legacy"
               ~engine:Legacy_compat;
@@ -2240,27 +2256,27 @@ let rec run_file ?(config = default_config) filename =
 
     let run_casc_240 ?(extended = false) () =
       let feq_env extra =
-        ("IP_FEQ_LEGACY_FLASH_FRACTION", Some "0") :: extra
+        ("VIP_FEQ_LEGACY_FLASH_FRACTION", Some "0") :: extra
       in
       let avatar_env =
         [
-          "IP_AVATAR_SPLITTING", Some "1";
-          "IP_AVATAR_GROUND_ONLY", Some "0";
-          "IP_AVATAR_KEEP_ORIGINAL", Some "1";
-          "IP_AVATAR_MIN_SPLIT", Some "3";
-          "IP_AVATAR_MAX_SPLIT_VARS", Some "10";
-          "IP_AVATAR_MAX_SPLIT_VARS_PER_CLAUSE", Some "4";
-          "IP_AVATAR_MODEL_FALSE_FIRST", Some "1";
+          "VIP_AVATAR_SPLITTING", Some "1";
+          "VIP_AVATAR_GROUND_ONLY", Some "0";
+          "VIP_AVATAR_KEEP_ORIGINAL", Some "1";
+          "VIP_AVATAR_MIN_SPLIT", Some "3";
+          "VIP_AVATAR_MAX_SPLIT_VARS", Some "10";
+          "VIP_AVATAR_MAX_SPLIT_VARS_PER_CLAUSE", Some "4";
+          "VIP_AVATAR_MODEL_FALSE_FIRST", Some "1";
         ]
       in
       let legacy_guided_env =
         [
-          "IP_PASSIVE_SELECTION", Some "legacy";
-          "IP_LITERAL_SELECTION", Some "legacy";
-          "IP_RESOLUTION_LITERAL_SELECTION", Some "legacy";
-          "IP_LEGACY_SUBSUMPTION", Some "1";
-          "IP_FAST_CONDENSATION", Some "0";
-          "IP_FORWARD_SUBSUMPTION_RESOLUTION", Some "0";
+          "VIP_PASSIVE_SELECTION", Some "legacy";
+          "VIP_LITERAL_SELECTION", Some "legacy";
+          "VIP_RESOLUTION_LITERAL_SELECTION", Some "legacy";
+          "VIP_LEGACY_SUBSUMPTION", Some "1";
+          "VIP_FAST_CONDENSATION", Some "0";
+          "VIP_FORWARD_SUBSUMPTION_RESOLUTION", Some "0";
         ]
       in
       let feq_sine name fraction max_axioms max_freq =
@@ -2271,17 +2287,17 @@ let rec run_file ?(config = default_config) filename =
           ~env:
             (feq_env
                [
-                 "IP_FEQ_MODERN_ALL", Some "1";
-                 "IP_AXIOM_SELECTION", Some "1";
-                 "IP_AXIOM_SELECTION_ALL", Some "1";
-                 "IP_AXIOM_SELECTION_RANKED", Some "1";
-                 "IP_AXIOM_SELECTION_MAX_AXIOMS", Some max_axioms;
-                 "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some max_freq;
-                 "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
-                 "IP_FEQ_STABLE_FRACTION", Some "0.08";
-                 "IP_FEQ_CLASSIC_FRACTION", Some "0.42";
-                 "IP_FEQ_WEIGHT_FRACTION", Some "0.18";
-                 "IP_FEQ_EQUALITY_FRACTION", Some "0.27";
+                 "VIP_FEQ_MODERN_ALL", Some "1";
+                 "VIP_AXIOM_SELECTION", Some "1";
+                 "VIP_AXIOM_SELECTION_ALL", Some "1";
+                 "VIP_AXIOM_SELECTION_RANKED", Some "1";
+                 "VIP_AXIOM_SELECTION_MAX_AXIOMS", Some max_axioms;
+                 "VIP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some max_freq;
+                 "VIP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
+                 "VIP_FEQ_STABLE_FRACTION", Some "0.08";
+                 "VIP_FEQ_CLASSIC_FRACTION", Some "0.42";
+                 "VIP_FEQ_WEIGHT_FRACTION", Some "0.18";
+                 "VIP_FEQ_EQUALITY_FRACTION", Some "0.27";
                ])
       in
       let feq_sine_compat name fraction max_axioms max_freq =
@@ -2290,15 +2306,15 @@ let rec run_file ?(config = default_config) filename =
           ~portfolio_mode:Feq_modern
           ~fraction
           ~min_budget_s:
-            (getenv_float "IP_CASC_240_FEQ_SINE_NARROW_MIN_SECONDS" 8.0)
+            (getenv_float "VIP_CASC_240_FEQ_SINE_NARROW_MIN_SECONDS" 8.0)
           ~env:
             (feq_env
                [
-                 "IP_AXIOM_SELECTION", Some "1";
-                 "IP_AXIOM_SELECTION_ALL", Some "1";
-                 "IP_AXIOM_SELECTION_MAX_AXIOMS", Some max_axioms;
-                 "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some max_freq;
-                 "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
+                 "VIP_AXIOM_SELECTION", Some "1";
+                 "VIP_AXIOM_SELECTION_ALL", Some "1";
+                 "VIP_AXIOM_SELECTION_MAX_AXIOMS", Some max_axioms;
+                 "VIP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some max_freq;
+                 "VIP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
                ])
       in
       let feq_simplification_probe name fraction =
@@ -2307,20 +2323,20 @@ let rec run_file ?(config = default_config) filename =
           ~portfolio_mode:Feq_modern
           ~fraction
           ~min_budget_s:
-            (getenv_float "IP_CASC_150_FEQ_SIMPL_MIN_SECONDS" 5.0)
+            (getenv_float "VIP_CASC_150_FEQ_SIMPL_MIN_SECONDS" 5.0)
           ~env:
             (feq_env
                [
-                 "IP_FEQ_MODERN_ALL", Some "1";
-                 "IP_AXIOM_SELECTION", Some "0";
-                 "IP_AXIOM_SELECTION_ALL", Some "0";
-                 "IP_SIMPLIFICATION_SET_INDEX", Some "1";
-                 "IP_SIMPLIFICATION_SET_UNIT_ONLY", Some "0";
-                 "IP_SIMPLIFICATION_SET_MAX_CLAUSE_LEN", Some "6";
-                 "IP_SIMPLIFICATION_SET_NEGATIVE_MAX_LEN", Some "4";
-                 "IP_SIMPLIFICATION_SET_GOAL_MAX_LEN", Some "6";
-                 "IP_SIMPLIFICATION_SET_EQUALITY_UNIT", Some "1";
-                 "IP_FORWARD_SUBSUMPTION_RESOLUTION", Some "1";
+                 "VIP_FEQ_MODERN_ALL", Some "1";
+                 "VIP_AXIOM_SELECTION", Some "0";
+                 "VIP_AXIOM_SELECTION_ALL", Some "0";
+                 "VIP_SIMPLIFICATION_SET_INDEX", Some "1";
+                 "VIP_SIMPLIFICATION_SET_UNIT_ONLY", Some "0";
+                 "VIP_SIMPLIFICATION_SET_MAX_CLAUSE_LEN", Some "6";
+                 "VIP_SIMPLIFICATION_SET_NEGATIVE_MAX_LEN", Some "4";
+                 "VIP_SIMPLIFICATION_SET_GOAL_MAX_LEN", Some "6";
+                 "VIP_SIMPLIFICATION_SET_EQUALITY_UNIT", Some "1";
+                 "VIP_FORWARD_SUBSUMPTION_RESOLUTION", Some "1";
                ])
       in
       let legacy_guided_probe name fraction =
@@ -2329,6 +2345,43 @@ let rec run_file ?(config = default_config) filename =
           ~portfolio_mode:Modern_only
           ~fraction
           ~env:legacy_guided_env
+      in
+      let fne_layered_guard name fraction =
+        run_experimental_subrun
+          ~stage_name:name
+          ~portfolio_mode:Modern_only
+          ~fraction
+          ~min_budget_s:
+            (getenv_float "VIP_CASC_150_FNE_LAYERED_GUARD_MIN_SECONDS" 6.0)
+          ~env:
+            [
+              "VIP_PASSIVE_SELECTION", Some "layered";
+              "VIP_LAYERED_SELECTION",
+              Some "unit,equality,goal,short,age,weight";
+            ]
+      in
+      let with_fne_layered_guard name fraction fallback =
+        let min_raw_clauses =
+          getenv_int_global "VIP_CASC_150_FNE_LAYERED_GUARD_MIN_RAW_CLAUSES" 50
+        in
+        let max_raw_clauses =
+          getenv_int_global "VIP_CASC_150_FNE_LAYERED_GUARD_MAX_RAW_CLAUSES" 499
+        in
+        if
+          extended
+          && fraction > 0.0
+          && raw_clause_count >= min_raw_clauses
+          && raw_clause_count <= max_raw_clauses
+        then
+          let res = fne_layered_guard name fraction () in
+          match res.stop_reason with
+          | Refutation_found _ -> res
+          | Saturation | Time_limit | Clause_limit -> fallback ()
+        else
+          fallback ()
+      in
+      let fne_layered_guard_stage name fraction () =
+        with_fne_layered_guard name fraction (fun () -> timeout_result (elapsed ()))
       in
       let feq_full_with_min min_budget_s name fraction =
         run_experimental_subrun
@@ -2339,13 +2392,13 @@ let rec run_file ?(config = default_config) filename =
           ~env:
             (feq_env
                [
-                 "IP_FEQ_MODERN_ALL", Some "1";
-                 "IP_AXIOM_SELECTION", Some "0";
-                 "IP_AXIOM_SELECTION_ALL", Some "0";
-                 "IP_FEQ_STABLE_FRACTION", Some "0.08";
-                 "IP_FEQ_CLASSIC_FRACTION", Some "0.40";
-                 "IP_FEQ_WEIGHT_FRACTION", Some "0.20";
-	                 "IP_FEQ_EQUALITY_FRACTION", Some "0.27";
+                 "VIP_FEQ_MODERN_ALL", Some "1";
+                 "VIP_AXIOM_SELECTION", Some "0";
+                 "VIP_AXIOM_SELECTION_ALL", Some "0";
+                 "VIP_FEQ_STABLE_FRACTION", Some "0.08";
+                 "VIP_FEQ_CLASSIC_FRACTION", Some "0.40";
+                 "VIP_FEQ_WEIGHT_FRACTION", Some "0.20";
+	                 "VIP_FEQ_EQUALITY_FRACTION", Some "0.27";
 	               ])
       in
       let feq_full name fraction = feq_full_with_min 0.0 name fraction in
@@ -2357,13 +2410,13 @@ let rec run_file ?(config = default_config) filename =
           ~env:
             (feq_env
                [
-                 "IP_AUTO_DEFINITIONAL_CNF", Some "1";
-                 "IP_CNF_DISTRIBUTION_LIMIT", Some "4096";
-                 "IP_FEQ_MODERN_ALL", Some "1";
-                 "IP_FEQ_STABLE_FRACTION", Some "0.05";
-                 "IP_FEQ_CLASSIC_FRACTION", Some "0.45";
-                 "IP_FEQ_WEIGHT_FRACTION", Some "0.20";
-                 "IP_FEQ_EQUALITY_FRACTION", Some "0.25";
+                 "VIP_AUTO_DEFINITIONAL_CNF", Some "1";
+                 "VIP_CNF_DISTRIBUTION_LIMIT", Some "4096";
+                 "VIP_FEQ_MODERN_ALL", Some "1";
+                 "VIP_FEQ_STABLE_FRACTION", Some "0.05";
+                 "VIP_FEQ_CLASSIC_FRACTION", Some "0.45";
+                 "VIP_FEQ_WEIGHT_FRACTION", Some "0.20";
+                 "VIP_FEQ_EQUALITY_FRACTION", Some "0.25";
                ])
       in
       let avatar_stage name fraction =
@@ -2378,11 +2431,11 @@ let rec run_file ?(config = default_config) filename =
           ~stage_name:name
           ~portfolio_mode:Experimental_casc
           ~fraction
-          ~min_budget_s:(getenv_float "IP_CASC_240_STABLE_MIN_SECONDS" 12.0)
+          ~min_budget_s:(getenv_float "VIP_CASC_240_STABLE_MIN_SECONDS" 12.0)
           ~env:
             [
-              "IP_EXPERIMENTAL_FEQ_LEGACY_FLASH_FRACTION", Some "0";
-              "IP_SIMPLIFICATION_SET_INDEX", Some "0";
+              "VIP_EXPERIMENTAL_FEQ_LEGACY_FLASH_FRACTION", Some "0";
+              "VIP_SIMPLIFICATION_SET_INDEX", Some "0";
             ]
       in
       let stable_first fraction =
@@ -2397,28 +2450,28 @@ let rec run_file ?(config = default_config) filename =
             run_schedule
               ([
                 (fun () -> feq_full_with_min
-                  (getenv_float "IP_CASC_240_FEQ_QUICK_FULL_MIN_SECONDS" 8.0)
+                  (getenv_float "VIP_CASC_240_FEQ_QUICK_FULL_MIN_SECONDS" 8.0)
                   "CASC-240 FEQ quick full classic/equality"
-                  (getenv_float "IP_CASC_240_FEQ_QUICK_FULL_FRACTION" 0.10) ());
+                  (getenv_float "VIP_CASC_240_FEQ_QUICK_FULL_FRACTION" 0.10) ());
                 (fun () -> feq_sine_compat
                   "CASC-240 FEQ ranked SInE narrow"
-                  (getenv_float "IP_CASC_240_FEQ_SINE_NARROW_FRACTION" 0.04)
+                  (getenv_float "VIP_CASC_240_FEQ_SINE_NARROW_FRACTION" 0.04)
                   "300"
                   "128" ());
                 (fun () -> stable_stage
                   "CASC-240 FEQ stable pass"
-                  (getenv_float "IP_CASC_240_FEQ_STABLE_FRACTION" 0.41) ());
+                  (getenv_float "VIP_CASC_240_FEQ_STABLE_FRACTION" 0.41) ());
                 (fun () -> feq_sine
                   "CASC-240 FEQ ranked SInE medium"
-                  (getenv_float "IP_CASC_240_FEQ_SINE_MEDIUM_FRACTION" 0.14)
+                  (getenv_float "VIP_CASC_240_FEQ_SINE_MEDIUM_FRACTION" 0.14)
                   "1200"
                   "256" ());
                 (fun () -> feq_full
                   "CASC-240 FEQ full classic/equality"
-                  (getenv_float "IP_CASC_240_FEQ_FULL_FRACTION" 0.06) ());
+                  (getenv_float "VIP_CASC_240_FEQ_FULL_FRACTION" 0.06) ());
                 (fun () -> feq_sine
                   "CASC-240 FEQ ranked SInE wide"
-                  (getenv_float "IP_CASC_240_FEQ_SINE_WIDE_FRACTION" 0.06)
+                  (getenv_float "VIP_CASC_240_FEQ_SINE_WIDE_FRACTION" 0.06)
                   "3000"
                   "768" ());
               ]
@@ -2428,36 +2481,36 @@ let rec run_file ?(config = default_config) filename =
                    (fun () -> feq_sine
                      "CASC-150 FEQ ranked SInE extra wide"
                      (getenv_float
-                        "IP_CASC_150_FEQ_SINE_EXTRA_WIDE_FRACTION"
+                        "VIP_CASC_150_FEQ_SINE_EXTRA_WIDE_FRACTION"
                         0.04)
                      "5000"
                      "1024" ());
                    (fun () -> feq_simplification_probe
                      "CASC-150 FEQ simplification-set probe"
-                     (getenv_float "IP_CASC_150_FEQ_SIMPL_FRACTION" 0.025) ());
+                     (getenv_float "VIP_CASC_150_FEQ_SIMPL_FRACTION" 0.025) ());
                    (fun () -> legacy_guided_probe
                      "CASC-150 FEQ legacy-guided probe"
                      (getenv_float
-                        "IP_CASC_150_FEQ_LEGACY_GUIDED_FRACTION"
+                        "VIP_CASC_150_FEQ_LEGACY_GUIDED_FRACTION"
                         0.025) ());
                  ]
                else [])
               @
               [
                 (fun () -> definitional_feq
-                  (getenv_float "IP_CASC_240_FEQ_DEFINITIONAL_FRACTION" 0.04) ());
+                  (getenv_float "VIP_CASC_240_FEQ_DEFINITIONAL_FRACTION" 0.04) ());
                 (fun () -> avatar_stage
                   "CASC-240 FEQ AVATAR"
-                  (getenv_float "IP_CASC_240_FEQ_AVATAR_FRACTION" 0.04) ());
+                  (getenv_float "VIP_CASC_240_FEQ_AVATAR_FRACTION" 0.04) ());
                 (fun () -> run_remaining_stage
                   ~stage_name:"CASC-240 FEQ remaining full"
                   ~engine:Modern_feq
                   ~env:
                     (feq_env
                        [
-                         "IP_FEQ_MODERN_ALL", Some "1";
-                         "IP_PASSIVE_SELECTION", Some "equality";
-                         "IP_PASSIVE_AW_RATIO", Some "1:8";
+                         "VIP_FEQ_MODERN_ALL", Some "1";
+                         "VIP_PASSIVE_SELECTION", Some "equality";
+                         "VIP_PASSIVE_AW_RATIO", Some "1:8";
                        ]) ());
               ])
       else if problem_profile = Equality_light then
@@ -2465,23 +2518,23 @@ let rec run_file ?(config = default_config) filename =
               ([
                 (fun () -> feq_full
                   "CASC-240 equality-light quick full FEQ"
-                  (getenv_float "IP_CASC_240_EQ_LIGHT_QUICK_FULL_FRACTION" 0.12) ());
+                  (getenv_float "VIP_CASC_240_EQ_LIGHT_QUICK_FULL_FRACTION" 0.12) ());
                 (fun () -> stable_stage
                   "CASC-240 equality-light stable pass"
-                  (getenv_float "IP_CASC_240_EQ_LIGHT_STABLE_FRACTION" 0.40) ());
+                  (getenv_float "VIP_CASC_240_EQ_LIGHT_STABLE_FRACTION" 0.40) ());
                 (fun () -> feq_full
                   "CASC-240 equality-light full FEQ"
-                  (getenv_float "IP_CASC_240_EQ_LIGHT_FULL_FRACTION" 0.08) ());
+                  (getenv_float "VIP_CASC_240_EQ_LIGHT_FULL_FRACTION" 0.08) ());
                 (fun () -> feq_sine
                   "CASC-240 equality-light SInE medium"
-                  (getenv_float "IP_CASC_240_EQ_LIGHT_SINE_FRACTION" 0.10)
+                  (getenv_float "VIP_CASC_240_EQ_LIGHT_SINE_FRACTION" 0.10)
                   "1200"
                   "256" ());
                 (fun () -> avatar_stage
                   "CASC-240 equality-light AVATAR"
-                  (getenv_float "IP_CASC_240_EQ_LIGHT_AVATAR_FRACTION" 0.06) ());
+                  (getenv_float "VIP_CASC_240_EQ_LIGHT_AVATAR_FRACTION" 0.06) ());
                 (fun () -> definitional_feq
-                  (getenv_float "IP_CASC_240_EQ_LIGHT_DEFINITIONAL_FRACTION" 0.05) ());
+                  (getenv_float "VIP_CASC_240_EQ_LIGHT_DEFINITIONAL_FRACTION" 0.05) ());
               ]
               @
               (if extended then
@@ -2489,14 +2542,14 @@ let rec run_file ?(config = default_config) filename =
                    (fun () -> feq_sine
                      "CASC-150 equality-light SInE wide"
                      (getenv_float
-                        "IP_CASC_150_EQ_LIGHT_SINE_WIDE_FRACTION"
+                        "VIP_CASC_150_EQ_LIGHT_SINE_WIDE_FRACTION"
                         0.05)
                      "3000"
                      "768" ());
                    (fun () -> feq_simplification_probe
                      "CASC-150 equality-light simplification-set probe"
                      (getenv_float
-                        "IP_CASC_150_EQ_LIGHT_SIMPL_FRACTION"
+                        "VIP_CASC_150_EQ_LIGHT_SIMPL_FRACTION"
                         0.04) ());
                  ]
                else [])
@@ -2508,13 +2561,17 @@ let rec run_file ?(config = default_config) filename =
                   ~env:
                     (feq_env
                        [
-                         "IP_FEQ_MODERN_ALL", Some "1";
-                         "IP_PASSIVE_SELECTION", Some "classic";
-                         "IP_PASSIVE_AW_RATIO", Some "1:6";
+                         "VIP_FEQ_MODERN_ALL", Some "1";
+                         "VIP_PASSIVE_SELECTION", Some "classic";
+                         "VIP_PASSIVE_AW_RATIO", Some "1:6";
                        ]) ());
               ])
       else if problem_profile = Large_general then
-        match stable_first (getenv_float "IP_CASC_240_LARGE_STABLE_FRACTION" 0.45) with
+        with_fne_layered_guard
+          "CASC-150 large early layered guard"
+          (getenv_float "VIP_CASC_150_LARGE_EARLY_LAYERED_FRACTION" 0.0)
+          (fun () ->
+        match stable_first (getenv_float "VIP_CASC_240_LARGE_STABLE_FRACTION" 0.45) with
         | Some res -> res
         | None ->
             run_schedule
@@ -2523,40 +2580,40 @@ let rec run_file ?(config = default_config) filename =
                   ~stage_name:"CASC-240 large legacy probe"
                   ~portfolio_mode:Legacy_only
                   ~fraction:
-                    (getenv_float "IP_CASC_240_LARGE_LEGACY_FRACTION" 0.22) ());
+                    (getenv_float "VIP_CASC_240_LARGE_LEGACY_FRACTION" 0.22) ());
                 (fun () -> run_experimental_subrun
                   ~stage_name:"CASC-240 large full modern"
                   ~portfolio_mode:Feq_modern
                   ~fraction:
-                    (getenv_float "IP_CASC_240_LARGE_FULL_FRACTION" 0.12)
+                    (getenv_float "VIP_CASC_240_LARGE_FULL_FRACTION" 0.12)
                   ~env:
                     (feq_env
                        [
-	                         "IP_AXIOM_SELECTION", Some "0";
-	                         "IP_AXIOM_SELECTION_ALL", Some "0";
+	                         "VIP_AXIOM_SELECTION", Some "0";
+	                         "VIP_AXIOM_SELECTION_ALL", Some "0";
 	                       ]) ());
                 (fun () -> run_experimental_subrun
                   ~stage_name:"CASC-240 large ranked SInE"
                   ~portfolio_mode:Feq_modern
                   ~fraction:
-                    (getenv_float "IP_CASC_240_LARGE_SINE_FRACTION" 0.10)
+                    (getenv_float "VIP_CASC_240_LARGE_SINE_FRACTION" 0.10)
                   ~env:
                     (feq_env
                        [
-                         "IP_FEQ_MODERN_ALL", Some "1";
-                         "IP_AXIOM_SELECTION", Some "1";
-                         "IP_AXIOM_SELECTION_ALL", Some "1";
-                         "IP_AXIOM_SELECTION_RANKED", Some "1";
-                         "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "2500";
-	                         "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "512";
-	                         "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
+                         "VIP_FEQ_MODERN_ALL", Some "1";
+                         "VIP_AXIOM_SELECTION", Some "1";
+                         "VIP_AXIOM_SELECTION_ALL", Some "1";
+                         "VIP_AXIOM_SELECTION_RANKED", Some "1";
+                         "VIP_AXIOM_SELECTION_MAX_AXIOMS", Some "2500";
+	                         "VIP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "512";
+	                         "VIP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
 	                       ]) ());
                 (fun () -> run_experimental_subrun
                   ~stage_name:"CASC-240 large legacy-guided modern"
                   ~portfolio_mode:Modern_only
                   ~fraction:
                     (getenv_float
-	                       "IP_CASC_240_LARGE_LEGACY_GUIDED_FRACTION"
+	                       "VIP_CASC_240_LARGE_LEGACY_GUIDED_FRACTION"
 	                       0.08)
                   ~env:legacy_guided_env ());
               ]
@@ -2568,14 +2625,14 @@ let rec run_file ?(config = default_config) filename =
                      ~portfolio_mode:Modern_only
                      ~fraction:
                        (getenv_float
-                          "IP_CASC_150_LARGE_LAYERED_GOAL_FRACTION"
+                          "VIP_CASC_150_LARGE_LAYERED_GOAL_FRACTION"
                           0.03)
                      ~env:
                        [
-                         "IP_PASSIVE_SELECTION", Some "layered";
-	                         "IP_LAYERED_SELECTION",
+                         "VIP_PASSIVE_SELECTION", Some "layered";
+	                         "VIP_LAYERED_SELECTION",
 	                         Some "unit,equality,goal,short,age,weight";
-	                         "IP_LITERAL_SELECTION", Some "smallest-negative";
+                         "VIP_LITERAL_SELECTION", Some "smallest-negative";
 	                       ] ());
                  ]
                else [])
@@ -2584,40 +2641,43 @@ let rec run_file ?(config = default_config) filename =
                 (fun () -> run_remaining_stage
                   ~stage_name:"CASC-240 large remaining legacy"
                   ~engine:Legacy_compat ());
-              ])
+              ]))
       else
-        match stable_first (getenv_float "IP_CASC_240_NON_EQ_STABLE_FRACTION" 0.45) with
+        match stable_first (getenv_float "VIP_CASC_240_NON_EQ_STABLE_FRACTION" 0.45) with
         | Some res -> res
         | None ->
             run_schedule
               ([
+                (fun () -> fne_layered_guard_stage
+                  "CASC-150 non-equality medium layered guard"
+                  (getenv_float "VIP_CASC_150_NON_EQ_LAYERED_GUARD_FRACTION" 0.05) ());
                 (fun () -> run_experimental_subrun
                   ~stage_name:"CASC-240 non-equality legacy probe"
                   ~portfolio_mode:Legacy_only
                   ~fraction:
-                    (getenv_float "IP_CASC_240_NON_EQ_LEGACY_FRACTION" 0.25) ());
+                    (getenv_float "VIP_CASC_240_NON_EQ_LEGACY_FRACTION" 0.25) ());
                 (fun () -> run_experimental_subrun
                   ~stage_name:"CASC-240 non-equality legacy-guided modern"
                   ~portfolio_mode:Modern_only
                   ~fraction:
                     (getenv_float
-	                       "IP_CASC_240_NON_EQ_LEGACY_GUIDED_FRACTION"
+	                       "VIP_CASC_240_NON_EQ_LEGACY_GUIDED_FRACTION"
 	                       0.12)
                   ~env:legacy_guided_env ());
                 (fun () -> run_experimental_subrun
                   ~stage_name:"CASC-240 non-equality layered modern"
                   ~portfolio_mode:Modern_only
                   ~fraction:
-                    (getenv_float "IP_CASC_240_NON_EQ_LAYERED_FRACTION" 0.08)
+                    (getenv_float "VIP_CASC_240_NON_EQ_LAYERED_FRACTION" 0.08)
                   ~env:
                     [
-	                      "IP_PASSIVE_SELECTION", Some "layered";
-	                      "IP_LAYERED_SELECTION",
+	                      "VIP_PASSIVE_SELECTION", Some "layered";
+	                      "VIP_LAYERED_SELECTION",
 	                      Some "unit,goal,short,age,weight";
 	                    ] ());
                 (fun () -> avatar_stage
                   "CASC-240 non-equality AVATAR"
-                  (getenv_float "IP_CASC_240_NON_EQ_AVATAR_FRACTION" 0.05) ());
+                  (getenv_float "VIP_CASC_240_NON_EQ_AVATAR_FRACTION" 0.05) ());
               ]
               @
               (if extended then
@@ -2627,7 +2687,7 @@ let rec run_file ?(config = default_config) filename =
                      ~portfolio_mode:Modern_only
                      ~fraction:
                        (getenv_float
-	                          "IP_CASC_150_NON_EQ_LEGACY_GUIDED_FRACTION"
+	                          "VIP_CASC_150_NON_EQ_LEGACY_GUIDED_FRACTION"
 	                          0.03)
                      ~env:legacy_guided_env ());
                  ]
@@ -2642,18 +2702,18 @@ let rec run_file ?(config = default_config) filename =
 
     let run_casc_feq_probe () =
       let feq_env extra =
-        ("IP_FEQ_LEGACY_FLASH_FRACTION", Some "0") :: extra
+        ("VIP_FEQ_LEGACY_FLASH_FRACTION", Some "0") :: extra
       in
       let stable_stage fraction =
         run_experimental_subrun
           ~stage_name:"FEQ-probe stable guard"
           ~portfolio_mode:Experimental_casc
           ~fraction
-          ~min_budget_s:(getenv_float "IP_CASC_FEQ_PROBE_STABLE_MIN_SECONDS" 12.0)
+          ~min_budget_s:(getenv_float "VIP_CASC_FEQ_PROBE_STABLE_MIN_SECONDS" 12.0)
           ~env:
             [
-              "IP_EXPERIMENTAL_FEQ_LEGACY_FLASH_FRACTION", Some "0";
-              "IP_SIMPLIFICATION_SET_INDEX", Some "0";
+              "VIP_EXPERIMENTAL_FEQ_LEGACY_FLASH_FRACTION", Some "0";
+              "VIP_SIMPLIFICATION_SET_INDEX", Some "0";
             ]
       in
       let feq_stage name fraction env =
@@ -2670,14 +2730,14 @@ let rec run_file ?(config = default_config) filename =
           ~fraction
           ~env:
             [
-              "IP_AVATAR_SPLITTING", Some "1";
-              "IP_AVATAR_GROUND_ONLY", Some "0";
-              "IP_AVATAR_KEEP_ORIGINAL", Some "1";
-              "IP_AVATAR_MIN_SPLIT", Some "3";
-              "IP_AVATAR_MAX_SPLIT_VARS", Some "10";
-              "IP_AVATAR_MAX_SPLIT_VARS_PER_CLAUSE", Some "4";
-              "IP_AVATAR_MODEL_FALSE_FIRST", Some "1";
-              "IP_PASSIVE_SELECTION", Some "equality";
+              "VIP_AVATAR_SPLITTING", Some "1";
+              "VIP_AVATAR_GROUND_ONLY", Some "0";
+              "VIP_AVATAR_KEEP_ORIGINAL", Some "1";
+              "VIP_AVATAR_MIN_SPLIT", Some "3";
+              "VIP_AVATAR_MAX_SPLIT_VARS", Some "10";
+              "VIP_AVATAR_MAX_SPLIT_VARS_PER_CLAUSE", Some "4";
+              "VIP_AVATAR_MODEL_FALSE_FIRST", Some "1";
+              "VIP_PASSIVE_SELECTION", Some "equality";
             ]
       in
       if problem_profile <> Equality_heavy && problem_profile <> Equality_light then
@@ -2686,108 +2746,108 @@ let rec run_file ?(config = default_config) filename =
         run_schedule
           [
             stable_stage
-              (getenv_float "IP_CASC_FEQ_PROBE_STABLE_FRACTION" 0.30);
+              (getenv_float "VIP_CASC_FEQ_PROBE_STABLE_FRACTION" 0.30);
             feq_stage
               "FEQ-probe full equality-heavy"
-              (getenv_float "IP_CASC_FEQ_PROBE_FULL_FRACTION" 0.18)
+              (getenv_float "VIP_CASC_FEQ_PROBE_FULL_FRACTION" 0.18)
               [
-                "IP_FEQ_MODERN_ALL", Some "1";
-                "IP_AXIOM_SELECTION", Some "0";
-                "IP_AXIOM_SELECTION_ALL", Some "0";
-                "IP_FEQ_STABLE_FRACTION", Some "0.05";
-                "IP_FEQ_CLASSIC_FRACTION", Some "0.28";
-                "IP_FEQ_WEIGHT_FRACTION", Some "0.18";
-                "IP_FEQ_EQUALITY_FRACTION", Some "0.44";
-                "IP_FEQ_PASSIVE_AW_RATIO", Some "1:10";
+                "VIP_FEQ_MODERN_ALL", Some "1";
+                "VIP_AXIOM_SELECTION", Some "0";
+                "VIP_AXIOM_SELECTION_ALL", Some "0";
+                "VIP_FEQ_STABLE_FRACTION", Some "0.05";
+                "VIP_FEQ_CLASSIC_FRACTION", Some "0.28";
+                "VIP_FEQ_WEIGHT_FRACTION", Some "0.18";
+                "VIP_FEQ_EQUALITY_FRACTION", Some "0.44";
+                "VIP_FEQ_PASSIVE_AW_RATIO", Some "1:10";
               ];
             feq_stage
               "FEQ-probe ranked SInE medium"
-              (getenv_float "IP_CASC_FEQ_PROBE_SINE_MEDIUM_FRACTION" 0.15)
+              (getenv_float "VIP_CASC_FEQ_PROBE_SINE_MEDIUM_FRACTION" 0.15)
               [
-                "IP_FEQ_MODERN_ALL", Some "1";
-                "IP_AXIOM_SELECTION", Some "1";
-                "IP_AXIOM_SELECTION_ALL", Some "1";
-                "IP_AXIOM_SELECTION_RANKED", Some "1";
-                "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "1500";
-                "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "256";
-                "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
-                "IP_FEQ_STABLE_FRACTION", Some "0.05";
-                "IP_FEQ_CLASSIC_FRACTION", Some "0.35";
-                "IP_FEQ_WEIGHT_FRACTION", Some "0.15";
-                "IP_FEQ_EQUALITY_FRACTION", Some "0.40";
-                "IP_FEQ_PASSIVE_AW_RATIO", Some "1:10";
+                "VIP_FEQ_MODERN_ALL", Some "1";
+                "VIP_AXIOM_SELECTION", Some "1";
+                "VIP_AXIOM_SELECTION_ALL", Some "1";
+                "VIP_AXIOM_SELECTION_RANKED", Some "1";
+                "VIP_AXIOM_SELECTION_MAX_AXIOMS", Some "1500";
+                "VIP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "256";
+                "VIP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
+                "VIP_FEQ_STABLE_FRACTION", Some "0.05";
+                "VIP_FEQ_CLASSIC_FRACTION", Some "0.35";
+                "VIP_FEQ_WEIGHT_FRACTION", Some "0.15";
+                "VIP_FEQ_EQUALITY_FRACTION", Some "0.40";
+                "VIP_FEQ_PASSIVE_AW_RATIO", Some "1:10";
               ];
             feq_stage
               "FEQ-probe ranked SInE wide"
-              (getenv_float "IP_CASC_FEQ_PROBE_SINE_WIDE_FRACTION" 0.12)
+              (getenv_float "VIP_CASC_FEQ_PROBE_SINE_WIDE_FRACTION" 0.12)
               [
-                "IP_FEQ_MODERN_ALL", Some "1";
-                "IP_AXIOM_SELECTION", Some "1";
-                "IP_AXIOM_SELECTION_ALL", Some "1";
-                "IP_AXIOM_SELECTION_RANKED", Some "1";
-                "IP_AXIOM_SELECTION_MAX_AXIOMS", Some "4000";
-                "IP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "1024";
-                "IP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
-                "IP_FEQ_STABLE_FRACTION", Some "0.03";
-                "IP_FEQ_CLASSIC_FRACTION", Some "0.32";
-                "IP_FEQ_WEIGHT_FRACTION", Some "0.15";
-                "IP_FEQ_EQUALITY_FRACTION", Some "0.45";
-                "IP_FEQ_PASSIVE_AW_RATIO", Some "1:12";
+                "VIP_FEQ_MODERN_ALL", Some "1";
+                "VIP_AXIOM_SELECTION", Some "1";
+                "VIP_AXIOM_SELECTION_ALL", Some "1";
+                "VIP_AXIOM_SELECTION_RANKED", Some "1";
+                "VIP_AXIOM_SELECTION_MAX_AXIOMS", Some "4000";
+                "VIP_AXIOM_SELECTION_MAX_SYMBOL_FREQ", Some "1024";
+                "VIP_AXIOM_SELECTION_SEED_PREDICATES_ONLY", Some "1";
+                "VIP_FEQ_STABLE_FRACTION", Some "0.03";
+                "VIP_FEQ_CLASSIC_FRACTION", Some "0.32";
+                "VIP_FEQ_WEIGHT_FRACTION", Some "0.15";
+                "VIP_FEQ_EQUALITY_FRACTION", Some "0.45";
+                "VIP_FEQ_PASSIVE_AW_RATIO", Some "1:12";
               ];
             feq_stage
               "FEQ-probe definitional equality"
-              (getenv_float "IP_CASC_FEQ_PROBE_DEFINITIONAL_FRACTION" 0.08)
+              (getenv_float "VIP_CASC_FEQ_PROBE_DEFINITIONAL_FRACTION" 0.08)
               [
-                "IP_AUTO_DEFINITIONAL_CNF", Some "1";
-                "IP_CNF_DISTRIBUTION_LIMIT", Some "4096";
-                "IP_FEQ_MODERN_ALL", Some "1";
-                "IP_FEQ_STABLE_FRACTION", Some "0.03";
-                "IP_FEQ_CLASSIC_FRACTION", Some "0.35";
-                "IP_FEQ_WEIGHT_FRACTION", Some "0.17";
-                "IP_FEQ_EQUALITY_FRACTION", Some "0.40";
-                "IP_FEQ_PASSIVE_AW_RATIO", Some "1:10";
+                "VIP_AUTO_DEFINITIONAL_CNF", Some "1";
+                "VIP_CNF_DISTRIBUTION_LIMIT", Some "4096";
+                "VIP_FEQ_MODERN_ALL", Some "1";
+                "VIP_FEQ_STABLE_FRACTION", Some "0.03";
+                "VIP_FEQ_CLASSIC_FRACTION", Some "0.35";
+                "VIP_FEQ_WEIGHT_FRACTION", Some "0.17";
+                "VIP_FEQ_EQUALITY_FRACTION", Some "0.40";
+                "VIP_FEQ_PASSIVE_AW_RATIO", Some "1:10";
               ];
             avatar_stage
-              (getenv_float "IP_CASC_FEQ_PROBE_AVATAR_FRACTION" 0.05);
+              (getenv_float "VIP_CASC_FEQ_PROBE_AVATAR_FRACTION" 0.05);
             run_remaining_stage
               ~stage_name:"FEQ-probe remaining equality"
               ~engine:Modern_feq
               ~env:
                 (feq_env
                    [
-                     "IP_FEQ_MODERN_ALL", Some "1";
-                     "IP_PASSIVE_SELECTION", Some "equality";
-                     "IP_PASSIVE_AW_RATIO", Some "1:12";
-                     "IP_FORWARD_SUBSUMPTION_RESOLUTION", Some "1";
+                     "VIP_FEQ_MODERN_ALL", Some "1";
+                     "VIP_PASSIVE_SELECTION", Some "equality";
+                     "VIP_PASSIVE_AW_RATIO", Some "1:12";
+                     "VIP_FORWARD_SUBSUMPTION_RESOLUTION", Some "1";
                    ]);
           ]
     in
 
     let run_scheduled_portfolio () =
-      let size_threshold = getenv_int "IP_PORTFOLIO_SIZE_THRESHOLD" 160 in
+      let size_threshold = getenv_int "VIP_PORTFOLIO_SIZE_THRESHOLD" 160 in
       let modern_biased_small =
-        clause_count <= getenv_int "IP_PORTFOLIO_TINY_MODERN_MAX_CLAUSES" 4
-        || ((clause_count >= getenv_int "IP_PORTFOLIO_MEDIUM_MODERN_MIN_CLAUSES" 13
-             && clause_count <= getenv_int "IP_PORTFOLIO_MEDIUM_MODERN_MAX_CLAUSES" 24)
-            && not (clause_count >= getenv_int "IP_PORTFOLIO_MEDIUM_LEGACY_MIN_CLAUSES" 18
-                    && clause_count <= getenv_int "IP_PORTFOLIO_MEDIUM_LEGACY_MAX_CLAUSES" 20))
+        clause_count <= getenv_int "VIP_PORTFOLIO_TINY_MODERN_MAX_CLAUSES" 4
+        || ((clause_count >= getenv_int "VIP_PORTFOLIO_MEDIUM_MODERN_MIN_CLAUSES" 13
+             && clause_count <= getenv_int "VIP_PORTFOLIO_MEDIUM_MODERN_MAX_CLAUSES" 24)
+            && not (clause_count >= getenv_int "VIP_PORTFOLIO_MEDIUM_LEGACY_MIN_CLAUSES" 18
+                    && clause_count <= getenv_int "VIP_PORTFOLIO_MEDIUM_LEGACY_MAX_CLAUSES" 20))
       in
-      let syn_min = getenv_int "IP_PASSIVE_SYN_MIN_CLAUSES" 40 in
-      let syn_max = getenv_int "IP_PASSIVE_SYN_MAX_CLAUSES" 55 in
+      let syn_min = getenv_int "VIP_PASSIVE_SYN_MIN_CLAUSES" 40 in
+      let syn_max = getenv_int "VIP_PASSIVE_SYN_MAX_CLAUSES" 55 in
       let syn_shaped = clause_count >= syn_min && clause_count <= syn_max in
       let legacy_sensitive_small =
-        clause_count > getenv_int "IP_PORTFOLIO_TINY_MODERN_MAX_CLAUSES" 4
-        && clause_count < getenv_int "IP_PORTFOLIO_LEGACY_ONLY_SMALL_MAX_CLAUSES" 13
+        clause_count > getenv_int "VIP_PORTFOLIO_TINY_MODERN_MAX_CLAUSES" 4
+        && clause_count < getenv_int "VIP_PORTFOLIO_LEGACY_ONLY_SMALL_MAX_CLAUSES" 13
       in
       let unit_heavy =
-        unit_ratio >= getenv_float "IP_PORTFOLIO_UNIT_HEAVY_RATIO" 0.55
+        unit_ratio >= getenv_float "VIP_PORTFOLIO_UNIT_HEAVY_RATIO" 0.55
       in
       let negative_heavy =
-        negative_ratio >= getenv_float "IP_PORTFOLIO_NEGATIVE_HEAVY_RATIO" 0.65
+        negative_ratio >= getenv_float "VIP_PORTFOLIO_NEGATIVE_HEAVY_RATIO" 0.65
       in
       let term_heavy =
         equality_problem
-        || avg_literal_term_size >= getenv_float "IP_PORTFOLIO_TERM_HEAVY_AVG" 6.0
+        || avg_literal_term_size >= getenv_float "VIP_PORTFOLIO_TERM_HEAVY_AVG" 6.0
       in
       let legacy_stage fraction =
         fun () ->
@@ -2803,7 +2863,7 @@ let rec run_file ?(config = default_config) filename =
             ~stage_name:name
             ~engine:Modern_deep
             ~fraction
-            ~env:[ "IP_PASSIVE_SELECTION", Some selection ]
+            ~env:[ "VIP_PASSIVE_SELECTION", Some selection ]
             ()
       in
       let fallback_stable () = fun () -> run_legacy_then_modern () in
@@ -2813,11 +2873,11 @@ let rec run_file ?(config = default_config) filename =
             modern_stage
               "Portfolio modern classic"
               "classic"
-              (getenv_float "IP_PORTFOLIO_SCHEDULE_TERM_CLASSIC_FRACTION" 0.55);
+              (getenv_float "VIP_PORTFOLIO_SCHEDULE_TERM_CLASSIC_FRACTION" 0.55);
             modern_stage
               "Portfolio modern weight"
               "weight"
-              (getenv_float "IP_PORTFOLIO_SCHEDULE_TERM_WEIGHT_FRACTION" 0.25);
+              (getenv_float "VIP_PORTFOLIO_SCHEDULE_TERM_WEIGHT_FRACTION" 0.25);
             fallback_stable ();
           ]
         else if clause_count < size_threshold && syn_shaped then
@@ -2825,11 +2885,11 @@ let rec run_file ?(config = default_config) filename =
             modern_stage
               "Portfolio modern SYN selection"
               "syn"
-              (getenv_float "IP_PORTFOLIO_SCHEDULE_SYN_FRACTION" 0.65);
+              (getenv_float "VIP_PORTFOLIO_SCHEDULE_SYN_FRACTION" 0.65);
             modern_stage
               "Portfolio modern classic"
               "classic"
-              (getenv_float "IP_PORTFOLIO_SCHEDULE_CLASSIC_FRACTION" 0.20);
+              (getenv_float "VIP_PORTFOLIO_SCHEDULE_CLASSIC_FRACTION" 0.20);
             fallback_stable ();
           ]
         else if unit_heavy || negative_heavy then
@@ -2837,24 +2897,24 @@ let rec run_file ?(config = default_config) filename =
             modern_stage
               "Portfolio modern short"
               "short"
-              (getenv_float "IP_PORTFOLIO_SCHEDULE_UNIT_SHORT_FRACTION" 0.55);
+              (getenv_float "VIP_PORTFOLIO_SCHEDULE_UNIT_SHORT_FRACTION" 0.55);
             modern_stage
               "Portfolio modern classic"
               "classic"
-              (getenv_float "IP_PORTFOLIO_SCHEDULE_UNIT_CLASSIC_FRACTION" 0.25);
+              (getenv_float "VIP_PORTFOLIO_SCHEDULE_UNIT_CLASSIC_FRACTION" 0.25);
             fallback_stable ();
           ]
         else if clause_count < size_threshold then
           [
-            legacy_stage (getenv_float "IP_PORTFOLIO_SCHEDULE_LEGACY_FRACTION" 0.20);
+            legacy_stage (getenv_float "VIP_PORTFOLIO_SCHEDULE_LEGACY_FRACTION" 0.20);
             modern_stage
               "Portfolio modern classic"
               "classic"
-              (getenv_float "IP_PORTFOLIO_SCHEDULE_CLASSIC_FRACTION" 0.50);
+              (getenv_float "VIP_PORTFOLIO_SCHEDULE_CLASSIC_FRACTION" 0.50);
             modern_stage
               "Portfolio modern short"
               "short"
-              (getenv_float "IP_PORTFOLIO_SCHEDULE_SHORT_FRACTION" 0.15);
+              (getenv_float "VIP_PORTFOLIO_SCHEDULE_SHORT_FRACTION" 0.15);
             fallback_stable ();
           ]
         else
@@ -2862,16 +2922,16 @@ let rec run_file ?(config = default_config) filename =
             modern_stage
               "Portfolio modern classic"
               "classic"
-              (getenv_float "IP_PORTFOLIO_SCHEDULE_LARGE_CLASSIC_FRACTION" 0.45);
+              (getenv_float "VIP_PORTFOLIO_SCHEDULE_LARGE_CLASSIC_FRACTION" 0.45);
             modern_stage
               "Portfolio modern SYN selection"
               "syn"
-              (getenv_float "IP_PORTFOLIO_SCHEDULE_LARGE_SYN_FRACTION" 0.20);
+              (getenv_float "VIP_PORTFOLIO_SCHEDULE_LARGE_SYN_FRACTION" 0.20);
             modern_stage
               "Portfolio modern short"
               "short"
-              (getenv_float "IP_PORTFOLIO_SCHEDULE_SHORT_FRACTION" 0.15);
-            legacy_stage (getenv_float "IP_PORTFOLIO_SCHEDULE_LARGE_LEGACY_FRACTION" 0.05);
+              (getenv_float "VIP_PORTFOLIO_SCHEDULE_SHORT_FRACTION" 0.15);
+            legacy_stage (getenv_float "VIP_PORTFOLIO_SCHEDULE_LARGE_LEGACY_FRACTION" 0.05);
             fallback_stable ();
           ]
       in
@@ -2895,14 +2955,14 @@ let rec run_file ?(config = default_config) filename =
     in
 
     let run_feq_modern () =
-      let force_feq_schedule = getenv_bool "IP_FEQ_MODERN_ALL" false in
+      let force_feq_schedule = getenv_bool "VIP_FEQ_MODERN_ALL" false in
       let modern_general_stage name selection fraction =
         fun () ->
           run_profile_stage
             ~stage_name:name
             ~engine:Modern_deep
             ~fraction
-            ~env:[ "IP_PASSIVE_SELECTION", Some selection ]
+            ~env:[ "VIP_PASSIVE_SELECTION", Some selection ]
             ()
       in
       let legacy_general_stage name fraction =
@@ -2928,15 +2988,15 @@ let rec run_file ?(config = default_config) filename =
                 modern_general_stage
                   "General large modern classic"
                   "classic"
-                  (getenv_float "IP_GENERAL_LARGE_CLASSIC_FRACTION" 0.50);
+                  (getenv_float "VIP_GENERAL_LARGE_CLASSIC_FRACTION" 0.50);
                 modern_general_stage
                   "General large modern short"
                   "short"
-                  (getenv_float "IP_GENERAL_LARGE_SHORT_FRACTION" 0.20);
+                  (getenv_float "VIP_GENERAL_LARGE_SHORT_FRACTION" 0.20);
                 modern_general_stage
                   "General large modern weight"
                   "weight"
-                  (getenv_float "IP_GENERAL_LARGE_WEIGHT_FRACTION" 0.10);
+                  (getenv_float "VIP_GENERAL_LARGE_WEIGHT_FRACTION" 0.10);
                 legacy_remaining_stage "General large legacy fallback";
               ]
         | Non_equality ->
@@ -2944,19 +3004,19 @@ let rec run_file ?(config = default_config) filename =
               [
                 legacy_general_stage
                   "General legacy probe"
-                  (getenv_float "IP_GENERAL_LEGACY_FLASH_FRACTION" 0.25);
+                  (getenv_float "VIP_GENERAL_LEGACY_FLASH_FRACTION" 0.25);
                 modern_general_stage
                   "General modern classic"
                   "classic"
-                  (getenv_float "IP_GENERAL_CLASSIC_FRACTION" 0.35);
+                  (getenv_float "VIP_GENERAL_CLASSIC_FRACTION" 0.35);
                 modern_general_stage
                   "General modern short"
                   "short"
-                  (getenv_float "IP_GENERAL_SHORT_FRACTION" 0.20);
+                  (getenv_float "VIP_GENERAL_SHORT_FRACTION" 0.20);
                 modern_general_stage
                   "General modern weight"
                   "weight"
-                  (getenv_float "IP_GENERAL_WEIGHT_FRACTION" 0.10);
+                  (getenv_float "VIP_GENERAL_WEIGHT_FRACTION" 0.10);
                 legacy_remaining_stage "General legacy fallback";
               ]
         | Equality_light ->
@@ -2964,15 +3024,15 @@ let rec run_file ?(config = default_config) filename =
               [
                 legacy_general_stage
                   "Equality-light legacy flash"
-                  (getenv_float "IP_EQUALITY_LIGHT_LEGACY_FLASH_FRACTION" 0.05);
+                  (getenv_float "VIP_EQUALITY_LIGHT_LEGACY_FLASH_FRACTION" 0.05);
                 modern_general_stage
                   "Equality-light modern classic"
                   "classic"
-                  (getenv_float "IP_EQUALITY_LIGHT_CLASSIC_FRACTION" 0.65);
+                  (getenv_float "VIP_EQUALITY_LIGHT_CLASSIC_FRACTION" 0.65);
                 modern_general_stage
                   "Equality-light modern weight"
                   "weight"
-                  (getenv_float "IP_EQUALITY_LIGHT_WEIGHT_FRACTION" 0.15);
+                  (getenv_float "VIP_EQUALITY_LIGHT_WEIGHT_FRACTION" 0.15);
                 legacy_remaining_stage "Equality-light legacy fallback";
               ]
         | Equality_heavy ->
@@ -2982,7 +3042,7 @@ let rec run_file ?(config = default_config) filename =
         run_general_modern ()
       else
         let aw_ratio =
-          match Sys.getenv_opt "IP_FEQ_PASSIVE_AW_RATIO" with
+          match env_opt "VIP_FEQ_PASSIVE_AW_RATIO" with
           | Some s when String.trim s <> "" -> s
           | _ -> "1:4"
         in
@@ -2994,9 +3054,9 @@ let rec run_file ?(config = default_config) filename =
               ~fraction
               ~env:
                 [
-                  ("IP_PASSIVE_SELECTION", Some selection);
-                  ("IP_PASSIVE_AW_RATIO", Some aw_ratio);
-                  ("IP_FORWARD_SUBSUMPTION_RESOLUTION", Some "1");
+                  ("VIP_PASSIVE_SELECTION", Some selection);
+                  ("VIP_PASSIVE_AW_RATIO", Some aw_ratio);
+                  ("VIP_FORWARD_SUBSUMPTION_RESOLUTION", Some "1");
                 ]
               ()
         in
@@ -3004,8 +3064,8 @@ let rec run_file ?(config = default_config) filename =
           [
             (fun () ->
               let default_legacy_flash =
-                if getenv_bool "IP_DEFINITIONAL_CNF" false
-                   || getenv_bool "IP_AUTO_DEFINITIONAL_CNF" false then
+                if getenv_bool "VIP_DEFINITIONAL_CNF" false
+                   || getenv_bool "VIP_AUTO_DEFINITIONAL_CNF" false then
                   0.0
                 else
                   0.05
@@ -3015,32 +3075,32 @@ let rec run_file ?(config = default_config) filename =
                 ~engine:Legacy_compat
                 ~fraction:
                   (getenv_float
-                     "IP_FEQ_LEGACY_FLASH_FRACTION"
+                     "VIP_FEQ_LEGACY_FLASH_FRACTION"
                      default_legacy_flash)
                 ());
             (fun () ->
               run_profile_stage
                 ~stage_name:"FEQ stable modern"
                 ~engine:Modern_deep
-                ~fraction:(getenv_float "IP_FEQ_STABLE_FRACTION" 0.35)
+                ~fraction:(getenv_float "VIP_FEQ_STABLE_FRACTION" 0.35)
                 ());
             feq_stage
               "FEQ unrestricted classic"
               "classic"
-              (getenv_float "IP_FEQ_CLASSIC_FRACTION" 0.30);
+              (getenv_float "VIP_FEQ_CLASSIC_FRACTION" 0.30);
             feq_stage
               "FEQ unrestricted weight"
               "weight"
-              (getenv_float "IP_FEQ_WEIGHT_FRACTION" 0.15);
+              (getenv_float "VIP_FEQ_WEIGHT_FRACTION" 0.15);
             feq_stage
               "FEQ unrestricted equality"
               "equality"
-              (getenv_float "IP_FEQ_EQUALITY_FRACTION" 0.10);
+              (getenv_float "VIP_FEQ_EQUALITY_FRACTION" 0.10);
           ]
     in
 
     let run_modern_then_legacy () =
-      let modern_fraction = getenv_float "IP_PORTFOLIO_MODERN_FIRST_FRACTION" 0.80 in
+      let modern_fraction = getenv_float "VIP_PORTFOLIO_MODERN_FIRST_FRACTION" 0.80 in
       let modern_budget = fraction_budget modern_fraction in
       let modern_res =
         run_stage
@@ -3080,12 +3140,12 @@ let rec run_file ?(config = default_config) filename =
     in
 
     let ground_sat_prefilter_result =
-      let enabled = getenv_bool "IP_GROUND_SAT_PREFILTER" false in
-      let max_clauses = getenv_int_global "IP_GROUND_SAT_MAX_CLAUSES" 5000 in
+      let enabled = getenv_bool "VIP_GROUND_SAT_PREFILTER" false in
+      let max_clauses = getenv_int_global "VIP_GROUND_SAT_MAX_CLAUSES" 5000 in
       if enabled && clause_count <= max_clauses then
         let clauses = axioms @ support in
         let max_ground_instances =
-          getenv_int_global "IP_GROUND_SAT_MAX_INSTANCES" 300000
+          getenv_int_global "VIP_GROUND_SAT_MAX_INSTANCES" 300000
         in
         match ground_sat_unsat clauses with
         | Some true -> Some (ground_sat_result ())
@@ -3141,7 +3201,7 @@ let rec run_file ?(config = default_config) filename =
               time_limit_s = stage_time total_timeout;
             }
       | Scheduled_portfolio ->
-          if getenv_bool "IP_SCHEDULED_LEGACY_SCHEDULER" false then
+          if getenv_bool "VIP_SCHEDULED_LEGACY_SCHEDULER" false then
             run_scheduled_portfolio ()
           else
             run_experimental_casc ()

@@ -128,24 +128,41 @@ let clause_stats clauses =
     ratio unit_clauses clause_count,
     ratio negative_literals total_literals )
 
+
+let legacy_env_name name =
+  let prefix = "VIP_" in
+  let lp = String.length prefix in
+  if String.length name >= lp && String.sub name 0 lp = prefix then
+    Some ("IP_" ^ String.sub name lp (String.length name - lp))
+  else
+    None
+
+let env_opt name =
+  match Sys.getenv_opt name with
+  | Some _ as v -> v
+  | None ->
+      match legacy_env_name name with
+      | Some legacy -> Sys.getenv_opt legacy
+      | None -> None
+
 let classify ~clause_count ~equality_literals ~equality_ratio ~avg_term =
   let min_eq_literals =
-    match Sys.getenv_opt "IP_PROFILE_EQ_HEAVY_MIN_LITERALS" with
+    match env_opt "VIP_PROFILE_EQ_HEAVY_MIN_LITERALS" with
     | Some s -> (try max 0 (int_of_string s) with Failure _ -> 4)
     | None -> 4
   in
   let min_eq_ratio =
-    match Sys.getenv_opt "IP_PROFILE_EQ_HEAVY_MIN_RATIO" with
+    match env_opt "VIP_PROFILE_EQ_HEAVY_MIN_RATIO" with
     | Some s -> (try float_of_string s with Failure _ -> 0.12)
     | None -> 0.12
   in
   let min_avg_term =
-    match Sys.getenv_opt "IP_PROFILE_EQ_HEAVY_MIN_AVG_TERM" with
+    match env_opt "VIP_PROFILE_EQ_HEAVY_MIN_AVG_TERM" with
     | Some s -> (try float_of_string s with Failure _ -> 3.5)
     | None -> 3.5
   in
   let large_min =
-    match Sys.getenv_opt "IP_PROFILE_LARGE_MIN_CLAUSES" with
+    match env_opt "VIP_PROFILE_LARGE_MIN_CLAUSES" with
     | Some s -> (try max 0 (int_of_string s) with Failure _ -> 500)
     | None -> 500
   in

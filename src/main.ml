@@ -18,7 +18,7 @@ let print_header () =
 
 let print_version () =
   print_header ();
-  Printf.printf "ip version %s (seed n = %d)\n" (version_string ()) version_n
+  Printf.printf "VIP version %s (seed n = %d)\n" (version_string ()) version_n
 
 let command_available cmd =
   Sys.command
@@ -85,7 +85,7 @@ let play_timeout_safely () =
 
 let usage () =
   prerr_endline
-    "Usage: ip [--version] [--duke] [--proof] [--proof-format none|internal|tstp] [--proof-tstp] [--competition-output] [--time-limit SECONDS] [--max-clauses N] [--mode MODE] [--portfolio legacy-modern|modern-legacy|legacy-only|modern-only|modern-compat-only|scheduled|feq-modern|experimental-casc|casc-aggressive|casc-240|casc-150|casc-feq-probe] [--tptp DIR] [--sos|--no-sos] FILE";
+    "Usage: vip [--version] [--duke] [--proof] [--proof-format none|internal|tstp] [--proof-tstp] [--competition-output] [--time-limit SECONDS] [--max-clauses N] [--mode MODE] [--portfolio legacy-modern|modern-legacy|legacy-only|modern-only|modern-compat-only|scheduled|feq-modern|experimental-casc|casc-aggressive|casc-240|casc-150|casc-feq-probe] [--tptp DIR] [--sos|--no-sos] FILE";
   exit 2
 
 type proof_format =

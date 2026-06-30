@@ -5,12 +5,12 @@
 
 (generate_sites_module
  (module sites)
- (sites ip))
+ (sites vip))
 
 (install
- (section (site (ip sounds)))
+ (section (site (vip sounds)))
  (files unsat.mp3 timeout.mp3))
 
 (install
  (section bin)
- (files (main.exe as ip)))
+ (files (main.exe as vip) (main.exe as ip)))

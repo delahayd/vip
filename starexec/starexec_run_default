@@ -9,27 +9,36 @@ fi
 PROBLEM="$1"
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
-if [[ -n "${IP_BINARY:-}" ]]; then
-  IP_BIN="$IP_BINARY"
+if [[ -n "${VIP_BINARY:-}" ]]; then
+  VIP_BIN="$VIP_BINARY"
+elif [[ -n "${IP_BINARY:-}" ]]; then
+  VIP_BIN="$IP_BINARY"
+elif [[ -x "$DIR/vip" ]]; then
+  VIP_BIN="$DIR/vip"
 elif [[ -x "$DIR/ip" ]]; then
-  IP_BIN="$DIR/ip"
+  VIP_BIN="$DIR/ip"
+elif [[ -x "$DIR/../bin/vip" ]]; then
+  VIP_BIN="$DIR/../bin/vip"
 elif [[ -x "$DIR/../bin/ip" ]]; then
-  IP_BIN="$DIR/../bin/ip"
+  VIP_BIN="$DIR/../bin/ip"
+elif [[ -x "$DIR/../_build/install/default/bin/vip" ]]; then
+  VIP_BIN="$DIR/../_build/install/default/bin/vip"
 elif [[ -x "$DIR/../_build/install/default/bin/ip" ]]; then
-  IP_BIN="$DIR/../_build/install/default/bin/ip"
+  VIP_BIN="$DIR/../_build/install/default/bin/ip"
 elif [[ -x "$DIR/../_build/default/src/main.exe" ]]; then
-  IP_BIN="$DIR/../_build/default/src/main.exe"
+  VIP_BIN="$DIR/../_build/default/src/main.exe"
 else
-  echo "Could not find ip executable. Set IP_BINARY or place ip next to this script." >&2
+  echo "Could not find VIP executable. Set VIP_BINARY, or place vip next to this script." >&2
   exit 127
 fi
 
-PORTFOLIO="${IP_PORTFOLIO:-casc-240}"
-TIME_LIMIT="${IP_TIME_LIMIT:-120}"
-MAX_CLAUSES="${IP_MAX_CLAUSES:-75000}"
+PORTFOLIO="${VIP_PORTFOLIO:-${IP_PORTFOLIO:-casc-150}}"
+TIME_LIMIT="${VIP_TIME_LIMIT:-${IP_TIME_LIMIT:-120}}"
+MAX_CLAUSES="${VIP_MAX_CLAUSES:-${IP_MAX_CLAUSES:-75000}}"
 
 ARGS=(
   --competition-output
+  --proof-tstp
   --portfolio "$PORTFOLIO"
   --time-limit "$TIME_LIMIT"
   --max-clauses "$MAX_CLAUSES"
@@ -43,4 +52,4 @@ elif [[ -d "$DIR/../TPTP" ]]; then
   ARGS+=(--tptp "$DIR/../TPTP")
 fi
 
-exec "$IP_BIN" "${ARGS[@]}" "$PROBLEM"
+exec "$VIP_BIN" "${ARGS[@]}" "$PROBLEM"

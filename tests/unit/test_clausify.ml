@@ -54,7 +54,7 @@ let test_one_way_definition () =
   in
   let baseline, _ = Clausify.clauses_of_input_with_report [ input ] in
   let one_way =
-    with_env "IP_ONE_WAY_DEFINITIONS" (Some "1") (fun () ->
+    with_env "VIP_ONE_WAY_DEFINITIONS" (Some "1") (fun () ->
       fst (Clausify.clauses_of_input_with_report [ input ]))
   in
   check int "baseline clauses" 2 (List.length baseline);
@@ -79,7 +79,7 @@ let test_guarded_one_way_definition () =
   in
   let baseline, _ = Clausify.clauses_of_input_with_report [ input ] in
   let one_way =
-    with_env "IP_ONE_WAY_DEFINITIONS" (Some "1") (fun () ->
+    with_env "VIP_ONE_WAY_DEFINITIONS" (Some "1") (fun () ->
       fst (Clausify.clauses_of_input_with_report [ input ]))
   in
   check int "baseline guarded clauses" 2 (List.length baseline);
@@ -117,7 +117,7 @@ let test_dmt_definition_expansion () =
   let baseline, _ = Clausify.clauses_of_input_with_report [ def; use ] in
   let expanded =
     with_envs
-      [ ("IP_DMT_EXPAND_DEFINITIONS", "1"); ("IP_ONE_WAY_DEFINITIONS", "0") ]
+      [ ("VIP_DMT_EXPAND_DEFINITIONS", "1"); ("VIP_ONE_WAY_DEFINITIONS", "0") ]
       (fun () -> fst (Clausify.clauses_of_input_with_report [ def; use ]))
   in
   check int "baseline keeps definition" 3 (List.length baseline);

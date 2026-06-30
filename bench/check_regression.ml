@@ -1,7 +1,7 @@
 type row = {
   problem : string;
   expected : string;
-  ip_status : string;
+  vip_status : string;
 }
 
 type bench = {
@@ -80,7 +80,7 @@ let now_stamp () =
     tm.Unix.tm_min
     tm.Unix.tm_sec
 
-let is_ip_success expected actual =
+let is_vip_success expected actual =
   let expected_unsat =
     match expected with
     | "Theorem" | "Unsatisfiable" | "ContradictoryAxioms" -> true
@@ -116,6 +116,9 @@ let assoc_index name header =
   in
   aux 0 header
 
+let assoc_first_index names header =
+  List.find_map (fun name -> assoc_index name header) names
+
 let nth_opt xs n =
   if n < 0 then None
   else
@@ -148,14 +151,14 @@ let read_bench file =
               let cols = csv_split line in
               let problem_i = assoc_index "problem" h in
               let expected_i = assoc_index "expected_status" h in
-              let ip_i = assoc_index "ip" h in
+              let vip_i = assoc_first_index [ "vip"; "ip" ] h in
               begin
-                match problem_i, expected_i, ip_i with
+                match problem_i, expected_i, vip_i with
                 | Some pi, Some ei, Some ii ->
                     begin
                       match nth_opt cols pi, nth_opt cols ei, nth_opt cols ii with
-                      | Some problem, Some expected, Some ip_status ->
-                          rows := { problem; expected; ip_status } :: !rows
+                      | Some problem, Some expected, Some vip_status ->
+                          rows := { problem; expected; vip_status } :: !rows
                       | _ -> ()
                     end
                 | _ -> ()
@@ -186,7 +189,7 @@ let write_comparison_table oc home rows ~old_class ~new_class =
   Printf.fprintf oc
     "<table><tr>\
      <th>Problème</th><th>Statut attendu</th>\
-     <th>Ancien statut ip</th><th>Nouveau statut ip</th>\
+     <th>Ancien statut VIP</th><th>Nouveau statut VIP</th>\
      </tr>";
 
   List.iter
@@ -196,9 +199,9 @@ let write_comparison_table oc home rows ~old_class ~new_class =
         (problem_link home new_r.problem)
         (html_escape new_r.expected)
         old_class
-        (html_escape old_r.ip_status)
+        (html_escape old_r.vip_status)
         new_class
-        (html_escape new_r.ip_status))
+        (html_escape new_r.vip_status))
     rows;
 
   Printf.fprintf oc "</table>"
@@ -209,7 +212,7 @@ let write_html path config old_b new_b common_count regressions improvements =
 
   Printf.fprintf oc
     "<!doctype html><html><head><meta charset=\"utf-8\"/>\
-     <title>Regression ip</title>\
+     <title>Regression VIP</title>\
      <style>\
      body{font-family:sans-serif;margin:2rem;}\
      table{border-collapse:collapse;width:100%%;margin-bottom:1.5rem;}\
@@ -222,7 +225,7 @@ let write_html path config old_b new_b common_count regressions improvements =
      a:hover{text-decoration:underline;}\
      </style></head><body>";
 
-  Printf.fprintf oc "<h1>Test de régression ip</h1>";
+  Printf.fprintf oc "<h1>Test de régression VIP</h1>";
   Printf.fprintf oc "<p>Date du test : %s</p>" (html_escape test_date);
 
   Printf.fprintf oc
@@ -283,7 +286,7 @@ let write_html path config old_b new_b common_count regressions improvements =
     else begin
       Printf.fprintf oc
         "<h2 class=\"ok\">Nouveaux problèmes prouvés</h2>\
-         <p>%d problème(s) sont maintenant prouvés par la nouvelle version de ip alors qu’ils ne l’étaient pas par l’ancienne.</p>"
+         <p>%d problème(s) sont maintenant prouvés par la nouvelle version de VIP alors qu’ils ne l’étaient pas par l’ancienne.</p>"
         (List.length improvements);
       write_comparison_table oc config.home improvements ~old_class:"fail" ~new_class:"ok"
     end
@@ -345,8 +348,8 @@ let () =
       | None -> ()
       | Some old_r ->
           incr common_count;
-          let old_ok = is_ip_success old_r.expected old_r.ip_status in
-          let new_ok = is_ip_success new_r.expected new_r.ip_status in
+          let old_ok = is_vip_success old_r.expected old_r.vip_status in
+          let new_ok = is_vip_success new_r.expected new_r.vip_status in
           if old_ok && not new_ok then
             regressions := (old_r, new_r) :: !regressions
           else if (not old_ok) && new_ok then

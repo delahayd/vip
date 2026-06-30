@@ -2,7 +2,7 @@
 set -euo pipefail
 
 MAIL="David.Delahaye@lirmm.fr"
-REPO="git@github.com:delahayd/ip.git"
+REPO="${VIP_REPO:-git@github.com:delahayd/ip.git}"
 
 TIME_LIMIT=""
 ROBUST_TIME_LIMIT=0
@@ -36,7 +36,7 @@ Options:
   --tptp <répertoire>
   --mem <mémoire SLURM, ex: 16G>
   --mem-per-cpu <mémoire SLURM par CPU, ex: 16G>
-  --onlyip
+  --onlyvip / --onlyip
   --local
 EOF
   exit 2
@@ -103,7 +103,7 @@ while [[ $# -gt 0 ]]; do
       MEM_PER_CPU="$2"
       shift 2
       ;;
-    --onlyip)
+    --onlyvip|--onlyip)
       ONLYIP=1
       shift
       ;;
@@ -164,24 +164,27 @@ if [[ -z "$TPTP_DIR" && -n "$DIR" ]]; then
   fi
 fi
 
-LOCAL_IP_DIR=""
+LOCAL_VIP_DIR=""
 if [[ "$LOCAL" -eq 1 ]]; then
-  if [[ ! -d "ip" ]]; then
-    echo "[ERROR] --local selected, but local directory './ip' was not found." >&2
+  if [[ -d "vip" ]]; then
+    LOCAL_VIP_DIR="$(realpath vip)"
+  elif [[ -d "ip" ]]; then
+    LOCAL_VIP_DIR="$(realpath ip)"
+  else
+    echo "[ERROR] --local selected, but neither ./vip nor ./ip was found." >&2
     exit 1
   fi
-  LOCAL_IP_DIR="$(realpath ip)"
 fi
 
 STAMP="$(date +%Y%m%d_%H%M%S)"
-WORKDIR="${TMPDIR:-$PWD}/ip_bench_${STAMP}"
+WORKDIR="${TMPDIR:-$PWD}/vip_bench_${STAMP}"
 SLURM_SCRIPT="bench_meso_${STAMP}.slurm"
 
 cat > "$SLURM_SCRIPT" <<EOF
 #!/usr/bin/env bash
-#SBATCH --job-name=ip-bench
-#SBATCH --output=ip-bench-%j.out
-#SBATCH --error=ip-bench-%j.err
+#SBATCH --job-name=vip-bench
+#SBATCH --output=vip-bench-%j.out
+#SBATCH --error=vip-bench-%j.err
 #SBATCH --mail-user=$MAIL
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
@@ -204,22 +207,22 @@ EOF
 
 if [[ "$LOCAL" -eq 1 ]]; then
   cat >> "$SLURM_SCRIPT" <<EOF
-echo "[INFO] Using local ip repository: $LOCAL_IP_DIR"
-ln -s "$LOCAL_IP_DIR" ip
-cd ip
+echo "[INFO] Using local VIP repository: $LOCAL_VIP_DIR"
+ln -s "$LOCAL_VIP_DIR" vip
+cd vip
 
 EOF
 else
   cat >> "$SLURM_SCRIPT" <<EOF
 echo "[INFO] Cloning repository..."
-git clone "$REPO"
-cd ip
+git clone "$REPO" vip
+cd vip
 
 EOF
 fi
 
 cat >> "$SLURM_SCRIPT" <<EOF
-echo "[INFO] Building ip..."
+echo "[INFO] Building VIP..."
 make
 
 EOF

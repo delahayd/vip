@@ -11,7 +11,9 @@ MAX_CLAUSES ?=
 CASC ?=
 BENCH_LOGS=bench/logs
 MESO=nokranii@io-login.meso.umontpellier.fr
-MESO_BENCH_LOGS=benchs-ip/logs
+MESO_BENCH_LOGS=benchs-vip/logs
+LOCAL_PROJECT_DIR ?= ip
+REMOTE_PROJECT_DIR ?= vip
 
 PROVER = dune exec -- src/main.exe
 BENCH = dune exec -- bench/run_bench.exe
@@ -54,7 +56,7 @@ test:
 
 .PHONY: bench
 bench:
-	$(BENCH) --onlyip --dir $(DIR) $(call build_args)
+	$(BENCH) --onlyvip --dir $(DIR) $(call build_args)
 
 .PHONY: benchs
 benchs:
@@ -66,7 +68,7 @@ bench-regression:
 
 .PHONY: bench-casc
 bench-casc:
-	$(BENCH) --onlyip --dir $(DIR) --casc $(CASC) $(call build_args)
+	$(BENCH) --onlyvip --dir $(DIR) --casc $(CASC) $(call build_args)
 
 .PHONY: benchs-casc
 benchs-casc:
@@ -79,13 +81,13 @@ fetch-logs:
 .PHONY: copy-local
 copy-local:
 	cd .. ; \
-	tar --exclude='ip/.git' \
-	--exclude='ip/_build' \
-	--exclude='ip/_opam' \
-	--exclude='ip/_opam' \
-	--exclude='ip/bench/problems' \
-	-cf - ip \
-	| ssh $(MESO) "cd benchs-ip ; tar -xf -"
+	tar --exclude='$(LOCAL_PROJECT_DIR)/.git' \
+	--exclude='$(LOCAL_PROJECT_DIR)/_build' \
+	--exclude='$(LOCAL_PROJECT_DIR)/_opam' \
+	--exclude='$(LOCAL_PROJECT_DIR)/_opam' \
+	--exclude='$(LOCAL_PROJECT_DIR)/bench/problems' \
+	-cf - $(LOCAL_PROJECT_DIR) \
+	| ssh $(MESO) 'cd benchs-vip ; tar -xf - ; if [ "$(LOCAL_PROJECT_DIR)" != "$(REMOTE_PROJECT_DIR)" ]; then rm -rf "$(REMOTE_PROJECT_DIR)" && mv "$(LOCAL_PROJECT_DIR)" "$(REMOTE_PROJECT_DIR)"; fi'
 
 .PHONY: clean
 clean:

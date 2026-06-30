@@ -107,6 +107,22 @@ let option_exists f = function
   | Some x -> f x
   | None -> false
 
+let legacy_env_name name =
+  let prefix = "VIP_" in
+  let lp = String.length prefix in
+  if String.length name >= lp && String.sub name 0 lp = prefix then
+    Some ("IP_" ^ String.sub name lp (String.length name - lp))
+  else
+    None
+
+let env_opt name =
+  match Sys.getenv_opt name with
+  | Some _ as v -> v
+  | None ->
+      match legacy_env_name name with
+      | Some legacy -> Sys.getenv_opt legacy
+      | None -> None
+
 let unique_ids ids =
   let seen = Hashtbl.create (List.length ids + 1) in
   List.filter
@@ -290,7 +306,7 @@ let selected_or_maximal_indices ~emulate_v1 c =
   let literal_selection =
     if emulate_v1 then "legacy"
     else
-      match Sys.getenv_opt "IP_LITERAL_SELECTION" with
+      match env_opt "VIP_LITERAL_SELECTION" with
       | Some s when String.trim s <> "" -> String.lowercase_ascii (String.trim s)
       | Some _ | None -> "first-negative"
   in
@@ -547,11 +563,11 @@ let resolve_two_clauses ~check_timeout ~emulate_v1 ~mode c1 c2 =
   let c2_renamed = rename_clause_apart c2 in
   let results = ref [] in
   let legacy_resolution_literals =
-    match Sys.getenv_opt "IP_RESOLUTION_LITERAL_SELECTION" with
+    match env_opt "VIP_RESOLUTION_LITERAL_SELECTION" with
     | Some s -> String.equal (String.lowercase_ascii (String.trim s)) "legacy"
     | None ->
         begin
-          match Sys.getenv_opt "IP_LEGACY_RESOLUTION_LITERALS" with
+          match env_opt "VIP_LEGACY_RESOLUTION_LITERALS" with
           | Some "1" | Some "true" | Some "TRUE" | Some "yes" | Some "YES" -> true
           | _ -> false
         end
@@ -909,7 +925,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let simpl_fv_index = Feature_vector.create () in
 
   let indexed_demodulation_enabled =
-    match Sys.getenv_opt "IP_INDEXED_DEMODULATION" with
+    match env_opt "VIP_INDEXED_DEMODULATION" with
     | Some s ->
         begin
           match String.lowercase_ascii (String.trim s) with
@@ -1082,20 +1098,20 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   in
 
   let getenv_bool name default =
-    match Sys.getenv_opt name with
+    match env_opt name with
     | None | Some "" -> default
     | Some "0" | Some "false" | Some "False" | Some "no" | Some "NO" -> false
     | Some _ -> true
   in
 
   let getenv_int name default =
-    match Sys.getenv_opt name with
+    match env_opt name with
     | None -> default
     | Some s -> (try max 0 (int_of_string s) with Failure _ -> default)
   in
 
   let parse_aw_ratio name default_age default_weight =
-    match Sys.getenv_opt name with
+    match env_opt name with
     | None | Some "" -> (default_age, default_weight)
     | Some s ->
         begin
@@ -1117,11 +1133,11 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let initial_clause_count = List.length axioms + List.length support in
 
   let passive_selection =
-    match Sys.getenv_opt "IP_PASSIVE_SELECTION" with
+    match env_opt "VIP_PASSIVE_SELECTION" with
     | Some s when String.trim s <> "" -> String.lowercase_ascii (String.trim s)
     | Some _ | None ->
-        let syn_min = getenv_int "IP_PASSIVE_SYN_MIN_CLAUSES" 40 in
-        let syn_max = getenv_int "IP_PASSIVE_SYN_MAX_CLAUSES" 55 in
+        let syn_min = getenv_int "VIP_PASSIVE_SYN_MIN_CLAUSES" 40 in
+        let syn_max = getenv_int "VIP_PASSIVE_SYN_MAX_CLAUSES" 55 in
         if (not emulate_v1) && expensive_simplifications
            && initial_clause_count >= syn_min && initial_clause_count <= syn_max then
           "syn"
@@ -1138,85 +1154,85 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   in
   let passive_age_ratio, passive_weight_ratio =
     if expensive_simplifications then
-      parse_aw_ratio "IP_PASSIVE_AW_RATIO" 1 default_passive_weight_ratio
+      parse_aw_ratio "VIP_PASSIVE_AW_RATIO" 1 default_passive_weight_ratio
     else
-      parse_aw_ratio "IP_PASSIVE_AW_RATIO" 1 default_passive_weight_ratio
+      parse_aw_ratio "VIP_PASSIVE_AW_RATIO" 1 default_passive_weight_ratio
   in
   let passive_age_ratio = if passive_age_ratio = 0 && passive_weight_ratio = 0 then 1 else passive_age_ratio in
   let passive_weight_ratio = if passive_age_ratio = 0 && passive_weight_ratio = 0 then 1 else passive_weight_ratio in
   let passive_balance = ref 0 in
 
   let avatar_enabled =
-    (not emulate_v1) && expensive_simplifications && getenv_bool "IP_AVATAR_SPLITTING" false
+    (not emulate_v1) && expensive_simplifications && getenv_bool "VIP_AVATAR_SPLITTING" false
   in
-  let avatar_keep_original = getenv_bool "IP_AVATAR_KEEP_ORIGINAL" true in
-  let avatar_ground_only = getenv_bool "IP_AVATAR_GROUND_ONLY" true in
-  let avatar_split_on_given = getenv_bool "IP_AVATAR_SPLIT_ON_GIVEN" false in
+  let avatar_keep_original = getenv_bool "VIP_AVATAR_KEEP_ORIGINAL" true in
+  let avatar_ground_only = getenv_bool "VIP_AVATAR_GROUND_ONLY" true in
+  let avatar_split_on_given = getenv_bool "VIP_AVATAR_SPLIT_ON_GIVEN" false in
   (* Split only larger clauses by default; small splits slowed down easy SYN proofs. *)
-  let avatar_min_split_literals = getenv_int "IP_AVATAR_MIN_SPLIT" 6 in
+  let avatar_min_split_literals = getenv_int "VIP_AVATAR_MIN_SPLIT" 6 in
   (* Keep AVATAR deliberately tiny by default: larger budgets delay easy SYN proofs. *)
-  let avatar_max_split_vars = getenv_int "IP_AVATAR_MAX_SPLIT_VARS" 4 in
+  let avatar_max_split_vars = getenv_int "VIP_AVATAR_MAX_SPLIT_VARS" 4 in
   let avatar_max_split_vars_per_clause =
     let default_per_clause = max 2 (avatar_max_split_vars / 2) in
-    getenv_int "IP_AVATAR_MAX_SPLIT_VARS_PER_CLAUSE" default_per_clause
+    getenv_int "VIP_AVATAR_MAX_SPLIT_VARS_PER_CLAUSE" default_per_clause
   in
-  let avatar_max_component_percent = getenv_int "IP_AVATAR_MAX_COMPONENT_PERCENT" 80 in
+  let avatar_max_component_percent = getenv_int "VIP_AVATAR_MAX_COMPONENT_PERCENT" 80 in
   (* Context clauses are useful, but they should not starve the classical path. *)
-  let avatar_context_penalty = getenv_int "IP_AVATAR_CONTEXT_PENALTY" 64 in
+  let avatar_context_penalty = getenv_int "VIP_AVATAR_CONTEXT_PENALTY" 64 in
   let avatar_model_false_first =
-    getenv_bool "IP_AVATAR_MODEL_FALSE_FIRST" true
+    getenv_bool "VIP_AVATAR_MODEL_FALSE_FIRST" true
   in
   let fast_condensation_enabled =
-    (not emulate_v1) && expensive_simplifications && getenv_bool "IP_FAST_CONDENSATION" true
+    (not emulate_v1) && expensive_simplifications && getenv_bool "VIP_FAST_CONDENSATION" true
   in
   let full_condensation_max_input_clauses =
-    getenv_int "IP_FULL_CONDENSATION_MAX_INPUT_CLAUSES" 32
+    getenv_int "VIP_FULL_CONDENSATION_MAX_INPUT_CLAUSES" 32
   in
   let full_condensation_enabled =
     (not emulate_v1)
     && expensive_simplifications
-    && getenv_bool "IP_FULL_CONDENSATION" false
+    && getenv_bool "VIP_FULL_CONDENSATION" false
     && initial_clause_count <= full_condensation_max_input_clauses
   in
   let contextual_literal_cutting_enabled =
-    (not emulate_v1) && expensive_simplifications && getenv_bool "IP_CONTEXTUAL_LITERAL_CUTTING" false
+    (not emulate_v1) && expensive_simplifications && getenv_bool "VIP_CONTEXTUAL_LITERAL_CUTTING" false
   in
   let forward_subsumption_resolution_enabled =
-    (not emulate_v1) && expensive_simplifications && getenv_bool "IP_FORWARD_SUBSUMPTION_RESOLUTION" true
+    (not emulate_v1) && expensive_simplifications && getenv_bool "VIP_FORWARD_SUBSUMPTION_RESOLUTION" true
   in
   let simplification_set_index_enabled =
     (not emulate_v1)
     && expensive_simplifications
-    && getenv_bool "IP_SIMPLIFICATION_SET_INDEX" false
+    && getenv_bool "VIP_SIMPLIFICATION_SET_INDEX" false
   in
   let simplification_set_max_clause_len =
-    getenv_int "IP_SIMPLIFICATION_SET_MAX_CLAUSE_LEN" 8
+    getenv_int "VIP_SIMPLIFICATION_SET_MAX_CLAUSE_LEN" 8
   in
   let simplification_set_unit_only =
-    getenv_bool "IP_SIMPLIFICATION_SET_UNIT_ONLY" true
+    getenv_bool "VIP_SIMPLIFICATION_SET_UNIT_ONLY" true
   in
   let simplification_set_negative_max_len =
-    getenv_int "IP_SIMPLIFICATION_SET_NEGATIVE_MAX_LEN" 3
+    getenv_int "VIP_SIMPLIFICATION_SET_NEGATIVE_MAX_LEN" 3
   in
   let simplification_set_goal_max_len =
-    getenv_int "IP_SIMPLIFICATION_SET_GOAL_MAX_LEN" 5
+    getenv_int "VIP_SIMPLIFICATION_SET_GOAL_MAX_LEN" 5
   in
   let simplification_set_equality_unit =
-    getenv_bool "IP_SIMPLIFICATION_SET_EQUALITY_UNIT" false
+    getenv_bool "VIP_SIMPLIFICATION_SET_EQUALITY_UNIT" false
   in
   let backward_passive_demodulation_enabled =
     (not emulate_v1)
     && expensive_simplifications
-    && getenv_bool "IP_BACKWARD_PASSIVE_DEMODULATION" true
+    && getenv_bool "VIP_BACKWARD_PASSIVE_DEMODULATION" true
   in
   let backward_passive_demodulation_limit =
-    getenv_int "IP_BACKWARD_PASSIVE_DEMODULATION_LIMIT" 256
+    getenv_int "VIP_BACKWARD_PASSIVE_DEMODULATION_LIMIT" 256
   in
   let legacy_candidate_pool =
-    (not emulate_v1) && getenv_bool "IP_LEGACY_CANDIDATE_POOL" false
+    (not emulate_v1) && getenv_bool "VIP_LEGACY_CANDIDATE_POOL" false
   in
   let legacy_subsumption =
-    (not emulate_v1) && getenv_bool "IP_LEGACY_SUBSUMPTION" false
+    (not emulate_v1) && getenv_bool "VIP_LEGACY_SUBSUMPTION" false
   in
   let simplify_clause_modern c =
     if full_condensation_enabled then full_condense_clause c
@@ -1749,12 +1765,12 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
         let overlap = symbol_overlap_count c in
         let negative_bonus = if clause_has_negative c then 18 else 0 in
         let unit_bonus = if len = 1 then 45 else 0 in
-        let goal_bonus = overlap * getenv_int "IP_PASSIVE_GOAL_SYMBOL_BONUS" 35 in
+        let goal_bonus = overlap * getenv_int "VIP_PASSIVE_GOAL_SYMBOL_BONUS" 35 in
         (len * 70) + e.weight + (vars * 10) - goal_bonus - negative_bonus
         - unit_bonus - age_relief
     | "goal-short" ->
         let overlap = symbol_overlap_count c in
-        let goal_bonus = overlap * getenv_int "IP_PASSIVE_GOAL_SYMBOL_BONUS" 35 in
+        let goal_bonus = overlap * getenv_int "VIP_PASSIVE_GOAL_SYMBOL_BONUS" 35 in
         (len * 95) + e.weight + (vars * 10) - goal_bonus - age_relief
     | "equality" ->
         let eqs = equality_literal_count c in
@@ -1789,7 +1805,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   in
 
   let layered_schedule =
-    match Sys.getenv_opt "IP_LAYERED_SELECTION" with
+    match env_opt "VIP_LAYERED_SELECTION" with
     | Some s when String.trim s <> "" -> split_commas s
     | Some _ | None ->
         [ "unit"; "equality"; "goal"; "short"; "age"; "weight" ]
@@ -1808,7 +1824,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
           List.length c = 1 && clause_has_equality c
       | "equality" | "eq" -> clause_has_equality c
       | "goal" | "support" -> symbol_overlap_count c > 0
-      | "short" -> List.length c <= getenv_int "IP_LAYERED_SHORT_MAX_LEN" 2
+      | "short" -> List.length c <= getenv_int "VIP_LAYERED_SHORT_MAX_LEN" 2
       | "negative" | "neg" -> clause_has_negative c
       | "age" | "weight" | "all" | "any" -> true
       | _ -> true
@@ -2404,9 +2420,9 @@ let tptp_rule_name rule =
 
 let tptp_clause_name id =
   if id < 0 then
-    Printf.sprintf "ip_m%d" (-id)
+    Printf.sprintf "vip_m%d" (-id)
   else
-    Printf.sprintf "ip_%d" id
+    Printf.sprintf "vip_%d" id
 
 let tstp_derivation ?problem ?(prelude = "") ?(skip_initial = false) deriveds =
   let b = Buffer.create 4096 in
