@@ -182,9 +182,6 @@ let proof_source_reference ~fallback = function
   | "" -> "unknown"
   | name -> tptp_name name
 
-let gdv_can_match_source_name name =
-  not (tptp_needs_quotes name)
-
 let proof_clause_name id =
   if id < 0 then
     Printf.sprintf "vip_m%d" (-id)
@@ -195,22 +192,6 @@ let clause_key clause =
   clause
   |> Clause.normalize_clause
   |> Pretty.string_of_clause
-
-let rec term_has_skolem = function
-  | Types.Var _ -> false
-  | Types.Fun (f, args) ->
-      String.length f >= 2
-      && String.sub f 0 2 = "sk"
-      || List.exists term_has_skolem args
-
-let atom_has_skolem (a : Types.atom) =
-  List.exists term_has_skolem a.args
-
-let literal_has_skolem = function
-  | Types.Pos a | Types.Neg a -> atom_has_skolem a
-
-let clause_has_skolem clause =
-  List.exists literal_has_skolem clause
 
 let proof_slice_to_root (root : Resolution.derived) derivation =
   let by_id = Hashtbl.create (List.length derivation + 1) in
@@ -247,16 +228,6 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
       let key = clause_key origin.Clausify.clause in
       if not (Hashtbl.mem origins_by_clause key) then
         Hashtbl.add origins_by_clause key origin)
-    trace.origins;
-  let origin_count_by_input = Hashtbl.create 97 in
-  List.iter
-    (fun origin ->
-      let n =
-        match Hashtbl.find_opt origin_count_by_input origin.Clausify.input_index with
-        | Some n -> n
-        | None -> 0
-      in
-      Hashtbl.replace origin_count_by_input origin.input_index (n + 1))
     trace.origins;
   let find_condensed_origin clause =
     let clause = Clause.normalize_clause clause in
@@ -332,55 +303,33 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
               clause
               source_name
         | Some origin ->
-            let source_is_single_clause =
-              match Hashtbl.find_opt origin_count_by_input origin.input_index with
-              | Some 1 -> gdv_can_match_source_name origin.input_name
-              | Some _ | None -> false
+            print_source origin;
+            let source_name =
+              proof_source_name ~fallback:origin.input_index origin.input_name
             in
-            if role_requires_negation origin.input_role
-               || source_is_single_clause
-               || clause_has_skolem d.clause_d then begin
-              print_source origin;
-              let source_name =
-                proof_source_name ~fallback:origin.input_index origin.input_name
-              in
-              let role =
-                if role_requires_negation origin.input_role then
-                  "negated_conjecture"
-                else
-                  "plain"
-              in
-              let status =
-                if role_requires_negation origin.input_role then "cth" else "esa"
-              in
-              let status =
-                if origin.Clausify.transformation_status <> "" then
-                  origin.transformation_status
-                else
-                  status
-              in
-              Printf.bprintf
-                b
-                "cnf(%s,%s,(%s),inference(cnf_transformation,[status(%s)],[%s])).\n"
-                (proof_clause_name d.id)
-                role
-                clause
+            let role =
+              if role_requires_negation origin.input_role then
+                "negated_conjecture"
+              else
+                "plain"
+            in
+            let status =
+              if role_requires_negation origin.input_role then "cth" else "esa"
+            in
+            let status =
+              if origin.Clausify.transformation_status <> "" then
+                origin.transformation_status
+              else
                 status
-                source_name
-            end else begin
-              let role =
-                if role_requires_negation origin.input_role then
-                  "negated_conjecture"
-                else
-                  "plain"
-              in
-              Printf.bprintf
-                b
-                "cnf(%s,%s,(%s)).\n"
-                (proof_clause_name d.id)
-                role
-                clause
-            end
+            in
+            Printf.bprintf
+              b
+              "cnf(%s,%s,(%s),inference(cnf_transformation,[status(%s)],[%s])).\n"
+              (proof_clause_name d.id)
+              role
+              clause
+              status
+              source_name
         | None ->
             begin
               match find_condensed_origin d.clause_d with

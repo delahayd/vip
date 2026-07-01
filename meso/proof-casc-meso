@@ -1,0 +1,258 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MAIL="${VIP_MAIL:-David.Delahaye@lirmm.fr}"
+
+DIR=""
+TPTP_DIR=""
+OUT_DIR=""
+TIME_LIMIT="60"
+WALL_TIMEOUT=""
+MAX_CLAUSES="75000"
+PORTFOLIO="casc-150"
+MEM="64G"
+MEM_PER_CPU=""
+SLURM_TIME="12:00:00"
+PARTITION="cpu-dedicated"
+LOCAL=0
+LIMIT=""
+
+usage() {
+  cat <<EOF
+Usage: proof-casc-meso [options]
+
+Generate TSTP proof outputs for a CASC/FOF problem directory through SLURM.
+
+Options:
+  --dir <répertoire>          Problem directory. Default: ~/benchs-ip/casc/FOF
+  --tptp <répertoire>         TPTP/include root. Default: parent auto-detection near --dir
+  --out <répertoire>          Output directory. Default: ~/benchs-ip/proof_casc_full_<date>
+  --time-limit <secondes>     VIP internal time limit per problem. Default: 60
+  --wall-timeout <secondes>   External timeout per problem. Default: time-limit + 30
+  --max-clauses <nombre>      VIP max clauses. Default: 75000
+  --portfolio <nom>           VIP portfolio. Default: casc-150
+  --mem <mémoire SLURM>       SLURM memory, e.g. 64G. Default: 64G
+  --mem-per-cpu <mémoire>     SLURM memory per CPU. Mutually exclusive with --mem
+  --slurm-time <HH:MM:SS>     SLURM job wall time. Default: 12:00:00
+  --partition <nom>           SLURM partition. Default: cpu-dedicated
+  --limit <n>                 Only process the first n problems, for smoke tests
+  --local                     Use local ./vip or ./ip repository, rather than cloning
+  -h, --help                  Show this help
+
+Example:
+  cd ~/benchs-ip && ./ip/meso/proof-casc-meso --local --dir ~/benchs-ip/casc/FOF \\
+    --tptp ~/benchs-ip/casc --time-limit 60 --portfolio casc-150 --max-clauses 75000 --mem 64G
+EOF
+  exit 2
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dir)
+      [[ $# -ge 2 ]] || usage
+      DIR="$2"
+      shift 2
+      ;;
+    --tptp)
+      [[ $# -ge 2 ]] || usage
+      TPTP_DIR="$2"
+      shift 2
+      ;;
+    --out)
+      [[ $# -ge 2 ]] || usage
+      OUT_DIR="$2"
+      shift 2
+      ;;
+    --time-limit)
+      [[ $# -ge 2 ]] || usage
+      TIME_LIMIT="$2"
+      shift 2
+      ;;
+    --wall-timeout)
+      [[ $# -ge 2 ]] || usage
+      WALL_TIMEOUT="$2"
+      shift 2
+      ;;
+    --max-clauses)
+      [[ $# -ge 2 ]] || usage
+      MAX_CLAUSES="$2"
+      shift 2
+      ;;
+    --portfolio)
+      [[ $# -ge 2 ]] || usage
+      PORTFOLIO="$2"
+      shift 2
+      ;;
+    --mem)
+      [[ $# -ge 2 ]] || usage
+      MEM="$2"
+      shift 2
+      ;;
+    --mem-per-cpu)
+      [[ $# -ge 2 ]] || usage
+      MEM_PER_CPU="$2"
+      MEM=""
+      shift 2
+      ;;
+    --slurm-time)
+      [[ $# -ge 2 ]] || usage
+      SLURM_TIME="$2"
+      shift 2
+      ;;
+    --partition)
+      [[ $# -ge 2 ]] || usage
+      PARTITION="$2"
+      shift 2
+      ;;
+    --limit)
+      [[ $# -ge 2 ]] || usage
+      LIMIT="$2"
+      shift 2
+      ;;
+    --local)
+      LOCAL=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage
+      ;;
+  esac
+done
+
+if [[ -n "$MEM" && -n "$MEM_PER_CPU" ]]; then
+  echo "[ERROR] Use either --mem or --mem-per-cpu, not both." >&2
+  exit 1
+fi
+
+DIR="${DIR:-$HOME/benchs-ip/casc/FOF}"
+DIR="$(realpath "$DIR")"
+
+if [[ -z "$TPTP_DIR" ]]; then
+  DIR_PARENT="$(dirname "$DIR")"
+  DIR_GRANDPARENT="$(dirname "$DIR_PARENT")"
+  for candidate in "$DIR" "$DIR_PARENT" "$DIR_GRANDPARENT"; do
+    if [[ -d "$candidate/Axioms" ]]; then
+      TPTP_DIR="$candidate"
+      break
+    fi
+  done
+fi
+
+if [[ -z "$TPTP_DIR" ]]; then
+  echo "[ERROR] No --tptp provided and no Axioms directory found near --dir $DIR" >&2
+  exit 1
+fi
+TPTP_DIR="$(realpath "$TPTP_DIR")"
+
+if [[ -z "$WALL_TIMEOUT" ]]; then
+  WALL_TIMEOUT=$((TIME_LIMIT + 30))
+fi
+
+STAMP="$(date +%Y%m%d_%H%M%S)"
+OUT_DIR="${OUT_DIR:-$HOME/benchs-ip/proof_casc_full_$STAMP}"
+OUT_DIR="$(mkdir -p "$OUT_DIR" && realpath "$OUT_DIR")"
+SLURM_SCRIPT="proof_casc_${STAMP}.slurm"
+
+LOCAL_VIP_DIR=""
+if [[ "$LOCAL" -eq 1 ]]; then
+  if [[ -d "vip" ]]; then
+    LOCAL_VIP_DIR="$(realpath vip)"
+  elif [[ -d "ip" ]]; then
+    LOCAL_VIP_DIR="$(realpath ip)"
+  else
+    echo "[ERROR] --local selected, but neither ./vip nor ./ip was found." >&2
+    exit 1
+  fi
+fi
+
+cat > "$SLURM_SCRIPT" <<EOF
+#!/usr/bin/env bash
+#SBATCH --job-name=vip-proof-casc
+#SBATCH --partition=$PARTITION
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --time=$SLURM_TIME
+#SBATCH --output=$HOME/benchs-ip/proof-casc-%j.out
+#SBATCH --error=$HOME/benchs-ip/proof-casc-%j.err
+#SBATCH --mail-user=$MAIL
+#SBATCH --mail-type=END,FAIL
+$(if [[ -n "$MEM" ]]; then printf '#SBATCH --mem=%s\n' "$MEM"; fi)$(if [[ -n "$MEM_PER_CPU" ]]; then printf '#SBATCH --mem-per-cpu=%s\n' "$MEM_PER_CPU"; fi)
+
+module load bioinfo-cirad
+module load opam/2.1.2
+export OPAMROOT=~/scratch_nokranii/.opam
+eval \$(opam env)
+
+set -euo pipefail
+
+REPO_DIR="$LOCAL_VIP_DIR"
+OUT="$OUT_DIR"
+PROBLEM_DIR="$DIR"
+TPTP_DIR="$TPTP_DIR"
+TIME_LIMIT="$TIME_LIMIT"
+WALL_TIMEOUT="$WALL_TIMEOUT"
+MAX_CLAUSES="$MAX_CLAUSES"
+PORTFOLIO="$PORTFOLIO"
+LIMIT="$LIMIT"
+
+if [[ -z "\$REPO_DIR" ]]; then
+  REPO_DIR="$PWD/ip"
+fi
+
+cd "\$REPO_DIR"
+git pull || true
+dune build @all
+
+mkdir -p "\$OUT"
+find "\$PROBLEM_DIR" -type f -name '*.p' | sort > "\$OUT/problems.txt"
+if [[ -n "\$LIMIT" ]]; then
+  head -n "\$LIMIT" "\$OUT/problems.txt" > "\$OUT/problems.limited.txt"
+  mv "\$OUT/problems.limited.txt" "\$OUT/problems.txt"
+fi
+
+echo "[INFO] repository: \$REPO_DIR"
+echo "[INFO] problem dir: \$PROBLEM_DIR"
+echo "[INFO] tptp: \$TPTP_DIR"
+echo "[INFO] output dir: \$OUT"
+echo "[INFO] time-limit: \$TIME_LIMIT"
+echo "[INFO] wall-timeout: \$WALL_TIMEOUT"
+echo "[INFO] max-clauses: \$MAX_CLAUSES"
+echo "[INFO] portfolio: \$PORTFOLIO"
+echo "[INFO] problems: \$(wc -l < "\$OUT/problems.txt")"
+
+while read -r PROB; do
+  REL="\${PROB#\$PROBLEM_DIR/}"
+  BASE="\$(printf '%s' "\$REL" | sed 's#/#_#g; s#\\.p\$##')"
+  echo "==== \$REL"
+  timeout "\$WALL_TIMEOUT" ./_build/default/src/main.exe \\
+    --competition-output \\
+    --proof-tstp \\
+    --portfolio "\$PORTFOLIO" \\
+    --time-limit "\$TIME_LIMIT" \\
+    --max-clauses "\$MAX_CLAUSES" \\
+    --tptp "\$TPTP_DIR" \\
+    "\$PROB" \\
+    > "\$OUT/\$BASE.out" \\
+    2> "\$OUT/\$BASE.err" || true
+done < "\$OUT/problems.txt"
+
+echo "[INFO] proof generation finished"
+echo -n "[INFO] outputs="
+find "\$OUT" -maxdepth 1 -name '*.out' | wc -l
+echo -n "[INFO] proofs="
+grep -l '^% SZS output start' "\$OUT"/*.out 2>/dev/null | wc -l
+echo -n "[INFO] nonempty errors="
+find "\$OUT" -maxdepth 1 -name '*.err' -size +0c | wc -l
+EOF
+
+JOB_ID="$(sbatch "$SLURM_SCRIPT" | awk '{print $NF}')"
+
+echo "Submitted SLURM job: $JOB_ID"
+echo "SLURM script: $SLURM_SCRIPT"
+echo "Problem dir: $DIR"
+echo "TPTP dir: $TPTP_DIR"
+echo "Output dir: $OUT_DIR"
