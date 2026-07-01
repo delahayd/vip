@@ -47,23 +47,75 @@ let with_timeout_poll check_timeout f =
 let fresh_counter = ref 0
 let skolem_counter = ref 0
 let def_counter = ref 0
+let reserved_function_symbols = ref Types.StringSet.empty
 
 let reset_fresh_state () =
   fresh_counter := 0;
   skolem_counter := 0;
-  def_counter := 0
+  def_counter := 0;
+  reserved_function_symbols := Types.StringSet.empty
 
 let fresh_var base =
   incr fresh_counter;
   base ^ "_u" ^ string_of_int !fresh_counter
 
 let fresh_skolem_name () =
-  incr skolem_counter;
-  "sk" ^ string_of_int !skolem_counter
+  let rec loop () =
+    incr skolem_counter;
+    let name = "sk" ^ string_of_int !skolem_counter in
+    if Types.StringSet.mem name !reserved_function_symbols then
+      loop ()
+    else begin
+      reserved_function_symbols :=
+        Types.StringSet.add name !reserved_function_symbols;
+      name
+    end
+  in
+  loop ()
 
 let fresh_def_name () =
   incr def_counter;
   "vip_def_" ^ string_of_int !def_counter
+
+let rec reserve_function_symbols_term = function
+  | Var _ -> ()
+  | Fun (f, args) ->
+      reserved_function_symbols :=
+        Types.StringSet.add f !reserved_function_symbols;
+      List.iter reserve_function_symbols_term args
+
+let reserve_function_symbols_atom a =
+  List.iter reserve_function_symbols_term a.args
+
+let rec reserve_function_symbols_formula = function
+  | FTrue | FFalse -> ()
+  | Atom a -> reserve_function_symbols_atom a
+  | Not f -> reserve_function_symbols_formula f
+  | And (a, b)
+  | Or (a, b)
+  | Imp (a, b)
+  | RevImp (a, b)
+  | Iff (a, b)
+  | Xor (a, b) ->
+      reserve_function_symbols_formula a;
+      reserve_function_symbols_formula b
+  | Forall (_, f)
+  | Exists (_, f) ->
+      reserve_function_symbols_formula f
+
+let reserve_function_symbols_clause clause =
+  List.iter
+    (function
+      | Pos a | Neg a -> reserve_function_symbols_atom a)
+    clause
+
+let reserve_function_symbols_input = function
+  | Input_fof { formula; _ } -> reserve_function_symbols_formula formula
+  | Input_cnf { clause; _ } -> reserve_function_symbols_clause clause
+  | Input_include _ -> ()
+
+let reserve_function_symbols_inputs inputs =
+  List.iter reserve_function_symbols_input inputs
 
 let rec elim_imp f =
   poll_timeout ();
@@ -633,6 +685,7 @@ let estimated_cnf_clause_count ~limit f =
 
 let clausify_formula ?(check_timeout = fun () -> ()) f =
   with_timeout_poll check_timeout (fun () ->
+      reserve_function_symbols_formula f;
       let prepared =
         f
         |> elim_imp
@@ -668,6 +721,7 @@ let is_support_role role =
 let clauses_of_input_with_report ?(check_timeout = fun () -> ()) inputs =
   with_timeout_poll check_timeout (fun () ->
   let inputs = dmt_expand_inputs inputs in
+  reserve_function_symbols_inputs inputs;
   let rec aux acc produced = function
     | [] ->
         (List.rev acc, { input_count = List.length inputs; produced_clause_count = produced })
@@ -704,6 +758,7 @@ let clauses_of_input ?(check_timeout = fun () -> ()) inputs =
 let partition_input_clauses ?(check_timeout = fun () -> ()) inputs =
   with_timeout_poll check_timeout (fun () ->
   let inputs = dmt_expand_inputs inputs in
+  reserve_function_symbols_inputs inputs;
   let rec aux axioms support produced = function
     | [] ->
         {
@@ -756,6 +811,7 @@ let partition_input_clauses ?(check_timeout = fun () -> ()) inputs =
 let partition_input_clauses_with_trace ?(check_timeout = fun () -> ()) inputs =
   with_timeout_poll check_timeout (fun () ->
   let inputs = dmt_expand_inputs inputs in
+  reserve_function_symbols_inputs inputs;
   let add_origins ~input_index ~input_name ~input_role ~input_is_cnf ~transformation_status clauses origins =
     List.fold_left
       (fun acc clause ->
