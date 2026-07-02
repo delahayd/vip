@@ -19,6 +19,7 @@ type clause_origin = {
   input_name : string;
   input_role : string;
   input_is_cnf : bool;
+  one_way : bool;
   transformation_status : string;
 }
 
@@ -756,10 +757,11 @@ let partition_input_clauses ?(check_timeout = fun () -> ()) inputs =
 let partition_input_clauses_with_trace ?(check_timeout = fun () -> ()) inputs =
   with_timeout_poll check_timeout (fun () ->
   let inputs = dmt_expand_inputs inputs in
-  let add_origins ~input_index ~input_name ~input_role ~input_is_cnf ~transformation_status clauses origins =
+  let add_origins ~input_index ~input_name ~input_role ~input_is_cnf
+      ~one_way ~transformation_status clauses origins =
     List.fold_left
       (fun acc clause ->
-        { clause; input_index; input_name; input_role; input_is_cnf; transformation_status } :: acc)
+        { clause; input_index; input_name; input_role; input_is_cnf; one_way; transformation_status } :: acc)
       origins
       clauses
   in
@@ -800,6 +802,7 @@ let partition_input_clauses_with_trace ?(check_timeout = fun () -> ()) inputs =
             ~input_name:name
             ~input_role:role
             ~input_is_cnf:true
+            ~one_way:false
             ~transformation_status:"thm"
             clauses
             origins
@@ -815,21 +818,21 @@ let partition_input_clauses_with_trace ?(check_timeout = fun () -> ()) inputs =
             List.map
               (fun f ->
                 let f' = one_way_definition_formula f in
-                (f', if f' = f then "esa" else "thm"))
+                (f', (if f' = f then "esa" else "thm"), f' <> f))
               formulas
           else
             List.map
-              (fun f -> (f, if role_requires_negation role then "cth" else "esa"))
+              (fun f -> (f, (if role_requires_negation role then "cth" else "esa"), false))
               formulas
         in
         let cls =
           List.concat_map
-            (fun (f, status) ->
+            (fun (f, status, one_way) ->
               clausify_formula ~check_timeout f
-              |> List.map (fun c -> (c, status)))
+              |> List.map (fun c -> (c, status, one_way)))
             formulas
         in
-        let clauses = List.map fst cls in
+        let clauses = List.map (fun (c, _, _) -> c) cls in
         let axioms, support =
           if is_support_role role then
             (axioms, List.rev_append clauses support)
@@ -838,12 +841,13 @@ let partition_input_clauses_with_trace ?(check_timeout = fun () -> ()) inputs =
         in
         let origins =
           List.fold_left
-            (fun origins (clause, transformation_status) ->
+            (fun origins (clause, transformation_status, one_way) ->
               add_origins
                 ~input_index
                 ~input_name:name
                 ~input_role:role
                 ~input_is_cnf:false
+                ~one_way
                 ~transformation_status
                 [ clause ]
                 origins)

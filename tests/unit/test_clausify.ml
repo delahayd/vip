@@ -60,6 +60,44 @@ let test_one_way_definition () =
   check int "baseline clauses" 2 (List.length baseline);
   check int "one-way clauses" 1 (List.length one_way)
 
+let test_one_way_trace_metadata () =
+  let def =
+    Input_fof
+      {
+        name = "def_p";
+        source_file = None;
+        role = "axiom";
+        formula =
+          Forall
+            ( [ "X" ],
+              Iff
+                ( Atom { pred = "p"; args = [ Var "X" ] },
+                  Atom { pred = "q"; args = [ Var "X" ] } ) );
+      }
+  in
+  let use =
+    Input_fof
+      {
+        name = "use_p";
+        source_file = None;
+        role = "axiom";
+        formula = Atom { pred = "p"; args = [ Fun ("a", []) ] };
+      }
+  in
+  let traced =
+    with_env "VIP_ONE_WAY_DEFINITIONS" (Some "1") (fun () ->
+      Clausify.partition_input_clauses_with_trace [ def; use ])
+  in
+  let one_way =
+    List.filter (fun origin -> origin.Clausify.one_way) traced.trace.origins
+  in
+  check int "one-way traced clauses" 1 (List.length one_way);
+  check
+    (list string)
+    "one-way traced clause"
+    [ "~p(V0) | q(V0)" ]
+    (List.map (fun origin -> Pretty.string_of_clause origin.Clausify.clause) one_way)
+
 let test_guarded_one_way_definition () =
   let input =
     Input_fof
@@ -135,6 +173,7 @@ let () =
        [
          test_case "simple implication" `Quick test_simple_clausification;
          test_case "one-way definition" `Quick test_one_way_definition;
+         test_case "one-way trace metadata" `Quick test_one_way_trace_metadata;
          test_case "guarded one-way definition" `Quick test_guarded_one_way_definition;
          test_case "dmt definition expansion" `Quick test_dmt_definition_expansion;
        ]);

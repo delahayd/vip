@@ -1,0 +1,15 @@
+(lang dune 3.23)
+(name vip)
+(version a76d405)
+(sections
+ (lib /home/clem/Documents/vip/lib/vip)
+ (bin /home/clem/Documents/vip/bin)
+ (share /home/clem/Documents/vip/share/vip)
+ (share_root /home/clem/Documents/vip/share)
+ (doc /home/clem/Documents/vip/doc/vip))
+(sites (sounds share))
+(files
+ (lib (META dune-package))
+ (bin (ip vip))
+ (share_root (vip/sounds/timeout.mp3 vip/sounds/unsat.mp3))
+ (doc (LICENSE README.md)))
