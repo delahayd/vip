@@ -179,7 +179,7 @@ let proof_source_name ~fallback = function
   | name -> tptp_name name
 
 let proof_source_reference ~fallback = function
-  | "" -> "unknown"
+  | "" -> proof_input_name fallback
   | name -> tptp_name name
 
 let proof_clause_name id =
@@ -187,6 +187,127 @@ let proof_clause_name id =
     Printf.sprintf "vip_m%d" (-id)
   else
     Printf.sprintf "vip_%d" id
+
+let read_file_text filename =
+  let ic = open_in filename in
+  Fun.protect
+    ~finally:(fun () -> close_in ic)
+    (fun () ->
+      let len = in_channel_length ic in
+      really_input_string ic len)
+
+let starts_with_at s i prefix =
+  let lp = String.length prefix in
+  i + lp <= String.length s && String.sub s i lp = prefix
+
+let is_space = function
+  | ' ' | '\t' | '\n' | '\r' -> true
+  | _ -> false
+
+let trim_sub s i j =
+  let a = ref i in
+  let b = ref j in
+  while !a < !b && is_space s.[!a] do
+    incr a
+  done;
+  while !b > !a && is_space s.[!b - 1] do
+    decr b
+  done;
+  String.sub s !a (!b - !a)
+
+let parse_annotated_name_at s i =
+  let n = String.length s in
+  let rec skip_spaces i =
+    if i < n && is_space s.[i] then skip_spaces (i + 1) else i
+  in
+  let i = skip_spaces i in
+  if i >= n then
+    None
+  else if s.[i] = '\'' then begin
+    let b = Buffer.create 16 in
+    let rec quoted escaped j =
+      if j >= n then None
+      else
+        let c = s.[j] in
+        if escaped then begin
+          Buffer.add_char b c;
+          quoted false (j + 1)
+        end else if c = '\\' then
+          quoted true (j + 1)
+        else if c = '\'' then
+          Some (Buffer.contents b, j + 1)
+        else begin
+          Buffer.add_char b c;
+          quoted false (j + 1)
+        end
+    in
+    quoted false (i + 1)
+  end else
+    let j = ref i in
+    while !j < n && s.[!j] <> ',' do
+      incr j
+    done;
+    if !j >= n then None else Some (trim_sub s i !j, !j)
+
+let find_annotated_formula_text ~kind ~name text =
+  let n = String.length text in
+  let prefix = kind ^ "(" in
+  let lp = String.length prefix in
+  let rec find_start i =
+    if i + lp > n then None
+    else if starts_with_at text i prefix then
+      match parse_annotated_name_at text (i + lp) with
+      | Some (candidate, _) when candidate = name -> Some i
+      | _ -> find_start (i + 1)
+    else
+      find_start (i + 1)
+  in
+  let find_end start =
+    let rec loop depth quote escaped i =
+      if i >= n then None
+      else
+        let c = text.[i] in
+        match quote with
+        | Some q ->
+            if escaped then loop depth quote false (i + 1)
+            else if c = '\\' then loop depth quote true (i + 1)
+            else if c = q then loop depth None false (i + 1)
+            else loop depth quote false (i + 1)
+        | None ->
+            if c = '\'' || c = '"' then loop depth (Some c) false (i + 1)
+            else if c = '(' then loop (depth + 1) None false (i + 1)
+            else if c = ')' then loop (max 0 (depth - 1)) None false (i + 1)
+            else if c = '.' && depth = 0 then Some (i + 1)
+            else loop depth None false (i + 1)
+    in
+    loop 0 None false start
+  in
+  match find_start 0 with
+  | None -> None
+  | Some start ->
+      match find_end start with
+      | None -> None
+      | Some stop -> Some (String.sub text start (stop - start))
+
+let add_tstp_source_suffix text source_suffix =
+  if source_suffix = "" then text
+  else
+    let n = String.length text in
+    let rec skip_spaces i =
+      if i >= 0 && is_space text.[i] then skip_spaces (i - 1) else i
+    in
+    let dot = skip_spaces (n - 1) in
+    if dot < 0 || text.[dot] <> '.' then
+      text
+    else
+      let close = skip_spaces (dot - 1) in
+      if close < 0 || text.[close] <> ')' then
+        text
+      else
+        String.sub text 0 close
+        ^ source_suffix
+        ^ ")."
+        ^ String.sub text (dot + 1) (n - dot - 1)
 
 let clause_key clause =
   clause
@@ -222,6 +343,87 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
   List.iteri
     (fun i input -> Hashtbl.replace input_by_index (i + 1) input)
     inputs;
+  let input_name_counts = Hashtbl.create 97 in
+  List.iter
+    (function
+      | Fof.Input_cnf { name; _ } | Fof.Input_fof { name; _ } ->
+          if name <> "" then
+            Hashtbl.replace
+              input_name_counts
+              name
+              (1 + Option.value (Hashtbl.find_opt input_name_counts name) ~default:0)
+      | Fof.Input_include _ -> ())
+    inputs;
+  let proof_source_name_for origin =
+    let name = origin.Clausify.input_name in
+    let duplicated =
+      Option.value (Hashtbl.find_opt input_name_counts name) ~default:0 > 1
+    in
+    if name = "" || duplicated then
+      proof_input_name origin.input_index
+    else
+      tptp_name name
+  in
+  let can_use_original_source_name origin =
+    let name = origin.Clausify.input_name in
+    name <> ""
+    && Option.value (Hashtbl.find_opt input_name_counts name) ~default:0 <= 1
+  in
+  let source_file_for_origin origin =
+    match Hashtbl.find_opt input_by_index origin.Clausify.input_index with
+    | Some (Fof.Input_fof { source_file = Some file; _ })
+    | Some (Fof.Input_cnf { source_file = Some file; _ }) ->
+        Some file
+    | Some (Fof.Input_fof { source_file = None; _ })
+    | Some (Fof.Input_cnf { source_file = None; _ }) ->
+        problem
+    | Some (Fof.Input_include _) | None -> problem
+  in
+  let use_direct_file_parent origin =
+    can_use_original_source_name origin
+    && tptp_needs_quotes origin.Clausify.input_name
+    && Option.is_some (source_file_for_origin origin)
+  in
+  let proof_parent_reference_for origin =
+    if use_direct_file_parent origin then
+      match source_file_for_origin origin with
+      | Some file ->
+          Printf.sprintf
+            "file(%s,%s)"
+            (tptp_name file)
+            (tptp_name origin.Clausify.input_name)
+      | None -> proof_source_name_for origin
+    else
+      proof_source_name_for origin
+  in
+  let source_file_text_cache = Hashtbl.create 17 in
+  let source_text_cache = Hashtbl.create 97 in
+  let original_source_text kind origin =
+    match Hashtbl.find_opt source_text_cache (kind, origin.Clausify.input_index) with
+    | Some text -> text
+    | None ->
+        let found =
+          match Hashtbl.find_opt input_by_index origin.input_index with
+          | Some (Fof.Input_fof { source_file = Some file; _ })
+          | Some (Fof.Input_cnf { source_file = Some file; _ }) ->
+              begin
+                try
+                  let file_text =
+                    match Hashtbl.find_opt source_file_text_cache file with
+                    | Some text -> text
+                    | None ->
+                        let text = read_file_text file in
+                        Hashtbl.add source_file_text_cache file text;
+                        text
+                  in
+                  find_annotated_formula_text ~kind ~name:origin.input_name file_text
+                with Sys_error _ -> None
+              end
+          | _ -> None
+        in
+        Hashtbl.add source_text_cache (kind, origin.input_index) found;
+        found
+  in
   let origins_by_clause = Hashtbl.create 257 in
   List.iter
     (fun origin ->
@@ -240,11 +442,12 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
   let printed_inputs = Hashtbl.create 97 in
   let b = Buffer.create 4096 in
   let print_source origin =
-    if not (Hashtbl.mem printed_inputs origin.Clausify.input_index) then begin
+    if
+      (not (use_direct_file_parent origin))
+      && not (Hashtbl.mem printed_inputs origin.Clausify.input_index)
+    then begin
       Hashtbl.add printed_inputs origin.input_index ();
-      let source_name =
-        proof_source_name ~fallback:origin.input_index origin.input_name
-      in
+      let source_name = proof_source_name_for origin in
       let source_reference =
         proof_source_reference ~fallback:origin.input_index origin.input_name
       in
@@ -259,13 +462,24 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
                   source_reference
             | None, None -> ""
           in
-          Printf.bprintf
-            b
-            "fof(%s,%s,(%s)%s).\n"
-            source_name
-            role
-            (tptp_formula formula)
-            source_suffix
+          begin
+            match
+              if can_use_original_source_name origin then
+                original_source_text "fof" origin
+              else
+                None
+            with
+            | Some text ->
+                Printf.bprintf b "%s\n" (add_tstp_source_suffix text source_suffix)
+            | None ->
+                Printf.bprintf
+                  b
+                  "fof(%s,%s,(%s)%s).\n"
+                  source_name
+                  role
+                  (tptp_formula formula)
+                  source_suffix
+          end
       | Some (Fof.Input_cnf { role; clause; source_file; _ }) ->
           let source_suffix =
             match source_file, problem with
@@ -276,13 +490,24 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
                   source_reference
             | None, None -> ""
           in
-          Printf.bprintf
-            b
-            "cnf(%s,%s,(%s)%s).\n"
-            source_name
-            role
-            (Resolution.tstp_clause_formula clause)
-            source_suffix
+          begin
+            match
+              if can_use_original_source_name origin then
+                original_source_text "cnf" origin
+              else
+                None
+            with
+            | Some text ->
+                Printf.bprintf b "%s\n" (add_tstp_source_suffix text source_suffix)
+            | None ->
+                Printf.bprintf
+                  b
+                  "cnf(%s,%s,(%s)%s).\n"
+                  source_name
+                  role
+                  (Resolution.tstp_clause_formula clause)
+                  source_suffix
+          end
       | Some (Fof.Input_include _) | None -> ()
     end
   in
@@ -292,9 +517,7 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
         let clause = Resolution.tstp_clause_formula d.clause_d in
         match Hashtbl.find_opt origins_by_clause (clause_key d.clause_d) with
         | Some origin when origin.input_is_cnf && not (role_requires_negation origin.input_role) ->
-            let source_name =
-              proof_source_name ~fallback:origin.input_index origin.input_name
-            in
+            let source_name = proof_parent_reference_for origin in
             print_source origin;
             Printf.bprintf
               b
@@ -304,9 +527,7 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
               source_name
         | Some origin ->
             print_source origin;
-            let source_name =
-              proof_source_name ~fallback:origin.input_index origin.input_name
-            in
+            let source_name = proof_parent_reference_for origin in
             let role =
               if role_requires_negation origin.input_role then
                 "negated_conjecture"
@@ -335,9 +556,7 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
               match find_condensed_origin d.clause_d with
               | Some origin ->
                   print_source origin;
-                  let source_name =
-                    proof_source_name ~fallback:origin.input_index origin.input_name
-                  in
+                  let source_name = proof_parent_reference_for origin in
                   let raw_clause = Resolution.tstp_clause_formula origin.clause in
                   let raw_clause_name = proof_clause_name d.id ^ "_raw" in
                   let role =
@@ -2288,6 +2507,29 @@ let rec run_file ?(config = default_config) filename =
                  "VIP_FORWARD_SUBSUMPTION_RESOLUTION", Some "1";
                ])
       in
+      let feq_equality_goal_probe name fraction =
+        run_experimental_subrun
+          ~stage_name:name
+          ~portfolio_mode:Feq_modern
+          ~fraction
+          ~min_budget_s:
+            (getenv_float "VIP_CASC_150_FEQ_EQ_GOAL_MIN_SECONDS" 5.0)
+          ~env:
+            (feq_env
+               [
+                 "VIP_FEQ_MODERN_ALL", Some "1";
+                 "VIP_PASSIVE_SELECTION", Some "equality-goal";
+                 "VIP_PASSIVE_GOAL_SYMBOL_BONUS",
+                 Some
+                   (string_of_int
+                      (getenv_int_global
+                         "VIP_CASC_150_FEQ_EQ_GOAL_SYMBOL_BONUS"
+                         45));
+                 "VIP_FEQ_CLASSIC_FRACTION", Some "0.20";
+                 "VIP_FEQ_WEIGHT_FRACTION", Some "0.20";
+                 "VIP_FEQ_EQUALITY_FRACTION", Some "0.55";
+               ])
+      in
       let legacy_guided_probe name fraction =
         run_experimental_subrun
           ~stage_name:name
@@ -2437,6 +2679,9 @@ let rec run_file ?(config = default_config) filename =
                    (fun () -> feq_simplification_probe
                      "CASC-150 FEQ simplification-set probe"
                      (getenv_float "VIP_CASC_150_FEQ_SIMPL_FRACTION" 0.025) ());
+                   (fun () -> feq_equality_goal_probe
+                     "CASC-150 FEQ equality/goal probe"
+                     (getenv_float "VIP_CASC_150_FEQ_EQ_GOAL_FRACTION" 0.0) ());
                    (fun () -> legacy_guided_probe
                      "CASC-150 FEQ legacy-guided probe"
                      (getenv_float
@@ -2500,6 +2745,11 @@ let rec run_file ?(config = default_config) filename =
                      (getenv_float
                         "VIP_CASC_150_EQ_LIGHT_SIMPL_FRACTION"
                         0.04) ());
+                   (fun () -> feq_equality_goal_probe
+                     "CASC-150 equality-light equality/goal probe"
+                     (getenv_float
+                        "VIP_CASC_150_EQ_LIGHT_EQ_GOAL_FRACTION"
+                        0.0) ());
                  ]
                else [])
               @
