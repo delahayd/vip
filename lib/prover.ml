@@ -354,11 +354,12 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
               (1 + Option.value (Hashtbl.find_opt input_name_counts name) ~default:0)
       | Fof.Input_include _ -> ())
     inputs;
+  let input_name_is_duplicated name =
+    Option.value (Hashtbl.find_opt input_name_counts name) ~default:0 > 1
+  in
   let proof_source_name_for origin =
     let name = origin.Clausify.input_name in
-    let duplicated =
-      Option.value (Hashtbl.find_opt input_name_counts name) ~default:0 > 1
-    in
+    let duplicated = input_name_is_duplicated name in
     if name = "" || duplicated then
       proof_input_name origin.input_index
     else
@@ -366,8 +367,7 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
   in
   let can_use_original_source_name origin =
     let name = origin.Clausify.input_name in
-    name <> ""
-    && Option.value (Hashtbl.find_opt input_name_counts name) ~default:0 <= 1
+    name <> "" && not (input_name_is_duplicated name)
   in
   let source_file_for_origin origin =
     match Hashtbl.find_opt input_by_index origin.Clausify.input_index with
@@ -380,8 +380,9 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
     | Some (Fof.Input_include _) | None -> problem
   in
   let use_direct_file_parent origin =
-    can_use_original_source_name origin
-    && tptp_needs_quotes origin.Clausify.input_name
+    origin.Clausify.input_name <> ""
+    && (tptp_needs_quotes origin.Clausify.input_name
+       || input_name_is_duplicated origin.Clausify.input_name)
     && Option.is_some (source_file_for_origin origin)
   in
   let proof_parent_reference_for origin =
