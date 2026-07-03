@@ -1228,6 +1228,43 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let backward_passive_demodulation_limit =
     getenv_int "VIP_BACKWARD_PASSIVE_DEMODULATION_LIMIT" 256
   in
+  let fast_initial_load_enabled =
+    (not emulate_v1)
+    && expensive_simplifications
+    && getenv_bool "VIP_FAST_INITIAL_LOAD" false
+  in
+  let fast_initial_load_min_clauses =
+    getenv_int "VIP_FAST_INITIAL_LOAD_MIN_CLAUSES" 500
+  in
+  let lrs_enabled =
+    (not emulate_v1)
+    && expensive_simplifications
+    && getenv_bool "VIP_LRS" false
+    && initial_clause_count >= getenv_int "VIP_LRS_MIN_INPUT_CLAUSES" 80
+  in
+  let lrs_max_passive = getenv_int "VIP_LRS_MAX_PASSIVE" 5000 in
+  let lrs_target_passive =
+    getenv_int "VIP_LRS_TARGET_PASSIVE" (max 1000 ((lrs_max_passive * 4) / 5))
+  in
+  let lrs_base_weight = getenv_int "VIP_LRS_BASE_WEIGHT" 180 in
+  let lrs_weight_step = getenv_int "VIP_LRS_WEIGHT_STEP" 20 in
+  let lrs_relax_interval = max 1 (getenv_int "VIP_LRS_RELAX_INTERVAL" 1000) in
+  let lrs_base_len = getenv_int "VIP_LRS_BASE_LEN" 18 in
+  let lrs_len_step = getenv_int "VIP_LRS_LEN_STEP" 2 in
+  let lrs_keep_goal_overlap =
+    getenv_bool "VIP_LRS_KEEP_GOAL_OVERLAP" true
+  in
+  let sine_age_enabled =
+    (not emulate_v1)
+    && expensive_simplifications
+    && getenv_bool "VIP_SINE_LEVEL_AGE" false
+  in
+  let sine_age_symbol_bonus =
+    getenv_int "VIP_SINE_LEVEL_AGE_SYMBOL_BONUS" 32
+  in
+  let sine_age_no_overlap_penalty =
+    getenv_int "VIP_SINE_LEVEL_AGE_NO_OVERLAP_PENALTY" 96
+  in
   let legacy_candidate_pool =
     (not emulate_v1) && getenv_bool "VIP_LEGACY_CANDIDATE_POOL" false
   in
@@ -1428,6 +1465,29 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
       max 1 (base + length_penalty + unit_bonus + negative_bonus + equality_penalty)
   in
 
+  let lrs_current_max_weight () =
+    lrs_base_weight + ((!given_count / lrs_relax_interval) * lrs_weight_step)
+  in
+
+  let lrs_current_max_len () =
+    lrs_base_len + ((!given_count / lrs_relax_interval) * lrs_len_step)
+  in
+
+  let lrs_protected_clause ~parents c =
+    parents = []
+    || c = []
+    || List.length c = 1
+    || (lrs_keep_goal_overlap && symbol_overlap_count c > 0 && clause_has_negative c)
+  in
+
+  let lrs_exceeds_limits ~parents c =
+    lrs_enabled
+    && not (lrs_protected_clause ~parents c)
+    &&
+    let len = List.length c in
+    len > lrs_current_max_len () || clause_weight c > lrs_current_max_weight ()
+  in
+
   let make_result stop_reason =
     {
       stop_reason;
@@ -1527,12 +1587,56 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     Hashtbl.remove context_by_id d.id
   in
 
+  let prune_passive_by_lrs () =
+    if lrs_enabled && lrs_max_passive > 0 && List.length !passive > lrs_max_passive then begin
+      let max_weight = lrs_current_max_weight () in
+      let max_len = lrs_current_max_len () in
+      let badness e =
+        let c = e.d.clause_d in
+        let len_over = max 0 (List.length c - max_len) in
+        let weight_over = max 0 (e.weight - max_weight) in
+        let goal_relief = if symbol_overlap_count c > 0 then 50 else 0 in
+        (len_over * 1000) + (weight_over * 10) + e.age - goal_relief
+      in
+      let sorted =
+        List.sort
+          (fun a b ->
+            let c = compare (badness b) (badness a) in
+            if c <> 0 then c else compare b.age a.age)
+          !passive
+      in
+      let rec split_drop n drop keep = function
+        | [] -> (drop, keep)
+        | e :: tl ->
+            if n > 0 && not (lrs_protected_clause ~parents:e.d.parents e.d.clause_d) then
+              split_drop (n - 1) (e :: drop) keep tl
+            else
+              split_drop n drop (e :: keep) tl
+      in
+      let to_drop = max 0 (List.length sorted - lrs_target_passive) in
+      let dropped, kept = split_drop to_drop [] [] sorted in
+      List.iter (fun e -> delete_derived e.d) dropped;
+      passive := kept
+    end
+  in
+
   let enqueue_passive d =
     let context_penalty = if context_of d = [] then 0 else avatar_context_penalty in
+    let overlap = symbol_overlap_count d.clause_d in
+    let age =
+      if sine_age_enabled then
+        max
+          0
+          (!next_passive_id
+           - (overlap * sine_age_symbol_bonus)
+           + (if overlap = 0 then sine_age_no_overlap_penalty else 0))
+      else
+        !next_passive_id
+    in
     let entry =
       {
         passive_id = !next_passive_id;
-        age = !next_passive_id;
+        age;
         weight = clause_weight d.clause_d + context_penalty;
         d;
       }
@@ -1541,7 +1645,8 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     passive := entry :: !passive;
     Feature_vector.add fv_index d.clause_d d.id;
     if legacy_candidate_pool then
-      index_clause_for_inference d
+      index_clause_for_inference d;
+    prune_passive_by_lrs ()
   in
 
   let rec add_clause ?(context = []) ?(allow_split = true) ~parents ~rule c =
@@ -1583,6 +1688,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
           else
             let key = context_key context ^ "|" ^ string_of_clause c in
             if Hashtbl.mem known key then None
+            else if lrs_exceeds_limits ~parents c then None
             else if is_subsumed_by ~context (active_clauses ()) c then begin
               incr subsumption_rejections;
               None
@@ -1597,6 +1703,32 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
               enqueue_passive d;
               Some d
             end
+  in
+
+  let add_initial_fast c =
+    check_timeout ();
+    if clause_limit_exceeded () || !sat_unsat then None
+    else
+      let c, rewrites =
+        try rewrite_with_demodulators c
+        with Rewrite_limit_hit -> (c, 0)
+      in
+      demodulation_rewrites := !demodulation_rewrites + rewrites;
+      match simplify_clause_modern c with
+      | None -> None
+      | Some c ->
+          let key = context_key [] ^ "|" ^ string_of_clause c in
+          if Hashtbl.mem known key then None
+          else begin
+            incr generated;
+            let d = { id = next_id (); parents = []; rule = "input"; clause_d = c; is_active = false } in
+            Hashtbl.add known key d.id;
+            Hashtbl.replace context_by_id d.id [];
+            Hashtbl.replace all_by_id d.id d;
+            all := d :: !all;
+            enqueue_passive d;
+            Some d
+          end
   in
 
   let simplify_selected d =
@@ -1781,6 +1913,19 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
         let mixed_penalty = if eqs = 0 then 40 else 0 in
         (len * 70) + e.weight + (vars * 10) + mixed_penalty
         - unit_eq_bonus - eq_bonus - neg_eq_bonus - age_relief
+    | "equality-goal" | "eq-goal" ->
+        let overlap = symbol_overlap_count c in
+        let eqs = equality_literal_count c in
+        let neg_eqs = negative_equality_count c in
+        let unit_eq_bonus = if unit_positive_equality c then 80 else 0 in
+        let goal_bonus = overlap * getenv_int "VIP_PASSIVE_GOAL_SYMBOL_BONUS" 35 in
+        let eq_bonus = min 44 (eqs * 12) in
+        let neg_eq_bonus = min 32 (neg_eqs * 16) in
+        let non_goal_penalty = if overlap = 0 then 30 else 0 in
+        let non_eq_penalty = if eqs = 0 then 35 else 0 in
+        (len * 72) + e.weight + (vars * 10) + non_goal_penalty
+        + non_eq_penalty - goal_bonus - unit_eq_bonus - eq_bonus - neg_eq_bonus
+        - age_relief
     | "weight" -> e.weight - age_relief
     | _ -> e.weight - age_relief
   in
@@ -1838,6 +1983,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     | "weight" | "all" | "any" -> select_by_weight entries
     | "equality" | "eq" | "equality-unit" | "eq-unit" ->
         select_by_scored "equality" entries
+    | "equality-goal" | "eq-goal" -> select_by_scored "equality-goal" entries
     | "goal" | "support" -> select_by_scored "goal" entries
     | "short" -> select_by_scored "short" entries
     | "unit" | "negative-unit" | "neg-unit" | "negative" | "neg" ->
@@ -2152,8 +2298,19 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
 
     let stop_reason = ref None in
 
+    let use_fast_initial_load =
+      fast_initial_load_enabled
+      && initial_clause_count >= fast_initial_load_min_clauses
+    in
+
     let add_initial c =
-      match add_clause ~parents:[] ~rule:"input" c with
+      let added =
+        if use_fast_initial_load then
+          add_initial_fast c
+        else
+          add_clause ~parents:[] ~rule:"input" c
+      in
+      match added with
       | Some d when d.clause_d = [] ->
           stop_reason := Some (Refutation_found d)
       | _ -> ()
