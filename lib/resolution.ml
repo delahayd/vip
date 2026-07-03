@@ -398,6 +398,10 @@ let dedup_clauses_with_parents ?(check_timeout = fun () -> ()) items =
 type demodulator = term * term
 type atom_rewrite_rule = atom * atom
 
+type atom_rewrite_index = {
+  atom_rules_by_pred : (string * int, atom_rewrite_rule list) Hashtbl.t;
+}
+
 type demod_index = {
   by_root : (string * int, demodulator list ref) Hashtbl.t;
   mutable variable_lhs : demodulator list;
@@ -563,7 +567,26 @@ let atom_rewrite_rule_of_clause = function
         None
   | _ -> None
 
-let rewrite_atom_by_rules ~check_timeout rules count atom =
+let atom_rewrite_index rules =
+  let idx = { atom_rules_by_pred = Hashtbl.create 127 } in
+  List.iter
+    (fun ((lhs, _) as rule) ->
+      let key = (lhs.pred, List.length lhs.args) in
+      let rules =
+        match Hashtbl.find_opt idx.atom_rules_by_pred key with
+        | Some rules -> rules
+        | None -> []
+      in
+      Hashtbl.replace idx.atom_rules_by_pred key (rule :: rules))
+    rules;
+  idx
+
+let atom_rewrite_candidates idx atom =
+  match Hashtbl.find_opt idx.atom_rules_by_pred (atom.pred, List.length atom.args) with
+  | None -> []
+  | Some rules -> rules
+
+let rewrite_atom_indexed_by_rules ~check_timeout idx count atom =
   let count = ref count in
   let rec aux atom =
     check_timeout ();
@@ -576,7 +599,7 @@ let rewrite_atom_by_rules ~check_timeout rules count atom =
             let s = Match.match_atoms lhs atom empty_subst in
             Some (apply_subst_atom s rhs)
           with Match.Not_matchable -> None)
-        rules
+        (atom_rewrite_candidates idx atom)
     with
     | Some atom' when atom' <> atom ->
         incr count;
@@ -586,20 +609,20 @@ let rewrite_atom_by_rules ~check_timeout rules count atom =
   let atom' = aux atom in
   atom', !count
 
-let rewrite_literal_by_atom_rules ~check_timeout rules count = function
+let rewrite_literal_indexed_by_atom_rules ~check_timeout idx count = function
   | Pos a ->
-      let a', count = rewrite_atom_by_rules ~check_timeout rules count a in
+      let a', count = rewrite_atom_indexed_by_rules ~check_timeout idx count a in
       (Pos a', count)
   | Neg a ->
-      let a', count = rewrite_atom_by_rules ~check_timeout rules count a in
+      let a', count = rewrite_atom_indexed_by_rules ~check_timeout idx count a in
       (Neg a', count)
 
-let rewrite_clause_by_atom_rules ~check_timeout rules c =
+let rewrite_clause_indexed_by_atom_rules ~check_timeout idx c =
   List.fold_left
     (fun (acc, count) lit ->
       check_timeout ();
       let lit', count =
-        rewrite_literal_by_atom_rules ~check_timeout rules count lit
+        rewrite_literal_indexed_by_atom_rules ~check_timeout idx count lit
       in
       (lit' :: acc, count))
     ([], 0)
@@ -1101,6 +1124,7 @@ let run_resolution_sos ?(limits = default_limits)
     |> List.filter_map atom_rewrite_rule_of_clause
     |> List.sort_uniq compare
   in
+  let atom_rewrite_index = atom_rewrite_index atom_rewrite_rules in
 
   let is_polarized_mode =
     match mode with
@@ -1125,7 +1149,7 @@ let run_resolution_sos ?(limits = default_limits)
       (c, term_rewrites)
     else
       let c, atom_rewrites =
-        rewrite_clause_by_atom_rules ~check_timeout atom_rewrite_rules c
+        rewrite_clause_indexed_by_atom_rules ~check_timeout atom_rewrite_index c
       in
       (c, term_rewrites + atom_rewrites)
   in
@@ -1344,6 +1368,9 @@ let run_resolution_sos ?(limits = default_limits)
   let legacy_candidate_pool =
     (not emulate_v1) && getenv_bool "VIP_LEGACY_CANDIDATE_POOL" false
   in
+  let resolution_fallback_scan =
+    emulate_v1 || getenv_bool "VIP_RESOLUTION_FALLBACK_SCAN" false
+  in
   let legacy_subsumption =
     (not emulate_v1) && getenv_bool "VIP_LEGACY_SUBSUMPTION" false
   in
@@ -1431,6 +1458,12 @@ let run_resolution_sos ?(limits = default_limits)
     match kind_of d with
     | Ordinary_clause -> true
     | One_way_clause selected -> i = selected
+  in
+
+  let focused_literal_indices d =
+    match kind_of d with
+    | One_way_clause selected -> [ selected ]
+    | Ordinary_clause -> selected_or_maximal_indices ~emulate_v1 d.clause_d
   in
 
   let polarized_pair_allowed a b =
@@ -2244,8 +2277,7 @@ let run_resolution_sos ?(limits = default_limits)
     let indexed_ids = Hashtbl.create 127 in
     let given_active_indices =
       if is_polarized_mode then
-        all_indices given.clause_d
-        |> List.filter (polarized_literal_allowed given)
+        focused_literal_indices given
       else
         selected_or_maximal_indices ~emulate_v1 given.clause_d
     in
@@ -2285,23 +2317,25 @@ let run_resolution_sos ?(limits = default_limits)
         []
     in
 
-    let fallback =
-      List.fold_left
-        (fun acc d ->
-          check_timeout ();
-          if d.id <> given.id
-             && (not avatar_enabled || derived_enabled d)
-             && (not is_polarized_mode || polarized_pair_allowed given d)
-             && not (Hashtbl.mem indexed_ids d.id)
-             && first_order_compatible given d then
-            d :: acc
-          else
-            acc)
-        []
-        !active
-    in
-
-    indexed @ fallback
+    if resolution_fallback_scan then
+      let fallback =
+        List.fold_left
+          (fun acc d ->
+            check_timeout ();
+            if d.id <> given.id
+               && (not avatar_enabled || derived_enabled d)
+               && (not is_polarized_mode || polarized_pair_allowed given d)
+               && not (Hashtbl.mem indexed_ids d.id)
+               && first_order_compatible given d then
+              d :: acc
+            else
+              acc)
+          []
+          !active
+      in
+      indexed @ fallback
+    else
+      indexed
   in
 
   let resolve_derived_pair given other =
@@ -2318,12 +2352,10 @@ let run_resolution_sos ?(limits = default_limits)
       let c1 = rename_clause_apart given.clause_d in
       let c2 = rename_clause_apart other.clause_d in
       let active1 =
-        all_indices c1
-        |> List.filter (polarized_literal_allowed given)
+        focused_literal_indices given
       in
       let active2 =
-        all_indices c2
-        |> List.filter (polarized_literal_allowed other)
+        focused_literal_indices other
       in
       let results = ref [] in
       List.iter

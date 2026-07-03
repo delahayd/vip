@@ -6,8 +6,6 @@ Point de départ :
 
 - "First-Order Automated Reasoning with Theories: When Deduction Modulo Theory Meets Practice", D.Delahaye. 
 
-> Testé par Ilies, ne donne rien (source ?)
-
 One way clause (pure rewriting ou one way clause, réunion 30/06/2026) :
 
 - "Deduction modulo theory", G.Dowek (article pour les bases de la DMT).
