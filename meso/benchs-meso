@@ -28,7 +28,7 @@ Options:
   --robust-time-limit
   --max-clauses <nombre>
   --mode <mode>
-  --portfolio <legacy-modern|modern-legacy|legacy-only|modern-only|scheduled|feq-modern|experimental-casc|casc-aggressive|casc-240|casc-150|casc-feq-probe>
+  --portfolio <legacy-modern|modern-legacy|legacy-only|modern-only|scheduled|feq-modern|experimental-casc|casc-aggressive|casc-240|casc-150|casc-150-lrs|casc-feq-probe>
   --dir <répertoire>
   --home <répertoire>
   --logs <répertoire>

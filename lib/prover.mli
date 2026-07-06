@@ -22,6 +22,7 @@ type portfolio_mode =
   | Casc_aggressive
   | Casc_240
   | Casc_150
+  | Casc_150_lrs
   | Casc_feq_probe
 
 type engine_kind =

@@ -1254,6 +1254,18 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let lrs_keep_goal_overlap =
     getenv_bool "VIP_LRS_KEEP_GOAL_OVERLAP" true
   in
+  let lrs_goal_overlap_mode =
+    match env_opt "VIP_LRS_KEEP_GOAL_OVERLAP_MODE" with
+    | Some s when String.trim s <> "" ->
+        String.lowercase_ascii (String.trim s)
+    | Some _ | None -> "negative"
+  in
+  let lrs_keep_small_equality =
+    getenv_bool "VIP_LRS_KEEP_SMALL_EQUALITY" true
+  in
+  let lrs_small_equality_max_len =
+    getenv_int "VIP_LRS_SMALL_EQUALITY_MAX_LEN" 2
+  in
   let sine_age_enabled =
     (not emulate_v1)
     && expensive_simplifications
@@ -1474,10 +1486,27 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   in
 
   let lrs_protected_clause ~parents c =
+    let overlap = symbol_overlap_count c in
+    let goal_protected =
+      lrs_keep_goal_overlap
+      && overlap > 0
+      &&
+      match lrs_goal_overlap_mode with
+      | "all" | "any" -> true
+      | "negative" | "neg" -> clause_has_negative c
+      | "unit" -> List.length c = 1
+      | _ -> clause_has_negative c
+    in
+    let small_equality_protected =
+      lrs_keep_small_equality
+      && clause_has_equality c
+      && List.length c <= lrs_small_equality_max_len
+    in
     parents = []
     || c = []
     || List.length c = 1
-    || (lrs_keep_goal_overlap && symbol_overlap_count c > 0 && clause_has_negative c)
+    || goal_protected
+    || small_equality_protected
   in
 
   let lrs_exceeds_limits ~parents c =
@@ -1926,6 +1955,21 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
         (len * 72) + e.weight + (vars * 10) + non_goal_penalty
         + non_eq_penalty - goal_bonus - unit_eq_bonus - eq_bonus - neg_eq_bonus
         - age_relief
+    | "goal-equality-balanced" | "goal-eq-balanced" | "eq-goal-balanced" ->
+        let overlap = symbol_overlap_count c in
+        let eqs = equality_literal_count c in
+        let neg_eqs = negative_equality_count c in
+        let unit_bonus = if len = 1 then 36 else 0 in
+        let negative_bonus = if clause_has_negative c then 14 else 0 in
+        let goal_bonus =
+          overlap * getenv_int "VIP_PASSIVE_GOAL_EQ_BALANCED_SYMBOL_BONUS" 28
+        in
+        let eq_bonus = min 34 (eqs * 10) in
+        let neg_eq_bonus = min 24 (neg_eqs * 12) in
+        let non_goal_penalty = if overlap = 0 then 16 else 0 in
+        (len * 78) + e.weight + (vars * 9) + non_goal_penalty
+        - goal_bonus - eq_bonus - neg_eq_bonus - unit_bonus - negative_bonus
+        - age_relief
     | "weight" -> e.weight - age_relief
     | _ -> e.weight - age_relief
   in
@@ -1984,6 +2028,8 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     | "equality" | "eq" | "equality-unit" | "eq-unit" ->
         select_by_scored "equality" entries
     | "equality-goal" | "eq-goal" -> select_by_scored "equality-goal" entries
+    | "goal-equality-balanced" | "goal-eq-balanced" | "eq-goal-balanced" ->
+        select_by_scored "goal-equality-balanced" entries
     | "goal" | "support" -> select_by_scored "goal" entries
     | "short" -> select_by_scored "short" entries
     | "unit" | "negative-unit" | "neg-unit" | "negative" | "neg" ->

@@ -24,6 +24,7 @@ type portfolio_mode =
   | Casc_aggressive
   | Casc_240
   | Casc_150
+  | Casc_150_lrs
   | Casc_feq_probe
 
 type engine_kind =
@@ -2509,6 +2510,11 @@ let rec run_file ?(config = default_config) filename =
                ])
       in
       let feq_equality_goal_probe name fraction =
+        let selection =
+          match env_opt "VIP_CASC_150_FEQ_EQ_GOAL_SELECTION" with
+          | Some s when String.trim s <> "" -> String.trim s
+          | Some _ | None -> "equality-goal"
+        in
         run_experimental_subrun
           ~stage_name:name
           ~portfolio_mode:Feq_modern
@@ -2519,13 +2525,44 @@ let rec run_file ?(config = default_config) filename =
             (feq_env
                [
                  "VIP_FEQ_MODERN_ALL", Some "1";
-                 "VIP_PASSIVE_SELECTION", Some "equality-goal";
+                 "VIP_PASSIVE_SELECTION", Some selection;
                  "VIP_PASSIVE_GOAL_SYMBOL_BONUS",
                  Some
                    (string_of_int
                       (getenv_int_global
                          "VIP_CASC_150_FEQ_EQ_GOAL_SYMBOL_BONUS"
                          45));
+                 "VIP_FEQ_CLASSIC_FRACTION", Some "0.20";
+                 "VIP_FEQ_WEIGHT_FRACTION", Some "0.20";
+                 "VIP_FEQ_EQUALITY_FRACTION", Some "0.55";
+               ])
+      in
+      let feq_lrs_probe name fraction =
+        run_experimental_subrun
+          ~stage_name:name
+          ~portfolio_mode:Feq_modern
+          ~fraction
+          ~min_budget_s:
+            (getenv_float "VIP_CASC_150_FEQ_LRS_MIN_SECONDS" 4.0)
+          ~env:
+            (feq_env
+               [
+                 "VIP_FEQ_MODERN_ALL", Some "1";
+                 "VIP_PASSIVE_SELECTION", Some "goal-equality-balanced";
+                 "VIP_PASSIVE_GOAL_EQ_BALANCED_SYMBOL_BONUS", Some "28";
+                 "VIP_LRS", Some "1";
+                 "VIP_LRS_MAX_PASSIVE", Some "3500";
+                 "VIP_LRS_TARGET_PASSIVE", Some "2600";
+                 "VIP_LRS_BASE_WEIGHT", Some "150";
+                 "VIP_LRS_WEIGHT_STEP", Some "25";
+                 "VIP_LRS_BASE_LEN", Some "16";
+                 "VIP_LRS_LEN_STEP", Some "2";
+                 "VIP_LRS_KEEP_GOAL_OVERLAP", Some "1";
+                 "VIP_LRS_KEEP_GOAL_OVERLAP_MODE", Some "any";
+                 "VIP_LRS_KEEP_SMALL_EQUALITY", Some "1";
+                 "VIP_SINE_LEVEL_AGE", Some "1";
+                 "VIP_SINE_LEVEL_AGE_SYMBOL_BONUS", Some "28";
+                 "VIP_SINE_LEVEL_AGE_NO_OVERLAP_PENALTY", Some "72";
                  "VIP_FEQ_CLASSIC_FRACTION", Some "0.20";
                  "VIP_FEQ_WEIGHT_FRACTION", Some "0.20";
                  "VIP_FEQ_EQUALITY_FRACTION", Some "0.55";
@@ -2683,6 +2720,9 @@ let rec run_file ?(config = default_config) filename =
                    (fun () -> feq_equality_goal_probe
                      "CASC-150 FEQ equality/goal probe"
                      (getenv_float "VIP_CASC_150_FEQ_EQ_GOAL_FRACTION" 0.0) ());
+                   (fun () -> feq_lrs_probe
+                     "CASC-150 FEQ LRS goal/equality probe"
+                     (getenv_float "VIP_CASC_150_FEQ_LRS_FRACTION" 0.0) ());
                    (fun () -> legacy_guided_probe
                      "CASC-150 FEQ legacy-guided probe"
                      (getenv_float
@@ -2750,6 +2790,11 @@ let rec run_file ?(config = default_config) filename =
                      "CASC-150 equality-light equality/goal probe"
                      (getenv_float
                         "VIP_CASC_150_EQ_LIGHT_EQ_GOAL_FRACTION"
+                        0.0) ());
+                   (fun () -> feq_lrs_probe
+                     "CASC-150 equality-light LRS goal/equality probe"
+                     (getenv_float
+                        "VIP_CASC_150_EQ_LIGHT_LRS_FRACTION"
                         0.0) ());
                  ]
                else [])
@@ -3377,6 +3422,16 @@ let rec run_file ?(config = default_config) filename =
           run_casc_240 ()
       | Casc_150 ->
           run_casc_240 ~extended:true ()
+      | Casc_150_lrs ->
+          with_envs
+            [
+              "VIP_CASC_150_FEQ_EQ_GOAL_SELECTION", Some "goal-equality-balanced";
+              "VIP_CASC_150_FEQ_EQ_GOAL_FRACTION", Some "0.025";
+              "VIP_CASC_150_EQ_LIGHT_EQ_GOAL_FRACTION", Some "0.025";
+              "VIP_CASC_150_FEQ_LRS_FRACTION", Some "0.025";
+              "VIP_CASC_150_EQ_LIGHT_LRS_FRACTION", Some "0.025";
+            ]
+            (fun () -> run_casc_240 ~extended:true ())
       | Casc_feq_probe ->
           run_casc_feq_probe ()
       | Legacy_only ->
