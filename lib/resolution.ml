@@ -1200,6 +1200,23 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let forward_subsumption_resolution_enabled =
     (not emulate_v1) && expensive_simplifications && getenv_bool "VIP_FORWARD_SUBSUMPTION_RESOLUTION" true
   in
+  let backward_subsumption_resolution_enabled =
+    (not emulate_v1)
+    && expensive_simplifications
+    && getenv_bool "VIP_BACKWARD_SUBSUMPTION_RESOLUTION" false
+  in
+  let backward_subsumption_resolution_max_given_len =
+    getenv_int "VIP_BACKWARD_SUBSUMPTION_RESOLUTION_MAX_GIVEN_LEN" 3
+  in
+  let backward_subsumption_resolution_max_target_len =
+    getenv_int "VIP_BACKWARD_SUBSUMPTION_RESOLUTION_MAX_TARGET_LEN" 10
+  in
+  let backward_subsumption_resolution_active_limit =
+    getenv_int "VIP_BACKWARD_SUBSUMPTION_RESOLUTION_ACTIVE_LIMIT" 128
+  in
+  let backward_subsumption_resolution_passive_limit =
+    getenv_int "VIP_BACKWARD_SUBSUMPTION_RESOLUTION_PASSIVE_LIMIT" 128
+  in
   let simplification_set_index_enabled =
     (not emulate_v1)
     && expensive_simplifications
@@ -2255,8 +2272,116 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
         passive := List.rev !kept_passive
   in
 
+  let backward_subsumption_resolve given =
+    if
+      backward_subsumption_resolution_enabled
+      && List.length given.clause_d <= backward_subsumption_resolution_max_given_len
+    then begin
+      let candidate_score d =
+        let c = d.clause_d in
+        let overlap_bonus = if symbol_overlap_count c > 0 then 1000 else 0 in
+        let negative_bonus = if clause_has_negative c then 200 else 0 in
+        overlap_bonus + negative_bonus - clause_weight c - (List.length c * 20)
+      in
+      let candidate_ok d =
+        d.id <> given.id
+        && Hashtbl.mem all_by_id d.id
+        && (not avatar_enabled || derived_enabled d)
+        && context_subsumes (context_of given) (context_of d)
+        && List.length d.clause_d <= backward_subsumption_resolution_max_target_len
+      in
+      let take_best limit ds =
+        ds
+        |> List.filter candidate_ok
+        |> List.sort (fun a b -> compare (candidate_score b) (candidate_score a))
+        |> fun ds ->
+          let rec take n acc = function
+            | [] -> List.rev acc
+            | _ when n <= 0 -> List.rev acc
+            | d :: tl -> take (n - 1) (d :: acc) tl
+          in
+          take limit [] ds
+      in
+      let candidate_ids =
+        let ids = Hashtbl.create 257 in
+        let add d = Hashtbl.replace ids d.id () in
+        List.iter add (take_best backward_subsumption_resolution_active_limit !active);
+        List.iter
+          add
+          (take_best
+             backward_subsumption_resolution_passive_limit
+             (List.map (fun e -> e.d) !passive));
+        ids
+      in
+      if Hashtbl.length candidate_ids > 0 then begin
+        let reduce_candidate d =
+          check_timeout ();
+          if
+            (not (Hashtbl.mem candidate_ids d.id))
+            || not (Hashtbl.mem all_by_id d.id)
+          then
+            `Keep
+          else begin
+            incr subsumption_tests;
+            match subsumption_resolution given.clause_d d.clause_d with
+            | None -> `Keep
+            | Some c_reduced ->
+                if List.length c_reduced >= List.length d.clause_d then
+                  `Keep
+                else begin
+                  let d_context = context_of d in
+                  let c_reduced, rewrites =
+                    try rewrite_with_demodulators c_reduced
+                    with Rewrite_limit_hit -> (c_reduced, 0)
+                  in
+                  demodulation_rewrites := !demodulation_rewrites + rewrites;
+                  match simplify_clause_modern c_reduced with
+                  | None ->
+                      delete_derived d;
+                      `Drop
+                  | Some c_final ->
+                      if
+                        List.length c_final >= List.length d.clause_d
+                        || c_final = d.clause_d
+                      then
+                        `Keep
+                      else begin
+                        delete_derived d;
+                        ignore
+                          (add_clause
+                             ~context:d_context
+                             ~parents:[ given.id; d.id ]
+                             ~rule:"backward_subsumption_resolution"
+                             c_final);
+                        `Drop
+                      end
+                end
+          end
+        in
+        let kept_active = ref [] in
+        List.iter
+          (fun d ->
+            match reduce_candidate d with
+            | `Keep -> kept_active := d :: !kept_active
+            | `Drop -> ())
+          !active;
+        active := List.rev !kept_active;
+
+        let kept_passive = ref [] in
+        List.iter
+          (fun e ->
+            match reduce_candidate e.d with
+            | `Keep -> kept_passive := e :: !kept_passive
+            | `Drop -> ())
+          !passive;
+        passive := List.rev !kept_passive
+      end
+    end
+  in
+
   let activate given =
     backward_subsume given;
+    backward_subsumption_resolve given;
     active := given :: !active;
     index_simplification_clause given;
     if context_of given = [] then register_demodulator given.clause_d;

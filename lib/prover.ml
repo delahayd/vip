@@ -2560,6 +2560,11 @@ let rec run_file ?(config = default_config) filename =
                  "VIP_LRS_KEEP_GOAL_OVERLAP", Some "1";
                  "VIP_LRS_KEEP_GOAL_OVERLAP_MODE", Some "any";
                  "VIP_LRS_KEEP_SMALL_EQUALITY", Some "1";
+                 "VIP_BACKWARD_SUBSUMPTION_RESOLUTION", Some "1";
+                 "VIP_BACKWARD_SUBSUMPTION_RESOLUTION_MAX_GIVEN_LEN", Some "3";
+                 "VIP_BACKWARD_SUBSUMPTION_RESOLUTION_MAX_TARGET_LEN", Some "9";
+                 "VIP_BACKWARD_SUBSUMPTION_RESOLUTION_ACTIVE_LIMIT", Some "96";
+                 "VIP_BACKWARD_SUBSUMPTION_RESOLUTION_PASSIVE_LIMIT", Some "96";
                  "VIP_SINE_LEVEL_AGE", Some "1";
                  "VIP_SINE_LEVEL_AGE_SYMBOL_BONUS", Some "28";
                  "VIP_SINE_LEVEL_AGE_NO_OVERLAP_PENALTY", Some "72";
