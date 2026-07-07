@@ -916,11 +916,11 @@ let partition_input_clauses_with_trace ?(check_timeout = fun () -> ()) inputs =
             List.map
               (fun f ->
                 let f' = one_way_definition_formula f in
-                (f', (if f' = f then "esa" else "thm"), f' <> f))
+                (f', "thm", f' <> f))
               formulas
           else
             List.map
-              (fun f -> (f, (if role_requires_negation role then "cth" else "esa"), false))
+              (fun f -> (f, (if role_requires_negation role then "cth" else "thm"), false))
               formulas
         in
         let cls =

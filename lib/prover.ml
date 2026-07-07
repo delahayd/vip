@@ -371,14 +371,18 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
     name <> "" && not (input_name_is_duplicated name)
   in
   let source_file_for_origin origin =
-    match Hashtbl.find_opt input_by_index origin.Clausify.input_index with
-    | Some (Fof.Input_fof { source_file = Some file; _ })
-    | Some (Fof.Input_cnf { source_file = Some file; _ }) ->
-        Some file
-    | Some (Fof.Input_fof { source_file = None; _ })
-    | Some (Fof.Input_cnf { source_file = None; _ }) ->
-        problem
-    | Some (Fof.Input_include _) | None -> problem
+    match problem with
+    | Some _ as p -> p
+    | None ->
+        match Hashtbl.find_opt input_by_index origin.Clausify.input_index with
+        | Some (Fof.Input_fof { source_file = Some file; _ })
+        | Some (Fof.Input_cnf { source_file = Some file; _ }) ->
+            Some file
+        | Some (Fof.Input_fof { source_file = None; _ })
+        | Some (Fof.Input_cnf { source_file = None; _ })
+        | Some (Fof.Input_include _)
+        | None ->
+            None
   in
   let use_direct_file_parent origin =
     origin.Clausify.input_name <> ""
@@ -427,11 +431,16 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
         found
   in
   let origins_by_clause = Hashtbl.create 257 in
+  let origins_by_input = Hashtbl.create 97 in
   List.iter
     (fun origin ->
       let key = clause_key origin.Clausify.clause in
       if not (Hashtbl.mem origins_by_clause key) then
-        Hashtbl.add origins_by_clause key origin)
+        Hashtbl.add origins_by_clause key origin;
+      Hashtbl.replace
+        origins_by_input
+        origin.Clausify.input_index
+        (origin :: Option.value (Hashtbl.find_opt origins_by_input origin.input_index) ~default:[]))
     trace.origins;
   let find_condensed_origin clause =
     let clause = Clause.normalize_clause clause in
@@ -442,6 +451,7 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
       trace.origins
   in
   let printed_inputs = Hashtbl.create 97 in
+  let printed_cnf_bundles = Hashtbl.create 97 in
   let b = Buffer.create 4096 in
   let print_source origin =
     if
@@ -456,7 +466,7 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
       match Hashtbl.find_opt input_by_index origin.input_index with
       | Some (Fof.Input_fof { role; formula; source_file; _ }) ->
           let source_suffix =
-            match source_file, problem with
+            match problem, source_file with
             | Some p, _ | None, Some p ->
                 Printf.sprintf
                   ",file(%s,%s)"
@@ -484,7 +494,7 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
           end
       | Some (Fof.Input_cnf { role; clause; source_file; _ }) ->
           let source_suffix =
-            match source_file, problem with
+            match problem, source_file with
             | Some p, _ | None, Some p ->
                 Printf.sprintf
                   ",file(%s,%s)"
@@ -513,6 +523,68 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
       | Some (Fof.Input_include _) | None -> ()
     end
   in
+  let cnf_bundle_name origin =
+    proof_input_name origin.Clausify.input_index ^ "_cnf"
+  in
+  let cnf_bundle_status origin origins =
+    if role_requires_negation origin.Clausify.input_role then
+      "cth"
+    else if List.exists (fun o -> o.Clausify.one_way) origins then
+      "thm"
+    else
+      "esa"
+  in
+  let cnf_bundle_formula origins =
+    let vars =
+      origins
+      |> List.fold_left
+           (fun acc origin ->
+             Types.StringSet.union acc (Clause.vars_of_clause origin.Clausify.clause))
+           Types.StringSet.empty
+      |> Types.StringSet.elements
+    in
+    let clauses =
+      origins
+      |> List.rev
+      |> List.map (fun origin -> "(" ^ Resolution.tstp_clause_formula origin.Clausify.clause ^ ")")
+    in
+    let body =
+      match clauses with
+    | [] -> "$true"
+    | [ c ] -> c
+    | c :: cs -> List.fold_left (fun acc c -> "(" ^ acc ^ " & " ^ c ^ ")") c cs
+    in
+    match vars with
+    | [] -> body
+    | _ ->
+        Printf.sprintf
+          "! [%s] : (%s)"
+          (String.concat "," (List.map tptp_var_name vars))
+          body
+  in
+  let print_cnf_bundle origin =
+    if not (Hashtbl.mem printed_cnf_bundles origin.Clausify.input_index) then begin
+      Hashtbl.add printed_cnf_bundles origin.input_index ();
+      print_source origin;
+      let origins =
+        Option.value (Hashtbl.find_opt origins_by_input origin.input_index) ~default:[ origin ]
+      in
+      let role =
+        if role_requires_negation origin.input_role then
+          "negated_conjecture"
+        else
+          "plain"
+      in
+      Printf.bprintf
+        b
+        "fof(%s,%s,(%s),inference(cnf_transformation,[status(%s)],[%s])).\n"
+        (cnf_bundle_name origin)
+        role
+        (cnf_bundle_formula origins)
+        (cnf_bundle_status origin origins)
+        (proof_parent_reference_for origin)
+    end
+  in
   List.iter
     (fun (d : Resolution.derived) ->
       if d.parents = [] then begin
@@ -528,37 +600,25 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
               clause
               source_name
         | Some origin ->
-            print_source origin;
-            let source_name = proof_parent_reference_for origin in
+            print_cnf_bundle origin;
             let role =
               if role_requires_negation origin.input_role then
                 "negated_conjecture"
               else
                 "plain"
             in
-            let status =
-              if role_requires_negation origin.input_role then "cth" else "esa"
-            in
-            let status =
-              if origin.Clausify.transformation_status <> "" then
-                origin.transformation_status
-              else
-                status
-            in
             Printf.bprintf
               b
-              "cnf(%s,%s,(%s),inference(cnf_transformation,[status(%s)],[%s])).\n"
+              "cnf(%s,%s,(%s),inference(cnf_split,[status(thm)],[%s])).\n"
               (proof_clause_name d.id)
               role
               clause
-              status
-              source_name
+              (cnf_bundle_name origin)
         | None ->
             begin
               match find_condensed_origin d.clause_d with
               | Some origin ->
-                  print_source origin;
-                  let source_name = proof_parent_reference_for origin in
+                  print_cnf_bundle origin;
                   let raw_clause = Resolution.tstp_clause_formula origin.clause in
                   let raw_clause_name = proof_clause_name d.id ^ "_raw" in
                   let role =
@@ -567,22 +627,13 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
                     else
                       "plain"
                   in
-                  let status =
-                    if origin.Clausify.transformation_status <> "" then
-                      origin.transformation_status
-                    else if role_requires_negation origin.input_role then
-                      "cth"
-                    else
-                      "esa"
-                  in
                   Printf.bprintf
                     b
-                    "cnf(%s,%s,(%s),inference(cnf_transformation,[status(%s)],[%s])).\n"
+                    "cnf(%s,%s,(%s),inference(cnf_split,[status(thm)],[%s])).\n"
                     raw_clause_name
                     role
                     raw_clause
-                    status
-                    source_name;
+                    (cnf_bundle_name origin);
                   Printf.bprintf
                     b
                     "cnf(%s,plain,(%s),inference(condensation,[status(thm)],[%s])).\n"
