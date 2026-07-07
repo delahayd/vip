@@ -18,6 +18,7 @@ type clause_origin = {
   input_name : string;
   input_role : string;
   input_is_cnf : bool;
+  one_way : bool;
   transformation_status : string;
 }
 

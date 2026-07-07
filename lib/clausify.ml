@@ -19,6 +19,7 @@ type clause_origin = {
   input_name : string;
   input_role : string;
   input_is_cnf : bool;
+  one_way : bool;
   transformation_status : string;
 }
 
@@ -77,31 +78,46 @@ let fresh_def_name () =
   incr def_counter;
   "vip_def_" ^ string_of_int !def_counter
 
-let rec reserve_function_symbols_term = function
-  | Var _ -> ()
-  | Fun (f, args) ->
-      reserved_function_symbols :=
-        Types.StringSet.add f !reserved_function_symbols;
-      List.iter reserve_function_symbols_term args
+let reserve_function_symbols_terms terms =
+  let stack = ref terms in
+  while !stack <> [] do
+    poll_timeout ();
+    match !stack with
+    | [] -> ()
+    | Var _ :: tl -> stack := tl
+    | Fun (f, args) :: tl ->
+        reserved_function_symbols :=
+          Types.StringSet.add f !reserved_function_symbols;
+        stack := List.rev_append args tl
+  done
 
 let reserve_function_symbols_atom a =
-  List.iter reserve_function_symbols_term a.args
+  reserve_function_symbols_terms a.args
 
-let rec reserve_function_symbols_formula = function
-  | FTrue | FFalse -> ()
-  | Atom a -> reserve_function_symbols_atom a
-  | Not f -> reserve_function_symbols_formula f
-  | And (a, b)
-  | Or (a, b)
-  | Imp (a, b)
-  | RevImp (a, b)
-  | Iff (a, b)
-  | Xor (a, b) ->
-      reserve_function_symbols_formula a;
-      reserve_function_symbols_formula b
-  | Forall (_, f)
-  | Exists (_, f) ->
-      reserve_function_symbols_formula f
+let reserve_function_symbols_formula f =
+  let stack = ref [ f ] in
+  while !stack <> [] do
+    poll_timeout ();
+    match !stack with
+    | [] -> ()
+    | FTrue :: tl
+    | FFalse :: tl ->
+        stack := tl
+    | Atom a :: tl ->
+        reserve_function_symbols_atom a;
+        stack := tl
+    | Not f :: tl
+    | Forall (_, f) :: tl
+    | Exists (_, f) :: tl ->
+        stack := f :: tl
+    | And (a, b) :: tl
+    | Or (a, b) :: tl
+    | Imp (a, b) :: tl
+    | RevImp (a, b) :: tl
+    | Iff (a, b) :: tl
+    | Xor (a, b) :: tl ->
+        stack := a :: b :: tl
+  done
 
 let reserve_function_symbols_clause clause =
   List.iter
@@ -501,6 +517,11 @@ type formula_definition = {
   def_input_name : string;
 }
 
+type definition_index = {
+  definitions : formula_definition list;
+  by_pred : (string * int, formula_definition) Hashtbl.t;
+}
+
 let distinct_strings xs =
   List.length xs = List.length (List.sort_uniq String.compare xs)
 
@@ -538,26 +559,47 @@ let atom_definition_of_formula name f =
       else
         None
 
+let top_level_conjuncts f =
+  split_top_level_conjuncts f
+
 let collect_formula_definitions inputs =
   let max_rules = getenv_int "VIP_DMT_MAX_DEFINITIONS" 64 in
+  let add_definition acc d =
+    if List.length acc >= max_rules then
+      acc
+    else if List.exists (fun e -> e.def_pred = d.def_pred && e.def_arity = d.def_arity) acc then
+      acc
+    else
+      d :: acc
+  in
+  let add_formula_definitions name acc formula =
+    formula
+    |> top_level_conjuncts
+    |> List.fold_left
+         (fun acc f ->
+           match atom_definition_of_formula name f with
+           | Some d -> add_definition acc d
+           | None -> acc)
+         acc
+  in
   let rec aux acc = function
     | [] -> List.rev acc
     | _ when List.length acc >= max_rules -> List.rev acc
     | Input_fof { name; role = "axiom"; formula } :: tl ->
-        begin
-          match atom_definition_of_formula name formula with
-          | Some d when not (List.exists (fun e -> e.def_pred = d.def_pred && e.def_arity = d.def_arity) acc) ->
-              aux (d :: acc) tl
-          | _ -> aux acc tl
-        end
+        aux (add_formula_definitions name acc formula) tl
     | _ :: tl -> aux acc tl
   in
   aux [] inputs
 
+let definition_index defs =
+  let by_pred = Hashtbl.create (List.length defs + 1) in
+  List.iter
+    (fun d -> Hashtbl.replace by_pred (d.def_pred, d.def_arity) d)
+    defs;
+  { definitions = defs; by_pred }
+
 let definition_for_atom defs atom =
-  List.find_opt
-    (fun d -> d.def_pred = atom.pred && d.def_arity = List.length atom.args)
-    defs
+  Hashtbl.find_opt defs.by_pred (atom.pred, List.length atom.args)
 
 let instantiate_definition def args =
   let subs = List.combine def.def_vars args in
@@ -631,7 +673,7 @@ let input_mentions_definition defs = function
   | Input_fof { formula; _ } ->
       List.exists
         (fun d -> atom_pred_occurs d.def_pred formula)
-        defs
+        defs.definitions
   | Input_include _ -> false
 
 let dmt_expand_inputs inputs =
@@ -642,6 +684,7 @@ let dmt_expand_inputs inputs =
     if defs = [] then
       inputs
     else
+      let defs = definition_index defs in
       let has_cnf =
         List.exists
           (function Input_cnf _ -> true | Input_fof _ | Input_include _ -> false)
@@ -651,7 +694,7 @@ let dmt_expand_inputs inputs =
         getenv_bool "VIP_DMT_REMOVE_DEFINITIONS" true && not has_cnf
       in
       let is_definition_input name =
-        List.exists (fun d -> d.def_input_name = name) defs
+        List.exists (fun d -> d.def_input_name = name) defs.definitions
       in
       List.filter_map
         (function
@@ -812,10 +855,11 @@ let partition_input_clauses_with_trace ?(check_timeout = fun () -> ()) inputs =
   with_timeout_poll check_timeout (fun () ->
   let inputs = dmt_expand_inputs inputs in
   reserve_function_symbols_inputs inputs;
-  let add_origins ~input_index ~input_name ~input_role ~input_is_cnf ~transformation_status clauses origins =
+  let add_origins ~input_index ~input_name ~input_role ~input_is_cnf
+      ~one_way ~transformation_status clauses origins =
     List.fold_left
       (fun acc clause ->
-        { clause; input_index; input_name; input_role; input_is_cnf; transformation_status } :: acc)
+        { clause; input_index; input_name; input_role; input_is_cnf; one_way; transformation_status } :: acc)
       origins
       clauses
   in
@@ -856,6 +900,7 @@ let partition_input_clauses_with_trace ?(check_timeout = fun () -> ()) inputs =
             ~input_name:name
             ~input_role:role
             ~input_is_cnf:true
+            ~one_way:false
             ~transformation_status:"thm"
             clauses
             origins
@@ -871,21 +916,21 @@ let partition_input_clauses_with_trace ?(check_timeout = fun () -> ()) inputs =
             List.map
               (fun f ->
                 let f' = one_way_definition_formula f in
-                (f', if f' = f then "esa" else "thm"))
+                (f', (if f' = f then "esa" else "thm"), f' <> f))
               formulas
           else
             List.map
-              (fun f -> (f, if role_requires_negation role then "cth" else "esa"))
+              (fun f -> (f, (if role_requires_negation role then "cth" else "esa"), false))
               formulas
         in
         let cls =
           List.concat_map
-            (fun (f, status) ->
+            (fun (f, status, one_way) ->
               clausify_formula ~check_timeout f
-              |> List.map (fun c -> (c, status)))
+              |> List.map (fun c -> (c, status, one_way)))
             formulas
         in
-        let clauses = List.map fst cls in
+        let clauses = List.map (fun (c, _, _) -> c) cls in
         let axioms, support =
           if is_support_role role then
             (axioms, List.rev_append clauses support)
@@ -894,12 +939,13 @@ let partition_input_clauses_with_trace ?(check_timeout = fun () -> ()) inputs =
         in
         let origins =
           List.fold_left
-            (fun origins (clause, transformation_status) ->
+            (fun origins (clause, transformation_status, one_way) ->
               add_origins
                 ~input_index
                 ~input_name:name
                 ~input_role:role
                 ~input_is_cnf:false
+                ~one_way
                 ~transformation_status
                 [ clause ]
                 origins)

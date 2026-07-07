@@ -617,6 +617,7 @@ let resolution_mode_of_legacy = function
   | Resolution.Unrestricted -> Legacy_resolution.Unrestricted
   | Resolution.Ordered -> Legacy_resolution.Ordered
   | Resolution.Ordered_with_fallback -> Legacy_resolution.Ordered_with_fallback
+  | Resolution.Polarized -> Legacy_resolution.Ordered_with_fallback
 
 let derived_of_legacy (d : Legacy_resolution.derived) : Resolution.derived =
   {
@@ -1386,12 +1387,35 @@ let rec run_file ?(config = default_config) filename =
     let parsed = load_problem ~config:load_config filename in
     let has_conjecture = List.exists input_is_conjecture parsed.inputs in
     check_problem_timeout ();
+    let with_scoped_env name value f =
+      let old = Sys.getenv_opt name in
+      Option.iter (Unix.putenv name) value;
+      Fun.protect
+        ~finally:(fun () ->
+          match old with
+          | Some v -> Unix.putenv name v
+          | None -> Unix.putenv name "")
+        f
+    in
+    let with_polarized_defaults f =
+      if config.inference_mode = Resolution.Polarized
+         && env_opt "VIP_ONE_WAY_DEFINITIONS" = None then
+        with_scoped_env "VIP_ONE_WAY_DEFINITIONS" (Some "1") f
+      else
+        f ()
+    in
     let traced_part =
-      partition_input_clauses_with_trace
-        ~check_timeout:check_problem_timeout
-        parsed.inputs
+      with_polarized_defaults (fun () ->
+        partition_input_clauses_with_trace
+          ~check_timeout:check_problem_timeout
+          parsed.inputs)
     in
     let part = traced_part.partition in
+    let one_way_clauses =
+      traced_part.trace.origins
+      |> List.filter_map (fun origin ->
+             if origin.Clausify.one_way then Some origin.clause else None)
+    in
 
     let raw_axioms, support =
       if config.use_sos then (part.axioms, part.support)
@@ -1561,20 +1585,23 @@ let rec run_file ?(config = default_config) filename =
     in
 
     let run_legacy_compat ~time_limit_s =
-      let limits = {
-        Legacy_resolution.time_limit_s = Some time_limit_s;
-        max_generated_clauses = config.max_generated_clauses;
-      } in
-      try
-        Legacy_resolution.run_resolution_sos
-          ~limits
-          ~mode:(resolution_mode_of_legacy config.inference_mode)
-          ~axioms
-          ~support
-          ()
-        |> result_of_legacy
-      with Legacy_resolution.Timeout_hit ->
-        timeout_result time_limit_s
+      match config.inference_mode with
+      | Resolution.Polarized -> timeout_result 0.0
+      | _ ->
+          let limits = {
+            Legacy_resolution.time_limit_s = Some time_limit_s;
+            max_generated_clauses = config.max_generated_clauses;
+          } in
+          try
+            Legacy_resolution.run_resolution_sos
+              ~limits
+              ~mode:(resolution_mode_of_legacy config.inference_mode)
+              ~axioms
+              ~support
+              ()
+            |> result_of_legacy
+          with Legacy_resolution.Timeout_hit ->
+            timeout_result time_limit_s
     in
 
     let all_clauses = axioms @ support in
@@ -1663,7 +1690,9 @@ let rec run_file ?(config = default_config) filename =
     end;
 
     let compat_mode () =
-      if equality_problem then Resolution.Unrestricted else config.inference_mode
+      match config.inference_mode with
+      | Resolution.Polarized -> Resolution.Polarized
+      | _ -> if equality_problem then Resolution.Unrestricted else config.inference_mode
     in
 
     let run_modern_resolution ?mode_override ~time_limit_s ~expensive_simplifications ~emulate_v1 () =
@@ -1681,6 +1710,7 @@ let rec run_file ?(config = default_config) filename =
           ~limits
           ~expensive_simplifications
           ~emulate_v1
+          ~one_way_clauses
           ~mode
           ~axioms
           ~support
@@ -1765,6 +1795,14 @@ let rec run_file ?(config = default_config) filename =
     in
 
     let run_legacy_then_modern () =
+      if config.inference_mode = Resolution.Polarized then
+        run_stage
+          {
+            stage_name = "Polarized modern search";
+            engine = Modern_deep;
+            time_limit_s = remaining_time ();
+          }
+      else
       let size_threshold = getenv_int "VIP_PORTFOLIO_SIZE_THRESHOLD" 160 in
       let modern_biased_small =
         clause_count <= getenv_int "VIP_PORTFOLIO_TINY_MODERN_MAX_CLAUSES" 4

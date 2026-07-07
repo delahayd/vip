@@ -59,6 +59,93 @@ let test_equality_factoring () =
       check string "equality factored" (Pretty.string_of_clause expected) (Pretty.string_of_clause r)
   | _ -> fail "Should generate exactly one equality factor"
 
+let test_polarized_resolution_uses_selected_one_way_literal () =
+  Resolution.reset_id_counter ();
+  Clause.reset_fresh_counter ();
+  let theory = [ [ neg (atom "p" []); pos (atom "q" []) ] ] in
+  let support = [ [ pos (atom "p" []) ]; [ neg (atom "q" []) ] ] in
+  let res =
+    Resolution.run_resolution_sos
+      ~limits:{ Resolution.default_limits with max_generated_clauses = Some 100 }
+      ~expensive_simplifications:false
+      ~one_way_clauses:theory
+      ~mode:Polarized
+      ~axioms:theory
+      ~support
+      ()
+  in
+  match res.stop_reason with
+  | Refutation_found _ -> ()
+  | _ -> fail "Polarized mode should refute through the selected one-way literal"
+
+let test_polarized_resolution_blocks_one_way_and_non_selected_literals () =
+  Resolution.reset_id_counter ();
+  Clause.reset_fresh_counter ();
+  let theory =
+    [
+      [ neg (atom "p" []); pos (atom "q" []); pos (atom "r" []) ];
+      [ pos (atom "p" []) ];
+    ]
+  in
+  let support = [ [ neg (atom "q" []) ] ] in
+  let res =
+    Resolution.run_resolution_sos
+      ~limits:{ Resolution.default_limits with max_generated_clauses = Some 100 }
+      ~expensive_simplifications:false
+      ~one_way_clauses:theory
+      ~mode:Polarized
+      ~axioms:theory
+      ~support
+      ()
+  in
+  match res.stop_reason with
+  | Saturation -> ()
+  | Refutation_found _ ->
+      fail "Polarized mode must not resolve two one-way clauses or use a non-selected one-way literal"
+  | Time_limit | Clause_limit -> fail "Polarized restriction test should saturate quickly"
+
+let test_polarized_atom_rewrite_normalizes_one_way_definition () =
+  Resolution.reset_id_counter ();
+  Clause.reset_fresh_counter ();
+  let definition = [ neg (atom "p" [ var "X" ]); pos (atom "q" [ var "X" ]) ] in
+  let support =
+    [
+      [ pos (atom "p" [ const "a" ]) ];
+      [ neg (atom "q" [ const "a" ]) ];
+    ]
+  in
+  let res =
+    Resolution.run_resolution_sos
+      ~limits:{ Resolution.default_limits with max_generated_clauses = Some 100 }
+      ~expensive_simplifications:false
+      ~one_way_clauses:[ definition ]
+      ~mode:Polarized
+      ~axioms:[ definition ]
+      ~support
+      ()
+  in
+  match res.stop_reason with
+  | Refutation_found _ ->
+      check bool "atom rewrite used" true (res.stats.demodulation_rewrites > 0)
+  | _ -> fail "Polarized mode should normalize p(a) to q(a)"
+
+let test_polarized_resolution_without_support_uses_ordinary_axioms () =
+  Resolution.reset_id_counter ();
+  Clause.reset_fresh_counter ();
+  let theory = [ [ pos (atom "p" []) ]; [ neg (atom "p" []) ] ] in
+  let res =
+    Resolution.run_resolution_sos
+      ~limits:{ Resolution.default_limits with max_generated_clauses = Some 100 }
+      ~expensive_simplifications:false
+      ~mode:Polarized
+      ~axioms:theory
+      ~support:[]
+      ()
+  in
+  match res.stop_reason with
+  | Refutation_found _ -> ()
+  | _ -> fail "Polarized mode should fall back to ordinary axioms without support"
+
 let () =
   run "Resolution and Factoring"
     [
@@ -71,5 +158,24 @@ let () =
        [
          test_case "factoring unrestricted" `Quick test_factoring_unrestricted;
          test_case "equality factoring" `Quick test_equality_factoring;
+       ]);
+      ("polarized",
+       [
+         test_case
+           "selected one-way literal"
+           `Quick
+           test_polarized_resolution_uses_selected_one_way_literal;
+         test_case
+           "blocks one-way/non-selected"
+           `Quick
+           test_polarized_resolution_blocks_one_way_and_non_selected_literals;
+         test_case
+           "atom rewrite normalizes one-way definition"
+           `Quick
+           test_polarized_atom_rewrite_normalizes_one_way_definition;
+         test_case
+           "ordinary axioms without support"
+           `Quick
+           test_polarized_resolution_without_support_uses_ordinary_axioms;
        ])
     ]

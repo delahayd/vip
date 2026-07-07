@@ -6,6 +6,7 @@ type inference_mode =
   | Unrestricted
   | Ordered
   | Ordered_with_fallback
+  | Polarized
 
 type split_var = int
 
@@ -83,6 +84,7 @@ val run_resolution_sos :
   ?limits:limits ->
   ?expensive_simplifications:bool ->
   ?emulate_v1:bool ->
+  ?one_way_clauses:clause list ->
   mode:inference_mode ->
   axioms:clause list ->
   support:clause list ->

@@ -186,6 +186,44 @@ let test_one_way_definition () =
   check int "baseline clauses" 2 (List.length baseline);
   check int "one-way clauses" 1 (List.length one_way)
 
+let test_one_way_trace_metadata () =
+  let def =
+    Input_fof
+      {
+        name = "def_p";
+        source_file = None;
+        role = "axiom";
+        formula =
+          Forall
+            ( [ "X" ],
+              Iff
+                ( Atom { pred = "p"; args = [ Var "X" ] },
+                  Atom { pred = "q"; args = [ Var "X" ] } ) );
+      }
+  in
+  let use =
+    Input_fof
+      {
+        name = "use_p";
+        source_file = None;
+        role = "axiom";
+        formula = Atom { pred = "p"; args = [ Fun ("a", []) ] };
+      }
+  in
+  let traced =
+    with_env "VIP_ONE_WAY_DEFINITIONS" (Some "1") (fun () ->
+      Clausify.partition_input_clauses_with_trace [ def; use ])
+  in
+  let one_way =
+    List.filter (fun origin -> origin.Clausify.one_way) traced.trace.origins
+  in
+  check int "one-way traced clauses" 1 (List.length one_way);
+  check
+    (list string)
+    "one-way traced clause"
+    [ "~p(V0) | q(V0)" ]
+    (List.map (fun origin -> Pretty.string_of_clause origin.Clausify.clause) one_way)
+
 let test_guarded_one_way_definition () =
   Clausify.reset_fresh_state ();
   let input =
@@ -256,6 +294,50 @@ let test_dmt_definition_expansion () =
     [ "q(a)" ]
     (List.map Pretty.string_of_clause expanded)
 
+let test_dmt_collects_conjoined_definitions () =
+  let defs =
+    Input_fof
+      {
+        name = "defs";
+        source_file = None;
+        role = "axiom";
+        formula =
+          And
+            ( Forall
+                ( [ "X" ],
+                  Iff
+                    ( Atom { pred = "p"; args = [ Var "X" ] },
+                      Atom { pred = "q"; args = [ Var "X" ] } ) ),
+              Forall
+                ( [ "Y" ],
+                  Iff
+                    ( Atom { pred = "r"; args = [ Var "Y" ] },
+                      Atom { pred = "s"; args = [ Var "Y" ] } ) ) );
+      }
+  in
+  let use =
+    Input_fof
+      {
+        name = "use_defs";
+        source_file = None;
+        role = "axiom";
+        formula =
+          And
+            ( Atom { pred = "p"; args = [ Fun ("a", []) ] },
+              Atom { pred = "r"; args = [ Fun ("b", []) ] } );
+      }
+  in
+  let expanded =
+    with_envs
+      [ ("VIP_DMT_EXPAND_DEFINITIONS", "1"); ("VIP_ONE_WAY_DEFINITIONS", "0") ]
+      (fun () -> fst (Clausify.clauses_of_input_with_report [ defs; use ]))
+  in
+  check
+    (list string)
+    "rewritten conjoined definitions"
+    [ "q(a)"; "s(b)" ]
+    (List.map Pretty.string_of_clause expanded)
+
 let () =
   run "clausify"
     [
@@ -270,7 +352,9 @@ let () =
          test_case "formula skolem collision" `Quick test_skolem_names_avoid_existing_function_symbols_in_formula;
          test_case "input-wide skolem collision" `Quick test_skolem_names_avoid_existing_function_symbols_across_inputs;
          test_case "one-way definition" `Quick test_one_way_definition;
+         test_case "one-way trace metadata" `Quick test_one_way_trace_metadata;
          test_case "guarded one-way definition" `Quick test_guarded_one_way_definition;
          test_case "dmt definition expansion" `Quick test_dmt_definition_expansion;
+         test_case "dmt conjoined definitions" `Quick test_dmt_collects_conjoined_definitions;
        ]);
     ]

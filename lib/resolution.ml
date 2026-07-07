@@ -11,6 +11,7 @@ type inference_mode =
   | Unrestricted
   | Ordered
   | Ordered_with_fallback
+  | Polarized
 
 type split_var = int
 
@@ -27,6 +28,10 @@ type derived = {
   clause_d : clause;
   mutable is_active : bool;
 }
+
+type clause_kind =
+  | Ordinary_clause
+  | One_way_clause of int
 
 type passive_entry = {
   passive_id : int;
@@ -358,6 +363,7 @@ let is_active_literal ~emulate_v1 mode c i =
   | Unrestricted -> true
   | Ordered | Ordered_with_fallback ->
       List.exists (( = ) i) (selected_or_maximal_indices ~emulate_v1 c)
+  | Polarized -> true
 
 let dedup_clauses ?(check_timeout = fun () -> ()) cls =
   let seen = Hashtbl.create 1024 in
@@ -390,6 +396,11 @@ let dedup_clauses_with_parents ?(check_timeout = fun () -> ()) items =
   aux [] items
 
 type demodulator = term * term
+type atom_rewrite_rule = atom * atom
+
+type atom_rewrite_index = {
+  atom_rules_by_pred : (string * int, atom_rewrite_rule list) Hashtbl.t;
+}
 
 type demod_index = {
   by_root : (string * int, demodulator list ref) Hashtbl.t;
@@ -539,6 +550,85 @@ let oriented_demodulator_of_clause = function
       Ordering.orient_equation l r
   | _ -> None
 
+let rec term_vars acc = function
+  | Var v -> Types.StringSet.add v acc
+  | Fun (_, args) -> List.fold_left term_vars acc args
+
+let atom_vars a =
+  List.fold_left term_vars Types.StringSet.empty a.args
+
+let atom_rewrite_rule_of_clause = function
+  | [ Neg lhs; Pos rhs ] | [ Pos rhs; Neg lhs ] ->
+      if lhs.pred = "=" || rhs.pred = "=" then
+        None
+      else if Types.StringSet.subset (atom_vars rhs) (atom_vars lhs) then
+        Some (lhs, rhs)
+      else
+        None
+  | _ -> None
+
+let atom_rewrite_index rules =
+  let idx = { atom_rules_by_pred = Hashtbl.create 127 } in
+  List.iter
+    (fun ((lhs, _) as rule) ->
+      let key = (lhs.pred, List.length lhs.args) in
+      let rules =
+        match Hashtbl.find_opt idx.atom_rules_by_pred key with
+        | Some rules -> rules
+        | None -> []
+      in
+      Hashtbl.replace idx.atom_rules_by_pred key (rule :: rules))
+    rules;
+  idx
+
+let atom_rewrite_candidates idx atom =
+  match Hashtbl.find_opt idx.atom_rules_by_pred (atom.pred, List.length atom.args) with
+  | None -> []
+  | Some rules -> rules
+
+let rewrite_atom_indexed_by_rules ~check_timeout idx count atom =
+  let count = ref count in
+  let rec aux atom =
+    check_timeout ();
+    if !count > max_demodulation_steps_per_term then
+      raise Rewrite_limit_hit;
+    match
+      List.find_map
+        (fun (lhs, rhs) ->
+          try
+            let s = Match.match_atoms lhs atom empty_subst in
+            Some (apply_subst_atom s rhs)
+          with Match.Not_matchable -> None)
+        (atom_rewrite_candidates idx atom)
+    with
+    | Some atom' when atom' <> atom ->
+        incr count;
+        aux atom'
+    | Some _ | None -> atom
+  in
+  let atom' = aux atom in
+  atom', !count
+
+let rewrite_literal_indexed_by_atom_rules ~check_timeout idx count = function
+  | Pos a ->
+      let a', count = rewrite_atom_indexed_by_rules ~check_timeout idx count a in
+      (Pos a', count)
+  | Neg a ->
+      let a', count = rewrite_atom_indexed_by_rules ~check_timeout idx count a in
+      (Neg a', count)
+
+let rewrite_clause_indexed_by_atom_rules ~check_timeout idx c =
+  List.fold_left
+    (fun (acc, count) lit ->
+      check_timeout ();
+      let lit', count =
+        rewrite_literal_indexed_by_atom_rules ~check_timeout idx count lit
+      in
+      (lit' :: acc, count))
+    ([], 0)
+    c
+  |> fun (lits, count) -> (List.rev lits, count)
+
 let resolve_pair c1 c2 i j =
   let l1 = List.nth c1 i in
   let l2 = List.nth c2 j in
@@ -654,6 +744,7 @@ let factor_by_mode ~check_timeout ~emulate_v1 mode c =
       let ordered = factor_pairs_ordered ~check_timeout ~emulate_v1 c in
       if ordered <> [] then ordered
       else factor_pairs_unrestricted ~check_timeout c
+  | Polarized -> factor_pairs_unrestricted ~check_timeout c
 
 let equality_resolution ~check_timeout ~emulate_v1 mode c =
   let c = rename_clause_apart c in
@@ -726,6 +817,13 @@ let oriented_sides mode l r =
         | _ -> []
       end
   | Unrestricted | Ordered_with_fallback ->
+      begin
+        match Ordering.compare_term_kbo l r with
+        | 1 -> [ (l, r) ]
+        | -1 -> [ (r, l) ]
+        | _ -> [ (l, r); (r, l) ]
+      end
+  | Polarized ->
       begin
         match Ordering.compare_term_kbo l r with
         | 1 -> [ (l, r) ]
@@ -906,9 +1004,14 @@ let indexed_superpose_given ~check_timeout ~emulate_v1 ~mode ~term_index ~all_by
 
 let term_index_orientation_mode = function
   | Ordered -> Term_index.Oriented_only
-  | Unrestricted | Ordered_with_fallback -> Term_index.Both_if_unorientable
+  | Unrestricted | Ordered_with_fallback | Polarized ->
+      Term_index.Both_if_unorientable
 
-let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = true) ?(emulate_v1 = false) ~mode ~axioms ~support () =
+let run_resolution_sos ?(limits = default_limits)
+    ?(expensive_simplifications = true)
+    ?(emulate_v1 = false)
+    ?(one_way_clauses = [])
+    ~mode ~axioms ~support () =
   let start_t = Unix.gettimeofday () in
 
   let known : (string, int) Hashtbl.t = Hashtbl.create 4099 in
@@ -948,6 +1051,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let subsumption_rejections = ref 0 in
 
   let context_by_id : (int, context) Hashtbl.t = Hashtbl.create 4099 in
+  let clause_kind_by_id : (int, clause_kind) Hashtbl.t = Hashtbl.create 4099 in
   let split_var_by_clause : (string, split_var) Hashtbl.t = Hashtbl.create 257 in
   let sat = Prop_sat.create () in
   let sat_unsat = ref false in
@@ -1010,11 +1114,44 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     if time_exceeded () then raise Timeout_hit
   in
 
+  let one_way_clause_keys = Hashtbl.create 127 in
+  List.iter
+    (fun c -> Hashtbl.replace one_way_clause_keys (string_of_clause c) ())
+    one_way_clauses;
+
+  let atom_rewrite_rules =
+    one_way_clauses
+    |> List.filter_map atom_rewrite_rule_of_clause
+    |> List.sort_uniq compare
+  in
+  let atom_rewrite_index = atom_rewrite_index atom_rewrite_rules in
+
+  let is_polarized_mode =
+    match mode with
+    | Polarized -> Hashtbl.length one_way_clause_keys > 0
+    | Unrestricted | Ordered | Ordered_with_fallback -> false
+  in
+
+  let mode_for_inference =
+    match mode with
+    | Polarized when not is_polarized_mode -> Ordered_with_fallback
+    | _ -> mode
+  in
+
   let rewrite_with_demodulators c =
-    if indexed_demodulation_enabled then
-      rewrite_clause_indexed ~check_timeout demod_index c
+    let c, term_rewrites =
+      if indexed_demodulation_enabled then
+        rewrite_clause_indexed ~check_timeout demod_index c
+      else
+        rewrite_clause ~check_timeout !demodulators c
+    in
+    if atom_rewrite_rules = [] then
+      (c, term_rewrites)
     else
-      rewrite_clause ~check_timeout !demodulators c
+      let c, atom_rewrites =
+        rewrite_clause_indexed_by_atom_rules ~check_timeout atom_rewrite_index c
+      in
+      (c, term_rewrites + atom_rewrites)
   in
 
   let clause_limit_exceeded () =
@@ -1297,6 +1434,9 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
   let legacy_candidate_pool =
     (not emulate_v1) && getenv_bool "VIP_LEGACY_CANDIDATE_POOL" false
   in
+  let resolution_fallback_scan =
+    emulate_v1 || getenv_bool "VIP_RESOLUTION_FALLBACK_SCAN" false
+  in
   let legacy_subsumption =
     (not emulate_v1) && getenv_bool "VIP_LEGACY_SUBSUMPTION" false
   in
@@ -1338,6 +1478,64 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     match Hashtbl.find_opt context_by_id d.id with
     | None -> []
     | Some ctx -> ctx
+  in
+
+  let is_initial_one_way c =
+    is_polarized_mode && Hashtbl.mem one_way_clause_keys (string_of_clause c)
+  in
+
+  let selected_one_way_index c =
+    match selected_or_maximal_indices ~emulate_v1 c with
+    | i :: _ -> Some i
+    | [] -> None
+  in
+
+  let kind_of d =
+    match Hashtbl.find_opt clause_kind_by_id d.id with
+    | Some kind -> kind
+    | None -> Ordinary_clause
+  in
+
+  let set_clause_kind d kind =
+    Hashtbl.replace clause_kind_by_id d.id kind
+  in
+
+  let set_new_clause_kind ~one_way d =
+    if is_polarized_mode && one_way then
+      match selected_one_way_index d.clause_d with
+      | Some i -> set_clause_kind d (One_way_clause i)
+      | None -> set_clause_kind d Ordinary_clause
+    else
+      set_clause_kind d Ordinary_clause
+  in
+
+  let preserve_clause_kind source target =
+    match kind_of source with
+    | Ordinary_clause -> set_clause_kind target Ordinary_clause
+    | One_way_clause _ ->
+        begin
+          match selected_one_way_index target.clause_d with
+          | Some i -> set_clause_kind target (One_way_clause i)
+          | None -> set_clause_kind target Ordinary_clause
+        end
+  in
+
+  let polarized_literal_allowed d i =
+    match kind_of d with
+    | Ordinary_clause -> true
+    | One_way_clause selected -> i = selected
+  in
+
+  let focused_literal_indices d =
+    match kind_of d with
+    | One_way_clause selected -> [ selected ]
+    | Ordinary_clause -> selected_or_maximal_indices ~emulate_v1 d.clause_d
+  in
+
+  let polarized_pair_allowed a b =
+    match kind_of a, kind_of b with
+    | One_way_clause _, One_way_clause _ -> false
+    | _ -> true
   in
 
   let context_key ctx = string_of_context (normalize_context ctx) in
@@ -1620,7 +1818,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     Term_index.add_clause
       term_index
       ~clause_id:d.id
-      ~orientation_mode:(term_index_orientation_mode mode)
+      ~orientation_mode:(term_index_orientation_mode mode_for_inference)
       d.clause_d
   in
 
@@ -1630,7 +1828,8 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     Feature_vector.remove simpl_fv_index d.id;
     let key = context_key (context_of d) ^ "|" ^ string_of_clause d.clause_d in
     Hashtbl.remove known key;
-    Hashtbl.remove context_by_id d.id
+    Hashtbl.remove context_by_id d.id;
+    Hashtbl.remove clause_kind_by_id d.id
   in
 
   let prune_passive_by_lrs () =
@@ -1695,7 +1894,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     prune_passive_by_lrs ()
   in
 
-  let rec add_clause ?(context = []) ?(allow_split = true) ~parents ~rule c =
+  let rec add_clause ?(context = []) ?(allow_split = true) ?(one_way = false) ~parents ~rule c =
     check_timeout ();
     let context = normalize_context context in
     if clause_limit_exceeded () || !sat_unsat || (avatar_enabled && context <> [] && not (sat_context_sat context)) then None
@@ -1744,6 +1943,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
               let d = { id = next_id (); parents; rule; clause_d = c; is_active = false } in
               Hashtbl.add known key d.id;
               Hashtbl.replace context_by_id d.id context;
+              set_new_clause_kind ~one_way d;
               Hashtbl.replace all_by_id d.id d;
               all := d :: !all;
               enqueue_passive d;
@@ -1751,7 +1951,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
             end
   in
 
-  let add_initial_fast c =
+  let add_initial_fast ?(one_way = false) c =
     check_timeout ();
     if clause_limit_exceeded () || !sat_unsat then None
     else
@@ -1770,6 +1970,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
             let d = { id = next_id (); parents = []; rule = "input"; clause_d = c; is_active = false } in
             Hashtbl.add known key d.id;
             Hashtbl.replace context_by_id d.id [];
+            set_new_clause_kind ~one_way d;
             Hashtbl.replace all_by_id d.id d;
             all := d :: !all;
             enqueue_passive d;
@@ -1863,6 +2064,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
               let key = context_key d_context ^ "|" ^ string_of_clause c_final in
               Hashtbl.replace known key d'.id;
               Hashtbl.replace context_by_id d'.id d_context;
+              preserve_clause_kind d d';
               Hashtbl.replace all_by_id d'.id d';
               all := d' :: !all;
               Some d'
@@ -1883,6 +2085,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
               let key = context_key d_context ^ "|" ^ string_of_clause c in
               Hashtbl.replace known key d'.id;
               Hashtbl.replace context_by_id d'.id d_context;
+              preserve_clause_kind d d';
               Hashtbl.replace all_by_id d'.id d';
               all := d' :: !all;
               Some d'
@@ -2390,7 +2593,12 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
 
   let resolution_candidates ~emulate_v1 given =
     let indexed_ids = Hashtbl.create 127 in
-    let given_active_indices = selected_or_maximal_indices ~emulate_v1 given.clause_d in
+    let given_active_indices =
+      if is_polarized_mode then
+        focused_literal_indices given
+      else
+        selected_or_maximal_indices ~emulate_v1 given.clause_d
+    in
 
     List.iter
       (fun i ->
@@ -2406,7 +2614,11 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
               match Hashtbl.find_opt all_by_id e.Discrimination_index.clause_id with
               | Some d ->
                   if (not avatar_enabled || derived_enabled d)
-                     && is_active_literal ~emulate_v1 mode d.clause_d e.Discrimination_index.lit_index then
+                     && (not is_polarized_mode || polarized_pair_allowed given d)
+                     && (if is_polarized_mode then
+                           polarized_literal_allowed d e.Discrimination_index.lit_index
+                         else
+                           is_active_literal ~emulate_v1 mode_for_inference d.clause_d e.Discrimination_index.lit_index) then
                     Hashtbl.replace indexed_ids d.id ()
               | None -> ())
           entries)
@@ -2423,19 +2635,59 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
         []
     in
 
-    let fallback =
-      List.fold_left
-        (fun acc d ->
-          check_timeout ();
-          if d.id <> given.id && (not avatar_enabled || derived_enabled d) && not (Hashtbl.mem indexed_ids d.id) && first_order_compatible given d then
-            d :: acc
-          else
-            acc)
-        []
-        !active
-    in
+    if resolution_fallback_scan then
+      let fallback =
+        List.fold_left
+          (fun acc d ->
+            check_timeout ();
+            if d.id <> given.id
+               && (not avatar_enabled || derived_enabled d)
+               && (not is_polarized_mode || polarized_pair_allowed given d)
+               && not (Hashtbl.mem indexed_ids d.id)
+               && first_order_compatible given d then
+              d :: acc
+            else
+              acc)
+          []
+          !active
+      in
+      indexed @ fallback
+    else
+      indexed
+  in
 
-    indexed @ fallback
+  let resolve_derived_pair given other =
+    if not is_polarized_mode then
+      resolve_two_clauses
+        ~check_timeout
+        ~emulate_v1
+        ~mode:mode_for_inference
+        given.clause_d
+        other.clause_d
+    else if not (polarized_pair_allowed given other) then
+      []
+    else
+      let c1 = rename_clause_apart given.clause_d in
+      let c2 = rename_clause_apart other.clause_d in
+      let active1 =
+        focused_literal_indices given
+      in
+      let active2 =
+        focused_literal_indices other
+      in
+      let results = ref [] in
+      List.iter
+        (fun i ->
+          check_timeout ();
+          List.iter
+            (fun j ->
+              check_timeout ();
+              match resolve_pair c1 c2 i j with
+              | Some c -> results := c :: !results
+              | None -> ())
+            active2)
+        active1;
+      dedup_clauses ~check_timeout !results
   in
 
   let context_of_parent_ids parents =
@@ -2474,12 +2726,12 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
       && initial_clause_count >= fast_initial_load_min_clauses
     in
 
-    let add_initial c =
+    let add_initial ?(one_way = false) c =
       let added =
         if use_fast_initial_load then
-          add_initial_fast c
+          add_initial_fast ~one_way c
         else
-          add_clause ~parents:[] ~rule:"input" c
+          add_clause ~parents:[] ~rule:"input" ~one_way c
       in
       match added with
       | Some d when d.clause_d = [] ->
@@ -2490,13 +2742,14 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
     List.iter
       (fun c ->
         check_timeout ();
-        if !stop_reason = None then add_initial c)
+        if !stop_reason = None then
+          add_initial ~one_way:(is_initial_one_way c) c)
       axioms;
 
     List.iter
       (fun c ->
         check_timeout ();
-        if !stop_reason = None then add_initial c)
+        if !stop_reason = None then add_initial ~one_way:(is_initial_one_way c) c)
       support;
 
     while !stop_reason = None do
@@ -2548,11 +2801,19 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
                                | Unrestricted -> "factor"
                                | Ordered -> "ordered_factor"
                                | Ordered_with_fallback ->
-                                   "ordered_factor/fallback")
+                                   "ordered_factor/fallback"
+                               | Polarized -> "polarized_factor")
                             fc
                             stop_reason
                         end)
-                      (factor_by_mode ~check_timeout ~emulate_v1 mode given.clause_d);
+                      (if is_polarized_mode then
+                         match kind_of given with
+                         | Ordinary_clause ->
+                             factor_pairs_unrestricted ~check_timeout given.clause_d
+                         | One_way_clause _ ->
+                             factor_pairs_ordered ~check_timeout ~emulate_v1 given.clause_d
+                       else
+                         factor_by_mode ~check_timeout ~emulate_v1 mode_for_inference given.clause_d);
 
                     List.iter
                       (fun c ->
@@ -2565,7 +2826,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
                             c
                             stop_reason
                         end)
-                      (equality_resolution ~check_timeout ~emulate_v1 mode given.clause_d);
+                      (equality_resolution ~check_timeout ~emulate_v1 mode_for_inference given.clause_d);
 
                     List.iter
                       (fun c ->
@@ -2578,19 +2839,14 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
                             c
                             stop_reason
                         end)
-                      (equality_factoring ~check_timeout ~emulate_v1 mode given.clause_d);
+                      (equality_factoring ~check_timeout ~emulate_v1 mode_for_inference given.clause_d);
 
                     List.iter
                       (fun other ->
                         check_timeout ();
                         if !stop_reason = None && other.id <> given.id then begin
                           let resolvents =
-                            resolve_two_clauses
-                              ~check_timeout
-                              ~emulate_v1
-                              ~mode
-                              given.clause_d
-                              other.clause_d
+                            resolve_derived_pair given other
                           in
                           List.iter
                             (fun r ->
@@ -2621,7 +2877,7 @@ let run_resolution_sos ?(limits = default_limits) ?(expensive_simplifications = 
                       (indexed_superpose_given
                          ~check_timeout
                          ~emulate_v1
-                         ~mode
+                         ~mode:mode_for_inference
                          ~term_index
                          ~all_by_id
                          given)
