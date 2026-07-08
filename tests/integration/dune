@@ -4,4 +4,5 @@
  (deps
   sat_01.p
   unsat_01.p
-  fof_unsat_01.p))
+  fof_unsat_01.p
+  set_bridge_seu140_shape.p))

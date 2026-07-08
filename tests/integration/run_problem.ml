@@ -54,6 +54,37 @@ let expect_not_refuted file () =
   | { status = CounterSatisfiable; _ } ->
       ()
 
+let with_env name value f =
+  let previous = Sys.getenv_opt name in
+  Fun.protect
+    ~finally:(fun () ->
+      match previous with
+      | None -> Unix.putenv name "0"
+      | Some v -> Unix.putenv name v)
+    (fun () ->
+      Unix.putenv name value;
+      f ())
+
+let expect_set_bridge_unsat file () =
+  with_env "VIP_SET_BRIDGE_SELECTION" "1" (fun () ->
+      let config =
+        {
+          config with
+          portfolio_mode = Prover.Legacy_only;
+          max_generated_clauses = Some 100_000;
+        }
+      in
+      match run_file ~config (path file) with
+      | { status = Unsatisfiable; empty_clause = Some _; _ }
+      | { status = Theorem; empty_clause = Some _; _ } ->
+          ()
+      | { status; _ } ->
+          fail
+            (Printf.sprintf
+               "expected set-bridge proof for %s, got %s"
+               file
+               (string_of_szs_status status)))
+
 let check_stats_present file () =
   let result = run_file ~config:config (path file) in
   match result.resolution_stats with
@@ -113,6 +144,7 @@ let () =
           test_case "cnf unsat" `Quick (expect_unsat "unsat_01.p");
           test_case "fof unsat" `Quick (expect_unsat "fof_unsat_01.p");
           test_case "sat or unknown" `Quick (expect_not_refuted "sat_01.p");
+          test_case "set bridge SEU140 shape" `Quick (expect_set_bridge_unsat "set_bridge_seu140_shape.p");
           test_case "stats present" `Quick (check_stats_present "unsat_01.p");
           test_case "derivation present" `Quick (check_derivation_present "unsat_01.p");
           test_case "tstp derivation present" `Quick (check_tstp_derivation "unsat_01.p");
