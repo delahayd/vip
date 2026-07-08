@@ -129,6 +129,32 @@ let test_polarized_atom_rewrite_normalizes_one_way_definition () =
       check bool "atom rewrite used" true (res.stats.demodulation_rewrites > 0)
   | _ -> fail "Polarized mode should normalize p(a) to q(a)"
 
+let test_polarized_atom_rewrite_does_not_rewrite_negative_literals () =
+  Resolution.reset_id_counter ();
+  Clause.reset_fresh_counter ();
+  let definition = [ neg (atom "p" [ var "X" ]); pos (atom "q" [ var "X" ]) ] in
+  let support =
+    [
+      [ neg (atom "p" [ const "a" ]) ];
+      [ pos (atom "q" [ const "a" ]) ];
+    ]
+  in
+  let res =
+    Resolution.run_resolution_sos
+      ~limits:{ Resolution.default_limits with max_generated_clauses = Some 100 }
+      ~expensive_simplifications:false
+      ~one_way_clauses:[ definition ]
+      ~mode:Polarized
+      ~axioms:[ definition ]
+      ~support
+      ()
+  in
+  match res.stop_reason with
+  | Saturation -> ()
+  | Refutation_found _ ->
+      fail "P => Q must not rewrite ~P into ~Q"
+  | Time_limit | Clause_limit -> fail "negative rewrite soundness test should saturate quickly"
+
 let test_polarized_resolution_without_support_uses_ordinary_axioms () =
   Resolution.reset_id_counter ();
   Clause.reset_fresh_counter ();
@@ -173,6 +199,10 @@ let () =
            "atom rewrite normalizes one-way definition"
            `Quick
            test_polarized_atom_rewrite_normalizes_one_way_definition;
+         test_case
+           "atom rewrite does not rewrite negative literals"
+           `Quick
+           test_polarized_atom_rewrite_does_not_rewrite_negative_literals;
          test_case
            "ordinary axioms without support"
            `Quick

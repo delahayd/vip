@@ -113,6 +113,7 @@ let () =
           test_case "cnf unsat" `Quick (expect_unsat "unsat_01.p");
           test_case "fof unsat" `Quick (expect_unsat "fof_unsat_01.p");
           test_case "sat or unknown" `Quick (expect_not_refuted "sat_01.p");
+          test_case "SEU140 core is not refuted" `Quick (expect_not_refuted "soundness_seu140_core.p");
           test_case "stats present" `Quick (check_stats_present "unsat_01.p");
           test_case "derivation present" `Quick (check_derivation_present "unsat_01.p");
           test_case "tstp derivation present" `Quick (check_tstp_derivation "unsat_01.p");

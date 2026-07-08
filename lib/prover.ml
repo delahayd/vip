@@ -1438,28 +1438,10 @@ let rec run_file ?(config = default_config) filename =
     let parsed = load_problem ~config:load_config filename in
     let has_conjecture = List.exists input_is_conjecture parsed.inputs in
     check_problem_timeout ();
-    let with_scoped_env name value f =
-      let old = Sys.getenv_opt name in
-      Option.iter (Unix.putenv name) value;
-      Fun.protect
-        ~finally:(fun () ->
-          match old with
-          | Some v -> Unix.putenv name v
-          | None -> Unix.putenv name "")
-        f
-    in
-    let with_polarized_defaults f =
-      if config.inference_mode = Resolution.Polarized
-         && env_opt "VIP_ONE_WAY_DEFINITIONS" = None then
-        with_scoped_env "VIP_ONE_WAY_DEFINITIONS" (Some "1") f
-      else
-        f ()
-    in
     let traced_part =
-      with_polarized_defaults (fun () ->
-        partition_input_clauses_with_trace
-          ~check_timeout:check_problem_timeout
-          parsed.inputs)
+      partition_input_clauses_with_trace
+        ~check_timeout:check_problem_timeout
+        parsed.inputs
     in
     let part = traced_part.partition in
     let one_way_clauses =

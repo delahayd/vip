@@ -614,8 +614,7 @@ let rewrite_literal_indexed_by_atom_rules ~check_timeout idx count = function
       let a', count = rewrite_atom_indexed_by_rules ~check_timeout idx count a in
       (Pos a', count)
   | Neg a ->
-      let a', count = rewrite_atom_indexed_by_rules ~check_timeout idx count a in
-      (Neg a', count)
+      (Neg a, count)
 
 let rewrite_clause_indexed_by_atom_rules ~check_timeout idx c =
   List.fold_left
