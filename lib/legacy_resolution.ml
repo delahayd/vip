@@ -242,6 +242,16 @@ let replace_literal_arg_at_path lit arg_index path replacement =
   | Pos a -> Pos (replace_atom_arg_at_path a arg_index path replacement)
   | Neg a -> Neg (replace_atom_arg_at_path a arg_index path replacement)
 
+let term_at_path t path =
+  let rec aux t = function
+    | [] -> t
+    | i :: rest ->
+        match t with
+        | Var _ -> t
+        | Fun (_, args) -> aux (List.nth args i) rest
+  in
+  aux t path
+
 let oriented_sides mode l r =
   match mode with
   | Unrestricted ->
@@ -289,12 +299,34 @@ let rec match_term env pattern target =
                 ts
       end
 
+let demod_rename_counter = ref 0
+
+let rec demod_term_vars acc = function
+  | Var v -> Types.StringSet.add v acc
+  | Fun (_, args) -> List.fold_left demod_term_vars acc args
+
+let rename_demodulator_apart (lhs, rhs) =
+  incr demod_rename_counter;
+  let suffix = "__rw" ^ string_of_int !demod_rename_counter in
+  let vars =
+    demod_term_vars Types.StringSet.empty lhs
+    |> fun acc -> demod_term_vars acc rhs
+  in
+  let subst =
+    Types.StringSet.fold
+      (fun v acc -> Types.StringMap.add v (Var (v ^ suffix)) acc)
+      vars
+      Types.StringMap.empty
+  in
+  (apply_subst_term subst lhs, apply_subst_term subst rhs)
+
 let rec rewrite_once_term ~check_timeout demods t =
   check_timeout ();
   let rec try_root = function
     | [] -> None
-    | (lhs, rhs) :: rest ->
+    | rule :: rest ->
         check_timeout ();
+        let lhs, rhs = rename_demodulator_apart rule in
         begin
           match match_term StringMap.empty lhs t with
           | Some env -> Some (apply_subst_term env rhs)
@@ -360,9 +392,20 @@ let rewrite_clause ~check_timeout demods c =
     c
   |> fun (lits, count) -> (List.rev lits, count)
 
+let rec term_vars acc = function
+  | Var v -> Types.StringSet.add v acc
+  | Fun (_, args) -> List.fold_left term_vars acc args
+
+let same_term_vars l r =
+  Types.StringSet.equal (term_vars Types.StringSet.empty l) (term_vars Types.StringSet.empty r)
+
 let oriented_demodulator_of_clause = function
   | [ Pos { pred = "="; args = [ l; r ] } ] ->
-      Ordering.orient_equation l r
+      begin
+        match Ordering.orient_equation l r with
+        | Some (lhs, rhs) when same_term_vars lhs rhs -> Some (lhs, rhs)
+        | Some _ | None -> None
+      end
   | _ -> None
 
 let resolve_pair c1 c2 i j =
@@ -518,13 +561,20 @@ let superpose_from_into_position
     source
     target
     eq_index
-    lhs
-    rhs
+    reversed
     (te : Term_index.term_entry) =
   let source_rest = List.filteri (fun i _ -> i <> eq_index) source in
   let lit = List.nth target te.Term_index.lit_index in
   try
-    let s = unify_terms lhs te.Term_index.subterm empty_subst in
+    let lhs, rhs =
+      match positive_equality (List.nth source eq_index) with
+      | Some (l, r) -> if reversed then (r, l) else (l, r)
+      | None -> raise Not_unifiable
+    in
+    let target_atom = atom_of_literal lit in
+    let target_arg = List.nth target_atom.args te.Term_index.arg_index in
+    let target_subterm = term_at_path target_arg te.Term_index.path in
+    let s = unify_terms lhs target_subterm empty_subst in
     let rhs' = apply_subst_term s rhs in
     let lit' =
       replace_literal_arg_at_path
@@ -558,7 +608,7 @@ let indexed_superpose_given ~check_timeout ~mode ~term_index ~all_by_id given =
         | None -> ()
         | Some (l, r) ->
             List.iter
-              (fun (lhs, rhs) ->
+              (fun (lhs, _rhs) ->
                 check_timeout ();
 
                 let entries =
@@ -581,8 +631,7 @@ let indexed_superpose_given ~check_timeout ~mode ~term_index ~all_by_id given =
                               given_source_clause
                               target_clause
                               eq_index
-                              lhs
-                              rhs
+                              (lhs <> l)
                               te
                           with
                           | Some c ->
@@ -628,6 +677,11 @@ let indexed_superpose_given ~check_timeout ~mode ~term_index ~all_by_id given =
                       match Hashtbl.find_opt all_by_id ee.Term_index.clause_id with
                       | None -> ()
                       | Some eq_d ->
+                          let reversed =
+                            match positive_equality (List.nth eq_d.clause_d ee.Term_index.lit_index) with
+                            | Some (l0, _) -> ee.Term_index.lhs <> l0
+                            | None -> false
+                          in
                           let source_clause =
                             rename_clause_apart eq_d.clause_d
                           in
@@ -645,8 +699,7 @@ let indexed_superpose_given ~check_timeout ~mode ~term_index ~all_by_id given =
                               source_clause
                               given_target_clause
                               ee.Term_index.lit_index
-                              ee.Term_index.lhs
-                              ee.Term_index.rhs
+                              reversed
                               te
                           with
                           | Some c ->

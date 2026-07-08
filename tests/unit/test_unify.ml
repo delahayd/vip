@@ -25,6 +25,15 @@ let test_apply_subst_deep_term () =
   | Fun _ -> ()
   | Var _ -> fail "deep substitution should rebuild the term"
 
+let test_apply_subst_composed_inside_term () =
+  let s =
+    Types.StringMap.empty
+    |> Types.StringMap.add "X" (Fun ("diff", [ Var "A"; Var "B" ]))
+    |> Types.StringMap.add "A" (Fun ("empty", []))
+  in
+  let t = Subst.apply_subst_term s (Var "X") in
+  check string "recursive substitution" "diff(empty,B)" (Pretty.string_of_term t)
+
 let () =
   run "unification"
     [
@@ -33,5 +42,6 @@ let () =
          test_case "same atom" `Quick test_unify_same_atom;
          test_case "var with const" `Quick test_unify_var_const;
          test_case "deep substitution" `Quick test_apply_subst_deep_term;
+         test_case "composed substitution inside term" `Quick test_apply_subst_composed_inside_term;
        ]);
     ]

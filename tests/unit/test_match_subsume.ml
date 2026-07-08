@@ -34,6 +34,18 @@ let test_match_terms_4 () =
     fail "Should raise Not_matchable"
   with Match.Not_matchable -> ()
 
+let test_match_terms_4b () =
+  (* f(X, X) does not match f(X, Y): the first X binding must be remembered. *)
+  try
+    let _ =
+      Match.match_terms
+        (fun_ "f" [ var "X"; var "X" ])
+        (fun_ "f" [ var "X"; var "Y" ])
+        StringMap.empty
+    in
+    fail "Should raise Not_matchable"
+  with Match.Not_matchable -> ()
+
 let test_match_terms_deep () =
   (* f(g(X, a), h(Y)) matches f(g(b, a), h(c)) *)
   let t1 = fun_ "f" [fun_ "g" [var "X"; const "a"]; fun_ "h" [var "Y"]] in
@@ -166,6 +178,7 @@ let () =
          test_case "no match const to var" `Quick test_match_terms_2;
          test_case "match identical vars to identical consts" `Quick test_match_terms_3;
          test_case "no match identical vars to diff consts" `Quick test_match_terms_4;
+         test_case "no match repeated var to distinct target vars" `Quick test_match_terms_4b;
          test_case "match deep terms" `Quick test_match_terms_deep;
          test_case "fail match deep terms on var conflict" `Quick test_match_terms_deep_fail;
        ]);

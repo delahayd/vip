@@ -8,8 +8,7 @@ let rec match_terms t1 t2 subst =
       (match StringMap.find_opt v1 subst with
        | Some t -> if t = t2 then subst else raise Not_matchable
        | None ->
-           if t2 = Var v1 then subst
-           else StringMap.add v1 t2 subst)
+           StringMap.add v1 t2 subst)
   | Fun (f1, args1), Fun (f2, args2) ->
       if f1 = f2 && List.length args1 = List.length args2 then
         List.fold_left2 (fun s a1 a2 -> match_terms a1 a2 s) subst args1 args2

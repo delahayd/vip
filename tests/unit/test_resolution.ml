@@ -172,6 +172,66 @@ let test_polarized_resolution_without_support_uses_ordinary_axioms () =
   | Refutation_found _ -> ()
   | _ -> fail "Polarized mode should fall back to ordinary axioms without support"
 
+let test_superposition_renames_indexed_variables_apart () =
+  Resolution.reset_id_counter ();
+  Clause.reset_fresh_counter ();
+  let union a b = fun_ "u" [ a; b ] in
+  let axioms =
+    [
+      [ eq (union (var "X") (var "Y")) (union (var "Y") (var "X")) ];
+      [ eq (union (var "X") (var "X")) (var "X") ];
+    ]
+  in
+  let support = [ [ neq (const "a") (const "b") ] ] in
+  let res =
+    Resolution.run_resolution_sos
+      ~limits:
+        {
+          time_limit_s = Some 0.2;
+          max_generated_clauses = Some 200;
+        }
+      ~expensive_simplifications:false
+      ~mode:Ordered_with_fallback
+      ~axioms
+      ~support
+      ()
+  in
+  match res.stop_reason with
+  | Saturation | Clause_limit | Time_limit -> ()
+  | Refutation_found _ ->
+      fail "Commutativity plus idempotence must not imply all constants equal"
+
+let test_legacy_superposition_renames_indexed_variables_apart () =
+  Legacy_resolution.reset_id_counter ();
+  Clause.reset_fresh_counter ();
+  let union a b = fun_ "u" [ a; b ] in
+  let axioms =
+    [
+      [ eq (union (var "X") (var "Y")) (union (var "Y") (var "X")) ];
+      [ eq (union (var "X") (var "X")) (var "X") ];
+    ]
+  in
+  let support = [ [ neq (const "a") (const "b") ] ] in
+  let res =
+    Legacy_resolution.run_resolution_sos
+      ~limits:
+        {
+          Legacy_resolution.time_limit_s = Some 0.2;
+          max_generated_clauses = Some 200;
+        }
+      ~mode:Legacy_resolution.Ordered_with_fallback
+      ~axioms
+      ~support
+      ()
+  in
+  match res.stop_reason with
+  | Legacy_resolution.Saturation
+  | Legacy_resolution.Clause_limit
+  | Legacy_resolution.Time_limit ->
+      ()
+  | Legacy_resolution.Refutation_found _ ->
+      fail "Legacy commutativity plus idempotence must not imply all constants equal"
+
 let () =
   run "Resolution and Factoring"
     [
@@ -184,6 +244,17 @@ let () =
        [
          test_case "factoring unrestricted" `Quick test_factoring_unrestricted;
          test_case "equality factoring" `Quick test_equality_factoring;
+       ]);
+      ("superposition",
+       [
+         test_case
+           "indexed variables are renamed apart"
+           `Quick
+           test_superposition_renames_indexed_variables_apart;
+         test_case
+           "legacy indexed variables are renamed apart"
+           `Quick
+           test_legacy_superposition_renames_indexed_variables_apart;
        ]);
       ("polarized",
        [
