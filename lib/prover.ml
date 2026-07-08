@@ -657,6 +657,130 @@ let input_is_conjecture = function
       role = "conjecture"
   | Fof.Input_include _ -> false
 
+let rec bridge_term_symbols acc = function
+  | Types.Var _ -> acc
+  | Types.Fun (f, args) ->
+      List.fold_left bridge_term_symbols (Types.StringSet.add ("f:" ^ f) acc) args
+
+let bridge_atom_symbols acc (a : Types.atom) =
+  List.fold_left bridge_term_symbols (Types.StringSet.add ("p:" ^ a.pred) acc) a.args
+
+let bridge_literal_symbols acc = function
+  | Types.Pos a | Types.Neg a -> bridge_atom_symbols acc a
+
+let bridge_clause_symbols clause =
+  List.fold_left bridge_literal_symbols Types.StringSet.empty clause
+
+let getenv_bool_early name default =
+  match Sys.getenv_opt name with
+  | None -> default
+  | Some s ->
+      match String.lowercase_ascii (String.trim s) with
+      | "1" | "true" | "yes" | "on" -> true
+      | "0" | "false" | "no" | "off" -> false
+      | _ -> default
+
+let rec formula_symbols acc = function
+  | Fof.FTrue | Fof.FFalse -> acc
+  | Fof.Atom a -> bridge_atom_symbols acc a
+  | Fof.Not f -> formula_symbols acc f
+  | Fof.And (a, b)
+  | Fof.Or (a, b)
+  | Fof.Imp (a, b)
+  | Fof.RevImp (a, b)
+  | Fof.Iff (a, b)
+  | Fof.Xor (a, b) ->
+      formula_symbols (formula_symbols acc a) b
+  | Fof.Forall (_, f)
+  | Fof.Exists (_, f) ->
+      formula_symbols acc f
+
+let rec formula_has_equality = function
+  | Fof.Atom { pred = "="; args = [ _; _ ] } -> true
+  | Fof.FTrue | Fof.FFalse | Fof.Atom _ -> false
+  | Fof.Not f -> formula_has_equality f
+  | Fof.And (a, b)
+  | Fof.Or (a, b)
+  | Fof.Imp (a, b)
+  | Fof.RevImp (a, b)
+  | Fof.Iff (a, b)
+  | Fof.Xor (a, b) ->
+      formula_has_equality a || formula_has_equality b
+  | Fof.Forall (_, f)
+  | Fof.Exists (_, f) ->
+      formula_has_equality f
+
+let select_set_bridge_inputs inputs =
+  if not (getenv_bool_early "VIP_SET_BRIDGE_SELECTION" false) then
+    inputs
+  else
+    let symbols_of_input = function
+      | Fof.Input_fof { formula; _ } -> formula_symbols Types.StringSet.empty formula
+      | Fof.Input_cnf { clause; _ } -> bridge_clause_symbols clause
+      | Fof.Input_include _ -> Types.StringSet.empty
+    in
+    let all_symbols =
+      List.fold_left
+        (fun acc input -> Types.StringSet.union acc (symbols_of_input input))
+        Types.StringSet.empty
+        inputs
+    in
+    let conjecture_symbols =
+      List.fold_left
+        (fun acc input ->
+          match input with
+          | Fof.Input_fof { role = "conjecture"; formula; _ } ->
+              Types.StringSet.union acc (formula_symbols Types.StringSet.empty formula)
+          | Fof.Input_cnf { role = "conjecture"; clause; _ } ->
+              Types.StringSet.union acc (bridge_clause_symbols clause)
+          | _ -> acc)
+        Types.StringSet.empty
+        inputs
+    in
+    let mem s set = Types.StringSet.mem s set in
+    let looks_like_set_goal =
+      mem "p:subset" conjecture_symbols
+      && mem "p:disjoint" conjecture_symbols
+      && mem "p:in" all_symbols
+      && mem "f:set_intersection2" all_symbols
+    in
+    if not looks_like_set_goal then
+      inputs
+    else
+      let selected_count = ref 0 in
+      let keep input =
+        match input with
+        | Fof.Input_include _ -> false
+        | Fof.Input_cnf { role; _ } -> role = "conjecture" || role = "negated_conjecture"
+        | Fof.Input_fof { role; formula; _ } ->
+            if role = "conjecture" || role = "negated_conjecture" then
+              true
+            else
+              let syms = formula_symbols Types.StringSet.empty formula in
+              let has s = mem s syms in
+              let keep =
+                (* Direct characterization: disjointness via common elements. *)
+                (has "p:disjoint" && has "p:in" && not (has "f:set_intersection2"))
+                (* Intersection/subset bridge, e.g. subset(A,B) => A /\ B = A. *)
+                || (has "p:subset" && has "f:set_intersection2" && formula_has_equality formula)
+                (* Membership definition of intersection. *)
+                || (has "p:in" && has "f:set_intersection2" && formula_has_equality formula)
+              in
+              if keep then incr selected_count;
+              keep
+      in
+      let selected = List.filter keep inputs in
+      if List.exists input_is_conjecture selected && !selected_count > 0 then begin
+        if getenv_bool_early "VIP_SET_BRIDGE_DEBUG" false then
+          Printf.eprintf
+            "[set-bridge] inputs=%d selected=%d conjecture_symbols=%d\n%!"
+            (List.length inputs)
+            (List.length selected)
+            (Types.StringSet.cardinal conjecture_symbols);
+        selected
+      end else
+        inputs
+
 let infer_status_from_stop_reason ~has_conjecture = function
   | Refutation_found _ ->
       if has_conjecture then Theorem else Unsatisfiable
@@ -1436,6 +1560,9 @@ let rec run_file ?(config = default_config) filename =
       | Some d -> { include_paths = [ d ]; use_tptp_env = true }
     in
     let parsed = load_problem ~config:load_config filename in
+    let parsed =
+      { parsed with inputs = select_set_bridge_inputs parsed.inputs }
+    in
     let has_conjecture = List.exists input_is_conjecture parsed.inputs in
     check_problem_timeout ();
     let traced_part =
@@ -2644,6 +2771,17 @@ let rec run_file ?(config = default_config) filename =
                  "VIP_FEQ_EQUALITY_FRACTION", Some "0.55";
                ])
       in
+      let set_bridge_probe name fraction =
+        run_experimental_subrun
+          ~stage_name:name
+          ~portfolio_mode:Legacy_only
+          ~fraction
+          ~min_budget_s:(getenv_float "VIP_CASC_150_SET_BRIDGE_MIN_SECONDS" 1.0)
+          ~env:
+            [
+              "VIP_SET_BRIDGE_SELECTION", Some "1";
+            ]
+      in
       let legacy_guided_probe name fraction =
         run_experimental_subrun
           ~stage_name:name
@@ -2763,6 +2901,9 @@ let rec run_file ?(config = default_config) filename =
                   (getenv_float "VIP_CASC_240_FEQ_SINE_NARROW_FRACTION" 0.04)
                   "300"
                   "128" ());
+                (fun () -> set_bridge_probe
+                  "CASC-150 FEQ set-theory bridge"
+                  (getenv_float "VIP_CASC_150_FEQ_SET_BRIDGE_FRACTION" 0.015) ());
                 (fun () -> stable_stage
                   "CASC-240 FEQ stable pass"
                   (getenv_float "VIP_CASC_240_FEQ_STABLE_FRACTION" 0.41) ());
@@ -2833,6 +2974,9 @@ let rec run_file ?(config = default_config) filename =
                 (fun () -> stable_stage
                   "CASC-240 equality-light stable pass"
                   (getenv_float "VIP_CASC_240_EQ_LIGHT_STABLE_FRACTION" 0.40) ());
+                (fun () -> set_bridge_probe
+                  "CASC-150 equality-light set-theory bridge"
+                  (getenv_float "VIP_CASC_150_EQ_LIGHT_SET_BRIDGE_FRACTION" 0.015) ());
                 (fun () -> feq_full
                   "CASC-240 equality-light full FEQ"
                   (getenv_float "VIP_CASC_240_EQ_LIGHT_FULL_FRACTION" 0.08) ());

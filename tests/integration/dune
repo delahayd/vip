@@ -5,4 +5,5 @@
   sat_01.p
   unsat_01.p
   fof_unsat_01.p
-  soundness_seu140_core.p))
+  soundness_seu140_core.p
+  set_bridge_seu140_shape.p))
