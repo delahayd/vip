@@ -371,18 +371,15 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
     name <> "" && not (input_name_is_duplicated name)
   in
   let source_file_for_origin origin =
-    match problem with
-    | Some _ as p -> p
+    match Hashtbl.find_opt input_by_index origin.Clausify.input_index with
+    | Some (Fof.Input_fof { source_file = Some file; _ })
+    | Some (Fof.Input_cnf { source_file = Some file; _ }) ->
+        Some file
+    | Some (Fof.Input_fof { source_file = None; _ })
+    | Some (Fof.Input_cnf { source_file = None; _ })
+    | Some (Fof.Input_include _)
     | None ->
-        match Hashtbl.find_opt input_by_index origin.Clausify.input_index with
-        | Some (Fof.Input_fof { source_file = Some file; _ })
-        | Some (Fof.Input_cnf { source_file = Some file; _ }) ->
-            Some file
-        | Some (Fof.Input_fof { source_file = None; _ })
-        | Some (Fof.Input_cnf { source_file = None; _ })
-        | Some (Fof.Input_include _)
-        | None ->
-            None
+        problem
   in
   let use_direct_file_parent origin =
     origin.Clausify.input_name <> ""
@@ -466,7 +463,7 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
       match Hashtbl.find_opt input_by_index origin.input_index with
       | Some (Fof.Input_fof { role; formula; source_file; _ }) ->
           let source_suffix =
-            match problem, source_file with
+            match source_file, problem with
             | Some p, _ | None, Some p ->
                 Printf.sprintf
                   ",file(%s,%s)"
@@ -494,7 +491,7 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
           end
       | Some (Fof.Input_cnf { role; clause; source_file; _ }) ->
           let source_suffix =
-            match problem, source_file with
+            match source_file, problem with
             | Some p, _ | None, Some p ->
                 Printf.sprintf
                   ",file(%s,%s)"
