@@ -376,9 +376,10 @@ let build_tstp_prelude ?problem inputs (trace : Clausify.clausification_trace) d
     | Some (Fof.Input_cnf { source_file = Some file; _ }) ->
         Some file
     | Some (Fof.Input_fof { source_file = None; _ })
-    | Some (Fof.Input_cnf { source_file = None; _ }) ->
+    | Some (Fof.Input_cnf { source_file = None; _ })
+    | Some (Fof.Input_include _)
+    | None ->
         problem
-    | Some (Fof.Input_include _) | None -> problem
   in
   let use_direct_file_parent origin =
     origin.Clausify.input_name <> ""
