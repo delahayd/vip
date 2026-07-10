@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>VIP 2026</title>
+</head>
+<body>
+  <h1>VIP 2026</h1>
+  <p>VIP development team<br>
+  University of Montpellier / LIRMM, France</p>
+
+  <h2>Architecture</h2>
+  <p>
+    VIP 2026 is an automatic theorem prover for first-order logic in TPTP FOF
+    syntax. It has been developed as a short-term experiment in constructing a
+    standalone, fully automatic first-order prover with extensive LLM-assisted
+    implementation. The submitted system does not call another ATP system as a
+    backend.
+  </p>
+  <p>
+    VIP is based on saturation with a given-clause loop. Problems are parsed
+    from TPTP files, include directives are expanded, formulae are clausified,
+    and the resulting clauses are processed by resolution-style and
+    superposition-style inference rules. The main inferences include binary
+    resolution, factoring, equality resolution, equality factoring, and
+    equality-oriented paramodulation/superposition steps.
+  </p>
+  <p>
+    The prover applies standard redundancy and simplification techniques,
+    including tautology deletion, demodulation, forward simplification,
+    subsumption, subsumption resolution, condensation, and contextual literal
+    cutting. Two saturation engines are available: a simpler legacy engine that
+    remains effective on some non-equality problems, and a more recent engine
+    with stronger equality handling, indexing, and clause selection. The
+    competition portfolio combines both engines.
+  </p>
+  <p>
+    The system also contains experimental components inspired by modern
+    saturation provers, including SInE-style axiom selection, conservative
+    AVATAR-style splitting, layered clause selection, and limited
+    deduction-modulo-inspired preprocessing. The deduction-modulo-inspired
+    component is restricted to selected definitional equivalences and is used
+    as a pragmatic rewriting and search-control feature.
+  </p>
+
+  <h2>Strategies</h2>
+  <p>
+    VIP uses a sequential portfolio. The main CASC-oriented portfolio is named
+    <code>casc-150</code>. Each stage receives a fixed part of the global time
+    budget and runs with fixed options for the FOF division. The submitted
+    StarExec script uses the same command line for every FOF problem.
+  </p>
+  <p>
+    Strategy scheduling is based only on general syntactic characteristics of
+    the input, such as the presence and density of equality, the number and
+    shape of clauses after preprocessing, unit-clause ratio, polarity patterns,
+    and symbol occurrence information used by SInE-style axiom selection. It is
+    not based on problem names, file paths, comments, TPTP headers, or stored
+    information about individual problems or their solutions.
+  </p>
+  <p>
+    The portfolio includes FEQ-oriented equality stages, FNE recovery stages
+    using the legacy engine, SInE axiom-selection probes with different
+    selection widths, legacy-guided modern stages, layered age/weight passive
+    selection, and conservative splitting stages. Time and generated-clause
+    limits are used to keep individual stages bounded. The default submitted
+    configuration uses a 240 second internal time limit and a generated-clause
+    limit of 75000.
+  </p>
+
+  <h2>Implementation</h2>
+  <p>
+    VIP is implemented in OCaml and is built with Dune. The executable installed
+    in the StarExec package is <code>vip</code>; the older name
+    <code>ip</code> is kept only as a compatibility alias in the source tree.
+  </p>
+  <p>
+    TPTP include files are resolved according to the standard TPTP convention:
+    first relative to the problem file, and otherwise relative to the TPTP root
+    supplied by the <code>TPTP</code> environment variable or the
+    <code>--tptp</code> option. Internal data structures include feature-vector
+    style indices for subsumption candidates, discrimination-style indices for
+    rewriting candidates, and KBO-style term ordering for equality reasoning.
+  </p>
+  <p>
+    Derivation information is recorded during proof search. In competition
+    mode, VIP writes all result information to standard output, emits an SZS
+    status line, and, when a refutation is found, prints a TPTP/TSTP-style
+    proof delimited by SZS output markers. The required FOF sample problem
+    <code>SEU140+2</code> has been tested locally with TPTP4X and GDV.
+  </p>
+  <p>
+    The StarExec package provides <code>bin/starexec_run_FOF</code> and
+    <code>bin/starexec_run_default</code>. The run script expects the problem
+    file as its first argument and relies on the StarExec/TPTP environment for
+    include-file resolution.
+  </p>
+
+  <h2>Expected Competition Performance</h2>
+  <p>
+    VIP is expected to solve a useful subset of FOF theorem problems, with
+    better performance on unsatisfiable problems where axiom selection,
+    equality simplification, and staged saturation interact well. It is not
+    expected to match mature ATP systems such as Vampire, E, or Zipperposition.
+  </p>
+  <p>
+    On the development CASC-style FOF benchmark used during the project, the
+    DMT-based release line solved roughly half of the tested problems at 120
+    seconds. The official run will have a larger time budget, and the submitted
+    configuration is tuned for a 240 second wall-clock limit and the CASC memory
+    environment.
+  </p>
+
+  <h2>References</h2>
+  <p>
+    No system paper is available for this first VIP release. The implementation
+    follows standard saturation-based ATP techniques used in systems such as E,
+    Vampire, Zipperposition, and Drodi, including given-clause saturation,
+    resolution, superposition-style equality reasoning, demodulation,
+    subsumption, SInE-style axiom selection, AVATAR-style splitting, layered
+    clause selection, and age/weight scheduling.
+  </p>
+</body>
+</html>
