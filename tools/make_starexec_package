@@ -31,6 +31,15 @@ Run scripts:
 The run scripts expect the problem file as their first argument. Includes are
 resolved by VIP using the current problem directory and the TPTP environment
 variable when set by StarExec.
+
+Default competition settings:
+  portfolio: casc-150
+  internal time limit: 240 seconds
+  max generated clauses: 75000
+
+The memory limit is controlled by the StarExec job environment. CASC J13 is
+expected to provide 128 GiB for the run; VIP does not request memory itself
+inside the run script.
 EOF
 
 tar -C "$OUT_DIR" -czf "$ARCHIVE" "$PACKAGE_NAME"
