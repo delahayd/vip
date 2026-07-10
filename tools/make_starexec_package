@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+OUT_DIR="${1:-$ROOT/dist}"
+PACKAGE_NAME="${VIP_PACKAGE_NAME:-vip-starexec}"
+STAGING="$OUT_DIR/$PACKAGE_NAME"
+ARCHIVE="$OUT_DIR/$PACKAGE_NAME.tgz"
+
+cd "$ROOT"
+dune build src/main.exe
+
+rm -rf "$STAGING"
+mkdir -p "$STAGING/bin"
+
+cp _build/default/src/main.exe "$STAGING/bin/vip"
+cp starexec/starexec_run_default "$STAGING/bin/starexec_run_default"
+cp starexec/starexec_run_default "$STAGING/bin/starexec_run_FOF"
+
+chmod +x "$STAGING/bin/vip" \
+  "$STAGING/bin/starexec_run_default" \
+  "$STAGING/bin/starexec_run_FOF"
+
+cat > "$STAGING/README.txt" <<EOF
+VIP StarExec executable package.
+
+Run scripts:
+  bin/starexec_run_default
+  bin/starexec_run_FOF
+
+The run scripts expect the problem file as their first argument. Includes are
+resolved by VIP using the current problem directory and the TPTP environment
+variable when set by StarExec.
+EOF
+
+tar -C "$OUT_DIR" -czf "$ARCHIVE" "$PACKAGE_NAME"
+echo "$ARCHIVE"
