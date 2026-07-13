@@ -30,7 +30,7 @@ Important strategy components include:
 - conservative AVATAR stages;
 - clause and time limits to control memory use.
 
-The competition run script uses `casc-150` with a 240 second internal time limit and a default generated-clause limit of 75000. These values can be overridden through environment variables, but the submitted StarExec script uses the same switches for all FOF problems.
+The competition run script uses `casc-150` with a default generated-clause limit of 75000. The CASC wall-clock time limit is not hardcoded in the executable package. It can be supplied by the StarExec configuration as a wrapper argument or through a time-limit environment variable; if no internal time limit is supplied, StarExec's external wall-clock limit controls termination.
 
 ## Implementation
 
@@ -49,7 +49,7 @@ vip \
   --competition-output \
   --proof-tstp \
   --portfolio casc-150 \
-  --time-limit 240 \
+  --time-limit <seconds> \
   --max-clauses 75000 \
   --tptp /path/to/TPTP-root \
   /path/to/problem.p

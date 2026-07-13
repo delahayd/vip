@@ -1,12 +1,96 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -lt 1 ]]; then
-  echo "Usage: $0 PROBLEM" >&2
+usage() {
+  echo "Usage: $0 PROBLEM [TIME_LIMIT_SECONDS]" >&2
+  echo "       $0 PROBLEM --time-limit TIME_LIMIT_SECONDS" >&2
   exit 2
+}
+
+if [[ $# -lt 1 ]]; then
+  usage
 fi
 
-PROBLEM="$1"
+is_number() {
+  [[ "$1" =~ ^[0-9]+([.][0-9]+)?$ ]]
+}
+
+normalize_seconds() {
+  local value="$1"
+  value="${value%s}"
+  value="${value%S}"
+  if is_number "$value"; then
+    printf '%s\n' "$value"
+  else
+    return 1
+  fi
+}
+
+time_limit_from_env() {
+  local name value
+  for name in \
+    VIP_TIME_LIMIT \
+    IP_TIME_LIMIT \
+    STAREXEC_TIME_LIMIT \
+    STAREXEC_WALLCLOCK_LIMIT \
+    STAREXEC_CPU_LIMIT \
+    WALLCLOCK_LIMIT \
+    CPU_LIMIT \
+    TIME_LIMIT
+  do
+    value="${!name-}"
+    if [[ -n "$value" ]]; then
+      normalize_seconds "$value" && return 0
+    fi
+  done
+  return 1
+}
+
+PROBLEM=""
+TIME_LIMIT="$(time_limit_from_env || true)"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --time-limit)
+      [[ $# -ge 2 ]] || usage
+      TIME_LIMIT="$(normalize_seconds "$2")" || usage
+      shift 2
+      ;;
+    --time-limit=*)
+      TIME_LIMIT="$(normalize_seconds "${1#--time-limit=}")" || usage
+      shift
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -*)
+      echo "Unknown wrapper option: $1" >&2
+      usage
+      ;;
+    *)
+      if [[ -z "$PROBLEM" ]]; then
+        PROBLEM="$1"
+      elif [[ -z "$TIME_LIMIT" ]] && normalize_seconds "$1" >/dev/null; then
+        TIME_LIMIT="$(normalize_seconds "$1")"
+      else
+        echo "Unexpected wrapper argument: $1" >&2
+        usage
+      fi
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$PROBLEM" && $# -gt 0 ]]; then
+  PROBLEM="$1"
+  shift
+fi
+
+if [[ -z "$PROBLEM" || $# -gt 0 ]]; then
+  usage
+fi
+
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
 if [[ -n "${VIP_BINARY:-}" ]]; then
@@ -33,16 +117,18 @@ else
 fi
 
 PORTFOLIO="${VIP_PORTFOLIO:-${IP_PORTFOLIO:-casc-150}}"
-TIME_LIMIT="${VIP_TIME_LIMIT:-${IP_TIME_LIMIT:-240}}"
 MAX_CLAUSES="${VIP_MAX_CLAUSES:-${IP_MAX_CLAUSES:-75000}}"
 
 ARGS=(
   --competition-output
   --proof-tstp
   --portfolio "$PORTFOLIO"
-  --time-limit "$TIME_LIMIT"
   --max-clauses "$MAX_CLAUSES"
 )
+
+if [[ -n "$TIME_LIMIT" ]]; then
+  ARGS+=(--time-limit "$TIME_LIMIT")
+fi
 
 if [[ -n "${TPTP:-}" ]]; then
   ARGS+=(--tptp "$TPTP")

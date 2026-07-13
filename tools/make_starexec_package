@@ -34,8 +34,20 @@ variable when set by StarExec.
 
 Default competition settings:
   portfolio: casc-150
-  internal time limit: 240 seconds
   max generated clauses: 75000
+
+The run scripts do not hardcode the CASC time limit. If StarExec or the
+organizers pass a time budget, provide it either as:
+
+  bin/starexec_run_FOF problem.p TIME_LIMIT_SECONDS
+  bin/starexec_run_FOF problem.p --time-limit TIME_LIMIT_SECONDS
+
+or through one of these environment variables:
+
+  VIP_TIME_LIMIT, STAREXEC_TIME_LIMIT, STAREXEC_WALLCLOCK_LIMIT, TIME_LIMIT
+
+If no time budget is supplied, VIP runs without an internal time limit and the
+external StarExec wall-clock limit controls termination.
 
 The memory limit is controlled by the StarExec job environment. CASC J13 is
 expected to provide 128 GiB for the run; VIP does not request memory itself
