@@ -8,7 +8,7 @@ STAGING="$OUT_DIR/$PACKAGE_NAME"
 ARCHIVE="$OUT_DIR/$PACKAGE_NAME.tgz"
 
 cd "$ROOT"
-dune build src/main.exe
+dune build --profile static src/main.exe
 
 rm -rf "$STAGING"
 mkdir -p "$STAGING/bin"

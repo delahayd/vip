@@ -1,8 +1,7 @@
 (executable
  (name main)
  (modules header main sites)
- (libraries prover_lib unix dune-site.plugins)
- (link_flags (:standard -ccopt -static)))
+ (libraries prover_lib unix dune-site.plugins))
 
 (generate_sites_module
  (module sites)
