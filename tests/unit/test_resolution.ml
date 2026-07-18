@@ -456,6 +456,61 @@ let test_saturation_preserves_all_two_element_models () =
   done;
   check bool "input has audited models" true (!satisfying_models > 0)
 
+let test_legacy_saturation_preserves_all_two_element_models () =
+  Legacy_resolution.reset_id_counter ();
+  Clause.reset_fresh_counter ();
+  let axioms =
+    [
+      [ eq (fun_ "f" [ const "a" ]) (const "b") ];
+      [ neg (atom "p" [ fun_ "f" [ var "X" ] ]); pos (atom "q" [ var "X" ]) ];
+      [ pos (atom "p" [ const "b" ]) ];
+      [ neg (atom "q" [ const "c" ]) ];
+      [ neq (const "a") (const "c") ];
+    ]
+  in
+  let result =
+    Legacy_resolution.run_resolution_sos
+      ~limits:{ Legacy_resolution.default_limits with max_generated_clauses = Some 500 }
+      ~mode:Legacy_resolution.Unrestricted
+      ~axioms
+      ~support:[]
+      ()
+  in
+  let satisfying_models = ref 0 in
+  for a = 0 to 1 do
+    for b = 0 to 1 do
+      for c = 0 to 1 do
+        for f0 = 0 to 1 do
+          for f1 = 0 to 1 do
+            for p = 0 to 3 do
+              for q = 0 to 3 do
+                let constants = [ "a", a; "b", b; "c", c ] in
+                let f_map = [ f0; f1 ] in
+                let predicates = [ "p", p; "q", q ] in
+                let holds =
+                  clause_holds_in_model ~constants ~f_map ~predicates
+                in
+                if List.for_all holds axioms then begin
+                  incr satisfying_models;
+                  List.iter
+                    (fun (d : Legacy_resolution.derived) ->
+                      if not (holds d.clause_d) then
+                        failf
+                          "legacy clause %d (%s) has a two-element countermodel: %s"
+                          d.id
+                          d.rule
+                          (Pretty.string_of_clause d.clause_d))
+                    result.derivation
+                end
+              done
+            done
+          done
+        done
+      done
+    done
+  done;
+  check bool "legacy input has audited models" true (!satisfying_models > 0)
+
 let () =
   run "Resolution and Factoring"
     [
@@ -519,5 +574,9 @@ let () =
            "saturation preserves all two-element models"
            `Quick
            test_saturation_preserves_all_two_element_models;
+         test_case
+           "legacy saturation preserves all two-element models"
+           `Quick
+           test_legacy_saturation_preserves_all_two_element_models;
        ])
     ]
