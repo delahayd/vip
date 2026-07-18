@@ -369,6 +369,93 @@ let test_avatar_cannot_be_enabled_in_release () =
       in
       check bool "AVATAR hard-disabled in release" false res.stats.avatar_enabled)
 
+let clause_holds_in_model ~constants ~f_map ~predicates clause =
+  let variables = Clause.vars_of_clause clause |> StringSet.elements in
+  let assignment = Hashtbl.create (List.length variables) in
+  let rec eval_term = function
+    | Var v -> Hashtbl.find assignment v
+    | Fun (name, []) -> List.assoc name constants
+    | Fun ("f", [ arg ]) -> List.nth f_map (eval_term arg)
+    | Fun (name, _) -> failwith ("unexpected audit function " ^ name)
+  in
+  let eval_atom a =
+    match a.pred, a.args with
+    | "=", [ left; right ] -> eval_term left = eval_term right
+    | pred, [ arg ] ->
+        let mask = List.assoc pred predicates in
+        mask land (1 lsl eval_term arg) <> 0
+    | pred, _ -> failwith ("unexpected audit predicate " ^ pred)
+  in
+  let eval_literal = function
+    | Pos a -> eval_atom a
+    | Neg a -> not (eval_atom a)
+  in
+  let rec all_assignments = function
+    | [] -> List.exists eval_literal clause
+    | v :: rest ->
+        Hashtbl.replace assignment v 0;
+        let at_zero = all_assignments rest in
+        Hashtbl.replace assignment v 1;
+        at_zero && all_assignments rest
+  in
+  all_assignments variables
+
+let test_saturation_preserves_all_two_element_models () =
+  Resolution.reset_id_counter ();
+  Clause.reset_fresh_counter ();
+  let axioms =
+    [
+      [ eq (fun_ "f" [ const "a" ]) (const "b") ];
+      [ neg (atom "p" [ fun_ "f" [ var "X" ] ]); pos (atom "q" [ var "X" ]) ];
+      [ pos (atom "p" [ const "b" ]) ];
+      [ neg (atom "q" [ const "c" ]) ];
+      [ neq (const "a") (const "c") ];
+    ]
+  in
+  let result =
+    Resolution.run_resolution_sos
+      ~limits:{ Resolution.default_limits with max_generated_clauses = Some 500 }
+      ~expensive_simplifications:true
+      ~mode:Unrestricted
+      ~axioms
+      ~support:[]
+      ()
+  in
+  let satisfying_models = ref 0 in
+  for a = 0 to 1 do
+    for b = 0 to 1 do
+      for c = 0 to 1 do
+        for f0 = 0 to 1 do
+          for f1 = 0 to 1 do
+            for p = 0 to 3 do
+              for q = 0 to 3 do
+                let constants = [ "a", a; "b", b; "c", c ] in
+                let f_map = [ f0; f1 ] in
+                let predicates = [ "p", p; "q", q ] in
+                let holds =
+                  clause_holds_in_model ~constants ~f_map ~predicates
+                in
+                if List.for_all holds axioms then begin
+                  incr satisfying_models;
+                  List.iter
+                    (fun (d : Resolution.derived) ->
+                      if not (holds d.clause_d) then
+                        failf
+                          "derived clause %d (%s) has a two-element countermodel: %s"
+                          d.id
+                          d.rule
+                          (Pretty.string_of_clause d.clause_d))
+                    result.derivation
+                end
+              done
+            done
+          done
+        done
+      done
+    done
+  done;
+  check bool "input has audited models" true (!satisfying_models > 0)
+
 let () =
   run "Resolution and Factoring"
     [
@@ -428,5 +515,9 @@ let () =
            "AVATAR cannot be enabled in release"
            `Quick
            test_avatar_cannot_be_enabled_in_release;
+         test_case
+           "saturation preserves all two-element models"
+           `Quick
+           test_saturation_preserves_all_two_element_models;
        ])
     ]
