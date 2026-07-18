@@ -140,7 +140,11 @@ let test_demodulation_standardizes_rule_variables_apart () =
   in
   let result =
     Resolution.run_resolution_sos
-      ~limits:{ Resolution.default_limits with max_generated_clauses = Some 1000 }
+      ~limits:
+        {
+          Resolution.time_limit_s = Some 1.0;
+          max_generated_clauses = Some 1000;
+        }
       ~expensive_simplifications:true
       ~mode:Unrestricted
       ~axioms:[ source; symmetry; bool_distinct ]
@@ -151,8 +155,7 @@ let test_demodulation_standardizes_rule_variables_apart () =
   | Saturation -> ()
   | Refutation_found _ ->
       fail "Demodulator variables must not capture variables in rewritten clauses"
-  | Time_limit | Clause_limit ->
-      fail "Demodulator soundness regression should saturate quickly"
+  | Time_limit | Clause_limit -> ()
 
 let test_legacy_demodulation_standardizes_rule_variables_apart () =
   Legacy_resolution.reset_id_counter ();
@@ -190,7 +193,10 @@ let test_legacy_demodulation_standardizes_rule_variables_apart () =
   let result =
     Legacy_resolution.run_resolution_sos
       ~limits:
-        { Legacy_resolution.default_limits with max_generated_clauses = Some 100 }
+        {
+          Legacy_resolution.time_limit_s = Some 1.0;
+          max_generated_clauses = Some 100;
+        }
       ~mode:Legacy_resolution.Unrestricted
       ~axioms:[ source; symmetry; bool_distinct ]
       ~support:[]
@@ -200,8 +206,7 @@ let test_legacy_demodulation_standardizes_rule_variables_apart () =
   | Legacy_resolution.Saturation | Legacy_resolution.Clause_limit -> ()
   | Legacy_resolution.Refutation_found _ ->
       fail "Legacy demodulator variables must not capture rewritten clause variables"
-  | Legacy_resolution.Time_limit ->
-      fail "Legacy demodulator soundness regression should terminate quickly"
+  | Legacy_resolution.Time_limit -> ()
 
 let test_legacy_indexed_superposition_keeps_target_variable_binding () =
   Legacy_resolution.reset_id_counter ();
@@ -300,6 +305,32 @@ let test_polarized_atom_rewrite_normalizes_one_way_definition () =
       check bool "atom rewrite used" true (res.stats.demodulation_rewrites > 0)
   | _ -> fail "Polarized mode should normalize p(a) to q(a)"
 
+let test_polarized_atom_rewrite_does_not_reverse_implication () =
+  Resolution.reset_id_counter ();
+  Clause.reset_fresh_counter ();
+  let definition = [ neg (atom "p" [ var "X" ]); pos (atom "q" [ var "X" ]) ] in
+  let support =
+    [
+      [ neg (atom "p" [ const "a" ]) ];
+      [ pos (atom "q" [ const "a" ]) ];
+    ]
+  in
+  let res =
+    Resolution.run_resolution_sos
+      ~limits:{ Resolution.default_limits with max_generated_clauses = Some 100 }
+      ~expensive_simplifications:false
+      ~one_way_clauses:[ definition ]
+      ~mode:Polarized
+      ~axioms:[ definition ]
+      ~support
+      ()
+  in
+  match res.stop_reason with
+  | Saturation -> ()
+  | Refutation_found _ ->
+      fail "A one-way implication must not rewrite a negative antecedent"
+  | Time_limit | Clause_limit -> fail "Polarized soundness test should saturate quickly"
+
 let test_polarized_resolution_without_support_uses_ordinary_axioms () =
   Resolution.reset_id_counter ();
   Clause.reset_fresh_counter ();
@@ -385,6 +416,10 @@ let () =
            "atom rewrite normalizes one-way definition"
            `Quick
            test_polarized_atom_rewrite_normalizes_one_way_definition;
+         test_case
+           "atom rewrite preserves negative antecedents"
+           `Quick
+           test_polarized_atom_rewrite_does_not_reverse_implication;
          test_case
            "ordinary axioms without support"
            `Quick

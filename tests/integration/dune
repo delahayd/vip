@@ -3,6 +3,8 @@
  (libraries prover_lib alcotest)
  (deps
   sat_01.p
+  sat_equality_finite_model.p
+  sat_subsumption_variable_capture.p
   unsat_01.p
   fof_unsat_01.p
   set_bridge_seu140_shape.p))

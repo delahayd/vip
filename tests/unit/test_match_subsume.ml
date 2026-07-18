@@ -94,6 +94,14 @@ let test_subsumes_multiplicity () =
   let c2 = [ pos (atom "p" [const "a"]) ] in
   check bool "subsumes multiplicity (known limitation: greedy 1-to-1)" false (Clause.subsumes c1 c2)
 
+let test_subsumes_keeps_clause_variables_apart () =
+  (* Variables in independently quantified clauses are not shared.  In
+     particular, matching the first X against the target X must not make the
+     second occurrence free to match Y. *)
+  let c1 = [ pos (atom "p" [var "X"; var "X"]) ] in
+  let c2 = [ pos (atom "p" [var "X"; var "Y"]) ] in
+  check bool "independent variables stay apart" false (Clause.subsumes c1 c2)
+
 let test_subsumes_resolution_1 () =
   (* P(X) subsumption-resolves ~P(a) v Q(b) -> Q(b) *)
   let c1 = [ pos (atom "p" [var "X"]) ] in
@@ -113,6 +121,16 @@ let test_subsumes_resolution_2 () =
       let expected = [ pos (atom "q" [const "b"]); pos (atom "r" [const "c"]) ] in
       check string "resolved" (Pretty.string_of_clause expected) (Pretty.string_of_clause res)
   | None -> fail "Should resolve"
+
+let test_subsumption_resolution_keeps_variables_apart () =
+  (* These parents entail R(X,X), not the universally stronger R(X,Y). *)
+  let c1 = [ pos (atom "p" [var "X"; var "X"]) ] in
+  let c2 =
+    [ neg (atom "p" [var "X"; var "Y"]);
+      pos (atom "r" [var "X"; var "Y"]) ]
+  in
+  check bool "reject variable-capturing simplification" true
+    (Clause.subsumption_resolution c1 c2 = None)
 
 let test_fast_condensation_removes_instance_generalization () =
   (* P(X) v P(a) -> P(a), because P(a) is an instance of P(X). *)
@@ -178,6 +196,7 @@ let () =
          test_case "subset subsumes superset" `Quick test_subsumes_5;
          test_case "subsumption is order independent" `Quick test_subsumes_order_independent;
          test_case "subsumption rejects multiplicity reduction" `Quick test_subsumes_multiplicity;
+         test_case "subsumption separates clause variables" `Quick test_subsumes_keeps_clause_variables_apart;
        ]);
       ("fast_condensation",
        [
@@ -194,5 +213,6 @@ let () =
        [
          test_case "unit subsumption resolution" `Quick test_subsumes_resolution_1;
          test_case "multi-literal subsumption resolution" `Quick test_subsumes_resolution_2;
+         test_case "subsumption resolution separates variables" `Quick test_subsumption_resolution_keeps_variables_apart;
        ])
     ]

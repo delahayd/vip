@@ -97,6 +97,21 @@ let test_standardization_handles_shadowed_variables_before_skolemization () =
     [ "p(V0) | q(sk1(V0))" ]
     (clause_strings (Clausify.clausify_formula f))
 
+let test_standardization_avoids_existing_generated_variable_names () =
+  Clausify.reset_fresh_state ();
+  let f =
+    Forall
+      ( [ "X" ],
+        Exists
+          ( [ "X_u1" ],
+            Atom { pred = "p"; args = [ Var "X"; Var "X_u1" ] } ) )
+  in
+  check
+    (list string)
+    "generated variable name collision"
+    [ "p(V0,sk1(V0))" ]
+    (clause_strings (Clausify.clausify_formula f))
+
 let test_skolem_names_avoid_existing_function_symbols_in_formula () =
   Clausify.reset_fresh_state ();
   let f =
@@ -108,6 +123,19 @@ let test_skolem_names_avoid_existing_function_symbols_in_formula () =
     (list string)
     "formula symbol collision"
     [ "p(sk1)"; "q(sk2)" ]
+    (clause_strings (Clausify.clausify_formula f))
+
+let test_skolem_names_avoid_existing_predicate_symbols () =
+  Clausify.reset_fresh_state ();
+  let f =
+    And
+      ( Atom { pred = "sk1"; args = [] },
+        Exists ([ "X" ], Atom { pred = "q"; args = [ Var "X" ] }) )
+  in
+  check
+    (list string)
+    "predicate symbol collision"
+    [ "q(sk2)"; "sk1" ]
     (clause_strings (Clausify.clausify_formula f))
 
 let test_skolem_names_avoid_existing_function_symbols_across_inputs () =
@@ -338,6 +366,25 @@ let test_dmt_collects_conjoined_definitions () =
     [ "q(a)"; "s(b)" ]
     (List.map Pretty.string_of_clause expanded)
 
+let test_definitional_cnf_avoids_existing_auxiliary_predicate () =
+  Clausify.reset_fresh_state ();
+  let f =
+    And
+      ( Atom { pred = "vip_def_1"; args = [ Fun ("a", []) ] },
+        Atom { pred = "q"; args = [ Fun ("a", []) ] } )
+  in
+  let clauses =
+    with_env "VIP_DEFINITIONAL_CNF" (Some "1") (fun () ->
+        Clausify.clausify_formula f)
+  in
+  check bool "fresh auxiliary predicate" true
+    (List.exists
+       (List.exists (function
+          | Pos { pred = "vip_def_2"; _ }
+          | Neg { pred = "vip_def_2"; _ } -> true
+          | _ -> false))
+       clauses)
+
 let () =
   run "clausify"
     [
@@ -349,12 +396,15 @@ let () =
          test_case "nested skolem dependencies" `Quick test_nested_existential_depends_on_all_visible_universals;
          test_case "same existential block" `Quick test_same_existential_block_gets_independent_skolem_terms;
          test_case "shadowed variables" `Quick test_standardization_handles_shadowed_variables_before_skolemization;
+         test_case "generated variable collision" `Quick test_standardization_avoids_existing_generated_variable_names;
          test_case "formula skolem collision" `Quick test_skolem_names_avoid_existing_function_symbols_in_formula;
+         test_case "predicate skolem collision" `Quick test_skolem_names_avoid_existing_predicate_symbols;
          test_case "input-wide skolem collision" `Quick test_skolem_names_avoid_existing_function_symbols_across_inputs;
          test_case "one-way definition" `Quick test_one_way_definition;
          test_case "one-way trace metadata" `Quick test_one_way_trace_metadata;
          test_case "guarded one-way definition" `Quick test_guarded_one_way_definition;
          test_case "dmt definition expansion" `Quick test_dmt_definition_expansion;
          test_case "dmt conjoined definitions" `Quick test_dmt_collects_conjoined_definitions;
+         test_case "definitional CNF predicate collision" `Quick test_definitional_cnf_avoids_existing_auxiliary_predicate;
        ]);
     ]

@@ -49,34 +49,63 @@ let fresh_counter = ref 0
 let skolem_counter = ref 0
 let def_counter = ref 0
 let reserved_function_symbols = ref Types.StringSet.empty
+let reserved_predicate_symbols = ref Types.StringSet.empty
+let reserved_variable_symbols = ref Types.StringSet.empty
 
 let reset_fresh_state () =
   fresh_counter := 0;
   skolem_counter := 0;
   def_counter := 0;
-  reserved_function_symbols := Types.StringSet.empty
+  reserved_function_symbols := Types.StringSet.empty;
+  reserved_predicate_symbols := Types.StringSet.empty;
+  reserved_variable_symbols := Types.StringSet.empty
 
 let fresh_var base =
-  incr fresh_counter;
-  base ^ "_u" ^ string_of_int !fresh_counter
+  let rec loop () =
+    incr fresh_counter;
+    let name = base ^ "_u" ^ string_of_int !fresh_counter in
+    if Types.StringSet.mem name !reserved_variable_symbols then loop ()
+    else begin
+      reserved_variable_symbols :=
+        Types.StringSet.add name !reserved_variable_symbols;
+      name
+    end
+  in
+  loop ()
 
 let fresh_skolem_name () =
   let rec loop () =
     incr skolem_counter;
     let name = "sk" ^ string_of_int !skolem_counter in
-    if Types.StringSet.mem name !reserved_function_symbols then
+    if Types.StringSet.mem name !reserved_function_symbols
+       || Types.StringSet.mem name !reserved_predicate_symbols then
       loop ()
     else begin
       reserved_function_symbols :=
         Types.StringSet.add name !reserved_function_symbols;
+      reserved_predicate_symbols :=
+        Types.StringSet.add name !reserved_predicate_symbols;
       name
     end
   in
   loop ()
 
 let fresh_def_name () =
-  incr def_counter;
-  "vip_def_" ^ string_of_int !def_counter
+  let rec loop () =
+    incr def_counter;
+    let name = "vip_def_" ^ string_of_int !def_counter in
+    if Types.StringSet.mem name !reserved_predicate_symbols
+       || Types.StringSet.mem name !reserved_function_symbols then
+      loop ()
+    else begin
+      reserved_predicate_symbols :=
+        Types.StringSet.add name !reserved_predicate_symbols;
+      reserved_function_symbols :=
+        Types.StringSet.add name !reserved_function_symbols;
+      name
+    end
+  in
+  loop ()
 
 let reserve_function_symbols_terms terms =
   let stack = ref terms in
@@ -88,13 +117,46 @@ let reserve_function_symbols_terms terms =
     | Fun (f, args) :: tl ->
         reserved_function_symbols :=
           Types.StringSet.add f !reserved_function_symbols;
+        reserved_predicate_symbols :=
+          Types.StringSet.add f !reserved_predicate_symbols;
         stack := List.rev_append args tl
   done
 
 let reserve_function_symbols_atom a =
+  reserved_predicate_symbols :=
+    Types.StringSet.add a.pred !reserved_predicate_symbols;
+  reserved_function_symbols :=
+    Types.StringSet.add a.pred !reserved_function_symbols;
   reserve_function_symbols_terms a.args
 
+let rec all_formula_variables acc = function
+  | FTrue | FFalse -> acc
+  | Atom a -> List.fold_left Fof.vars_of_term acc a.args
+  | Not f -> all_formula_variables acc f
+  | And (a, b)
+  | Or (a, b)
+  | Imp (a, b)
+  | RevImp (a, b)
+  | Iff (a, b)
+  | Xor (a, b) ->
+      all_formula_variables (all_formula_variables acc a) b
+  | Forall (vs, f)
+  | Exists (vs, f) ->
+      all_formula_variables
+        (List.fold_left
+           (fun acc v -> Types.StringSet.add v acc)
+           acc
+           vs)
+        f
+
+let reserve_variable_symbols_formula f =
+  reserved_variable_symbols :=
+    Types.StringSet.union
+      !reserved_variable_symbols
+      (all_formula_variables Types.StringSet.empty f)
+
 let reserve_function_symbols_formula f =
+  reserve_variable_symbols_formula f;
   let stack = ref [ f ] in
   while !stack <> [] do
     poll_timeout ();
@@ -603,7 +665,9 @@ let definition_for_atom defs atom =
 
 let instantiate_definition def args =
   let subs = List.combine def.def_vars args in
-  Fof.subst_formula subs def.def_body
+  (* Alpha-rename binders in the body before inserting arguments.  Otherwise
+     a variable occurring in an argument can be captured by a body quantifier. *)
+  Fof.subst_formula subs (standardize [] def.def_body)
 
 let rec rewrite_formula_once defs f =
   match f with
@@ -680,6 +744,9 @@ let dmt_expand_inputs inputs =
   if not (getenv_bool "VIP_DMT_EXPAND_DEFINITIONS" false) then
     inputs
   else
+    (* Rewriting may alpha-rename quantifiers inside definition bodies, so all
+       user symbols must already be reserved before the first expansion. *)
+    let () = reserve_function_symbols_inputs inputs in
     let defs = collect_formula_definitions inputs in
     if defs = [] then
       inputs

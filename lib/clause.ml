@@ -264,7 +264,37 @@ let fast_condense_clause c =
   in
   loop c
 
+let standardize_apart_from c avoid_clause =
+  let avoid = vars_of_clause avoid_clause in
+  (* Generated names must avoid source names too: substitutions are applied
+     recursively, so mapping X to an existing source variable would compose
+     two renamings instead of performing a simultaneous alpha-renaming. *)
+  let used = ref (StringSet.union avoid (vars_of_clause c)) in
+  let next = ref 0 in
+  let fresh_local () =
+    let rec find () =
+      let candidate = Printf.sprintf "__vip_apart_%d" !next in
+      incr next;
+      if StringSet.mem candidate !used then find ()
+      else begin
+        used := StringSet.add candidate !used;
+        candidate
+      end
+    in
+    find ()
+  in
+  let subst =
+    StringSet.fold
+      (fun v subst -> StringMap.add v (Var (fresh_local ())) subst)
+      (vars_of_clause c)
+      StringMap.empty
+  in
+  apply_subst_clause subst c
+
 let subsumes c1 c2 =
+  (* Clauses quantify their variables independently.  Matching them in a
+     shared namespace can turn P(X,X) into an apparent match for P(X,Y). *)
+  let c1 = standardize_apart_from c1 c2 in
   let n = List.length c1 in
   let m = List.length c2 in
   if n > m then false
@@ -353,6 +383,9 @@ let full_condense_clause c =
   loop 8 c
 
 let subsumption_resolution c1 c2 =
+  (* Keep the matching substitution local to C1.  Variables of C2 are rigid
+     targets for subsumption, not variables that C1 may accidentally bind. *)
+  let c1 = standardize_apart_from c1 c2 in
   let n = List.length c1 in
   let m = List.length c2 in
   if n > m then None
