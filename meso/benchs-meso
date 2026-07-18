@@ -227,7 +227,7 @@ fi
 
 cat >> "$SLURM_SCRIPT" <<EOF
 echo "[INFO] Building VIP..."
-make
+make build
 
 EOF
 
