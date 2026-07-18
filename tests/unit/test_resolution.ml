@@ -348,11 +348,11 @@ let test_polarized_resolution_without_support_uses_ordinary_axioms () =
   | Refutation_found _ -> ()
   | _ -> fail "Polarized mode should fall back to ordinary axioms without support"
 
-let test_avatar_requires_explicit_experimental_opt_in () =
+let test_avatar_cannot_be_enabled_in_release () =
   Resolution.reset_id_counter ();
   Clause.reset_fresh_counter ();
   Unix.putenv "VIP_AVATAR_SPLITTING" "1";
-  Unix.putenv "VIP_ENABLE_EXPERIMENTAL_AVATAR" "";
+  Unix.putenv "VIP_ENABLE_EXPERIMENTAL_AVATAR" "1";
   Fun.protect
     ~finally:(fun () ->
       Unix.putenv "VIP_AVATAR_SPLITTING" "";
@@ -367,7 +367,7 @@ let test_avatar_requires_explicit_experimental_opt_in () =
           ~support:[ [ neg (atom "p" []) ] ]
           ()
       in
-      check bool "AVATAR disabled without production opt-in" false res.stats.avatar_enabled)
+      check bool "AVATAR hard-disabled in release" false res.stats.avatar_enabled)
 
 let () =
   run "Resolution and Factoring"
@@ -425,8 +425,8 @@ let () =
            `Quick
            test_polarized_resolution_without_support_uses_ordinary_axioms;
          test_case
-           "AVATAR requires explicit experimental opt-in"
+           "AVATAR cannot be enabled in release"
            `Quick
-           test_avatar_requires_explicit_experimental_opt_in;
+           test_avatar_cannot_be_enabled_in_release;
        ])
     ]

@@ -1367,14 +1367,9 @@ let run_resolution_sos ?(limits = default_limits)
   let passive_weight_ratio = if passive_age_ratio = 0 && passive_weight_ratio = 0 then 1 else passive_weight_ratio in
   let passive_balance = ref 0 in
 
-  let avatar_enabled =
-    (not emulate_v1)
-    && expensive_simplifications
-    && getenv_bool "VIP_AVATAR_SPLITTING" false
-    (* The current SAT-splitting prototype does not yet emit independently
-       checkable conflict proofs, so production runs must opt in explicitly. *)
-    && getenv_bool "VIP_ENABLE_EXPERIMENTAL_AVATAR" false
-  in
+  (* The SAT-splitting prototype cannot yet reconstruct every conflict as a
+     clause proof. Keep it unreachable in release builds until it can. *)
+  let avatar_enabled = false in
   let avatar_keep_original = getenv_bool "VIP_AVATAR_KEEP_ORIGINAL" true in
   let avatar_ground_only = getenv_bool "VIP_AVATAR_GROUND_ONLY" true in
   let avatar_split_on_given = getenv_bool "VIP_AVATAR_SPLIT_ON_GIVEN" false in
