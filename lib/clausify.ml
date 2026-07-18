@@ -793,15 +793,53 @@ let estimated_cnf_clause_count ~limit f =
   in
   aux f
 
+let free_variables f =
+  let rec collect bound free = function
+    | FTrue | FFalse -> free
+    | Atom a ->
+        List.fold_left
+          (fun free term ->
+            let vars = Fof.vars_of_term Types.StringSet.empty term in
+            Types.StringSet.fold
+              (fun v free ->
+                if Types.StringSet.mem v bound then free
+                else Types.StringSet.add v free)
+              vars
+              free)
+          free
+          a.args
+    | Not f -> collect bound free f
+    | And (a, b)
+    | Or (a, b)
+    | Imp (a, b)
+    | RevImp (a, b)
+    | Iff (a, b)
+    | Xor (a, b) -> collect bound (collect bound free a) b
+    | Forall (vs, f)
+    | Exists (vs, f) ->
+        let bound =
+          List.fold_left
+            (fun bound v -> Types.StringSet.add v bound)
+            bound
+            vs
+        in
+        collect bound free f
+  in
+  collect Types.StringSet.empty Types.StringSet.empty f
+  |> Types.StringSet.elements
+
 let clausify_formula ?(check_timeout = fun () -> ()) f =
   with_timeout_poll check_timeout (fun () ->
       reserve_function_symbols_formula f;
+      (* TPTP treats free formula variables as implicitly universally
+         quantified, so existential witnesses must depend on them. *)
+      let implicit_universals = free_variables f in
       let prepared =
         f
         |> elim_imp
         |> nnf
         |> standardize []
-        |> skolem []
+        |> skolem implicit_universals
         |> drop_forall
       in
       let force_definitional = getenv_bool "VIP_DEFINITIONAL_CNF" false in

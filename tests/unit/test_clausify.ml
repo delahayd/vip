@@ -44,6 +44,19 @@ let test_exists_under_forall_uses_skolem_function () =
     [ "p(V0,sk1(V0))" ]
     (clause_strings (Clausify.clausify_formula f))
 
+let test_existential_depends_on_implicit_universal () =
+  Clausify.reset_fresh_state ();
+  let f =
+    Exists
+      ( [ "Y" ],
+        Atom { pred = "p"; args = [ Var "X"; Var "Y" ] } )
+  in
+  check
+    (list string)
+    "existential depends on implicit universal"
+    [ "p(V0,sk1(V0))" ]
+    (clause_strings (Clausify.clausify_formula f))
+
 let test_nested_existential_depends_on_all_visible_universals () =
   Clausify.reset_fresh_state ();
   let f =
@@ -393,6 +406,7 @@ let () =
          test_case "simple implication" `Quick test_simple_clausification;
          test_case "existential skolem constant" `Quick test_exists_without_universals_uses_skolem_constant;
          test_case "existential under forall" `Quick test_exists_under_forall_uses_skolem_function;
+         test_case "existential under implicit forall" `Quick test_existential_depends_on_implicit_universal;
          test_case "nested skolem dependencies" `Quick test_nested_existential_depends_on_all_visible_universals;
          test_case "same existential block" `Quick test_same_existential_block_gets_independent_skolem_terms;
          test_case "shadowed variables" `Quick test_standardization_handles_shadowed_variables_before_skolemization;
