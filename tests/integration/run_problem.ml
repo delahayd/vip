@@ -75,6 +75,21 @@ let with_env name value f =
       Unix.putenv name value;
       f ())
 
+let expect_proofless_prefilter_disabled file () =
+  with_env "VIP_GROUND_SAT_PREFILTER" "1" (fun () ->
+      match run_file ~config:config (path file) with
+      | { status = (Unsatisfiable | Theorem); empty_clause = Some root; _ } ->
+          check bool
+            "normal clause proof root"
+            true
+            (root.rule <> "ground_sat_prefilter")
+      | { status; _ } ->
+          fail
+            (Printf.sprintf
+               "expected ordinary refutation for %s, got %s"
+               file
+               (string_of_szs_status status)))
+
 let expect_set_bridge_unsat file () =
   with_env "VIP_SET_BRIDGE_SELECTION" "1" (fun () ->
       let config =
@@ -164,6 +179,8 @@ let () =
             (expect_not_refuted "sat_free_variable_skolem_dependency.p");
           test_case "multiple conjectures are rejected" `Quick
             (expect_input_rejected "unsupported_multiple_conjectures.p");
+          test_case "proofless ground prefilter is disabled" `Quick
+            (expect_proofless_prefilter_disabled "unsat_01.p");
           test_case "set bridge SEU140 shape" `Quick (expect_set_bridge_unsat "set_bridge_seu140_shape.p");
           test_case "stats present" `Quick (check_stats_present "unsat_01.p");
           test_case "derivation present" `Quick (check_derivation_present "unsat_01.p");

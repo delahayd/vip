@@ -3573,7 +3573,8 @@ let rec run_file ?(config = default_config) filename =
     in
 
     let ground_sat_prefilter_result =
-      let enabled = getenv_bool "VIP_GROUND_SAT_PREFILTER" false in
+      (* This shortcut does not yet reconstruct a clause-level refutation. *)
+      let enabled = false in
       let max_clauses = getenv_int_global "VIP_GROUND_SAT_MAX_CLAUSES" 5000 in
       if enabled && clause_count <= max_clauses then
         let clauses = axioms @ support in
