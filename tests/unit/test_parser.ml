@@ -37,5 +37,10 @@ let () =
            test_numeric_constant_as_uninterpreted_symbol;
          test_case "reject unsupported defined predicate" `Quick
            (expect_input_error "fof(f1,axiom,$distinct(a,b)).");
+         test_case "reject unsupported distinct object" `Quick
+           (expect_input_error "fof(f1,axiom,p(\"object\")).");
+         test_case "reject distinct/ordinary symbol collision" `Quick
+           (expect_input_error
+              "fof(a1,axiom,p('object')). fof(c1,conjecture,p(\"object\")).");
        ]);
     ]

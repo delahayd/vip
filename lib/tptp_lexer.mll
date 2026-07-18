@@ -47,7 +47,11 @@ rule token = parse
   | '!'                       { BANG }
   | '?'                       { QMARK }
   | '\''                      { quoted (Buffer.create 16) '\'' lexbuf }
-  | '"'                       { quoted (Buffer.create 16) '"' lexbuf }
+  | '"'                       {
+      raise
+        (Lexing_error
+           "Les objets distincts TPTP entre guillemets doubles ne sont pas supportés")
+    }
   | upper_ident as s          { VAR s }
   | lower_ident as s          { keyword_or_ident s }
   | number_name as s          { IDENT s }
