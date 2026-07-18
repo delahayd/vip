@@ -22,7 +22,7 @@ let apply_subst_term (s : substitution) t =
   let pop_n n out =
     let rec loop n acc out =
       if n = 0 then
-        (List.rev acc, out)
+        (acc, out)
       else
         match out with
         | [] -> invalid_arg "apply_subst_term: malformed reconstruction stack"

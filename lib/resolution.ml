@@ -550,6 +550,16 @@ let oriented_demodulator_of_clause = function
       Ordering.orient_equation l r
   | _ -> None
 
+let rename_demodulator_apart (lhs, rhs) =
+  match rename_clause_apart [ Pos { pred = "="; args = [ lhs; rhs ] } ] with
+  | [ Pos { pred = "="; args = [ lhs'; rhs' ] } ] -> (lhs', rhs')
+  | _ -> assert false
+
+let rename_atom_rule_apart (lhs, rhs) =
+  match rename_clause_apart [ Neg lhs; Pos rhs ] with
+  | [ Neg lhs'; Pos rhs' ] -> (lhs', rhs')
+  | _ -> assert false
+
 let rec term_vars acc = function
   | Var v -> Types.StringSet.add v acc
   | Fun (_, args) -> List.fold_left term_vars acc args
@@ -854,6 +864,35 @@ let replace_literal_arg_at_path lit arg_idx path t' =
   | Pos a -> Pos (replace_atom_arg_at_path a arg_idx path t')
   | Neg a -> Neg (replace_atom_arg_at_path a arg_idx path t')
 
+let rec term_at_path t = function
+  | [] -> Some t
+  | i :: rest ->
+      begin
+        match t with
+        | Var _ -> None
+        | Fun (_, args) ->
+            if i < 0 || i >= List.length args then None
+            else term_at_path (List.nth args i) rest
+      end
+
+let literal_subterm_at lit arg_index path =
+  let atom = atom_of_literal lit in
+  if arg_index < 0 || arg_index >= List.length atom.args then None
+  else term_at_path (List.nth atom.args arg_index) path
+
+let renamed_equality_orientation original renamed entry =
+  match positive_equality original, positive_equality renamed with
+  | Some (original_lhs, original_rhs), Some (renamed_lhs, renamed_rhs) ->
+      if entry.Term_index.lhs = original_lhs
+         && entry.Term_index.rhs = original_rhs then
+        Some (renamed_lhs, renamed_rhs)
+      else if entry.Term_index.lhs = original_rhs
+              && entry.Term_index.rhs = original_lhs then
+        Some (renamed_rhs, renamed_lhs)
+      else
+        None
+  | _ -> None
+
 let superpose_from_into_position
     source
     target
@@ -917,19 +956,34 @@ let indexed_superpose_given ~check_timeout ~emulate_v1 ~mode ~term_index ~all_by
                             let target_clause =
                               rename_clause_apart target_d.clause_d
                             in
-                            match
-                              superpose_from_into_position
-                                given_source_clause
-                                target_clause
-                                eq_index
-                                lhs
-                                rhs
-                                te
-                            with
-                            | Some c ->
-                                results := (c, [ given.id; target_d.id ]) :: !results
-                            | None ->
-                                ()
+                            let target_lit =
+                              List.nth target_clause te.Term_index.lit_index
+                            in
+                            begin
+                              match
+                                literal_subterm_at
+                                  target_lit
+                                  te.Term_index.arg_index
+                                  te.Term_index.path
+                              with
+                              | None -> ()
+                              | Some renamed_subterm ->
+                                  let renamed_entry =
+                                    { te with Term_index.subterm = renamed_subterm }
+                                  in
+                                  match
+                                    superpose_from_into_position
+                                      given_source_clause
+                                      target_clause
+                                      eq_index
+                                      lhs
+                                      rhs
+                                      renamed_entry
+                                  with
+                                  | Some c ->
+                                      results := (c, [ given.id; target_d.id ]) :: !results
+                                  | None -> ()
+                            end
                   ) entries)
               (oriented_sides mode l r))
     given_source_clause;
@@ -973,28 +1027,40 @@ let indexed_superpose_given ~check_timeout ~emulate_v1 ~mode ~term_index ~all_by
                             let source_clause =
                               rename_clause_apart eq_d.clause_d
                             in
-                            let te : Term_index.term_entry =
-                              {
-                                Term_index.clause_id = given.id;
-                                lit_index;
-                                arg_index;
-                                path;
-                                subterm;
-                              }
+                            let original_eq =
+                              List.nth eq_d.clause_d ee.Term_index.lit_index
                             in
-                            match
-                              superpose_from_into_position
-                                source_clause
-                                given_target_clause
-                                ee.Term_index.lit_index
-                                ee.Term_index.lhs
-                                ee.Term_index.rhs
-                                te
-                            with
-                            | Some c ->
-                                results := (c, [ eq_d.id; given.id ]) :: !results
-                            | None ->
-                                ()
+                            let renamed_eq =
+                              List.nth source_clause ee.Term_index.lit_index
+                            in
+                            begin
+                              match
+                                renamed_equality_orientation original_eq renamed_eq ee
+                              with
+                              | None -> ()
+                              | Some (renamed_lhs, renamed_rhs) ->
+                                  let te : Term_index.term_entry =
+                                    {
+                                      Term_index.clause_id = given.id;
+                                      lit_index;
+                                      arg_index;
+                                      path;
+                                      subterm;
+                                    }
+                                  in
+                                  match
+                                    superpose_from_into_position
+                                      source_clause
+                                      given_target_clause
+                                      ee.Term_index.lit_index
+                                      renamed_lhs
+                                      renamed_rhs
+                                      te
+                                  with
+                                  | Some c ->
+                                      results := (c, [ eq_d.id; given.id ]) :: !results
+                                  | None -> ()
+                            end
                   ) eqs)
               subterms)
           a.args)
@@ -1122,6 +1188,7 @@ let run_resolution_sos ?(limits = default_limits)
   let atom_rewrite_rules =
     one_way_clauses
     |> List.filter_map atom_rewrite_rule_of_clause
+    |> List.map rename_atom_rule_apart
     |> List.sort_uniq compare
   in
   let atom_rewrite_index = atom_rewrite_index atom_rewrite_rules in
@@ -1300,7 +1367,12 @@ let run_resolution_sos ?(limits = default_limits)
   let passive_balance = ref 0 in
 
   let avatar_enabled =
-    (not emulate_v1) && expensive_simplifications && getenv_bool "VIP_AVATAR_SPLITTING" false
+    (not emulate_v1)
+    && expensive_simplifications
+    && getenv_bool "VIP_AVATAR_SPLITTING" false
+    (* The current SAT-splitting prototype does not yet emit independently
+       checkable conflict proofs, so production runs must opt in explicitly. *)
+    && getenv_bool "VIP_ENABLE_EXPERIMENTAL_AVATAR" false
   in
   let avatar_keep_original = getenv_bool "VIP_AVATAR_KEEP_ORIGINAL" true in
   let avatar_ground_only = getenv_bool "VIP_AVATAR_GROUND_ONLY" true in
@@ -2386,7 +2458,8 @@ let run_resolution_sos ?(limits = default_limits)
   let register_demodulator c =
     match oriented_demodulator_of_clause c with
     | None -> ()
-    | Some rule ->
+    | Some raw_rule ->
+        let rule = rename_demodulator_apart raw_rule in
         if not (List.exists (( = ) rule) !demodulators) then begin
           demodulators := rule :: !demodulators;
           add_demod_index demod_index rule;

@@ -25,6 +25,27 @@ let test_apply_subst_deep_term () =
   | Fun _ -> ()
   | Var _ -> fail "deep substitution should rebuild the term"
 
+let test_apply_subst_preserves_argument_order () =
+  let term =
+    Fun
+      ( "outer",
+        [
+          Fun ("left", [ Var "X"; Fun ("middle", []) ]);
+          Fun ("right", [ Fun ("end", []); Var "Y" ]);
+        ] )
+  in
+  let subst =
+    Types.StringMap.empty
+    |> Types.StringMap.add "X" (Fun ("x_value", []))
+    |> Types.StringMap.add "Y" (Fun ("y_value", []))
+  in
+  let actual = Subst.apply_subst_term subst term in
+  check
+    string
+    "argument order"
+    "outer(left(x_value,middle),right(end,y_value))"
+    (Pretty.string_of_term actual)
+
 let () =
   run "unification"
     [
@@ -33,5 +54,9 @@ let () =
          test_case "same atom" `Quick test_unify_same_atom;
          test_case "var with const" `Quick test_unify_var_const;
          test_case "deep substitution" `Quick test_apply_subst_deep_term;
+         test_case
+           "substitution preserves argument order"
+           `Quick
+           test_apply_subst_preserves_argument_order;
        ]);
     ]

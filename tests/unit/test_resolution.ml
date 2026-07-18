@@ -26,6 +26,32 @@ let test_binary_resolution_unrestricted () =
       check string "resolved clause" (Pretty.string_of_clause expected) (Pretty.string_of_clause r)
   | _ -> fail "Should generate exactly one resolvent"
 
+let test_binary_resolution_preserves_nested_argument_order () =
+  Clause.reset_fresh_counter ();
+  let implication x y = fun_ "strict_implies" [ x; y ] in
+  let possibly x = fun_ "possibly" [ x ] in
+  let conjunction x y = fun_ "and" [ x; y ] in
+  let theorem x = atom "is_a_theorem" [ x ] in
+  let left =
+    [
+      pos (theorem (var "Y"));
+      neg
+        (theorem
+           (implication
+              (implication (var "X") (possibly (var "X")))
+              (var "Y")));
+    ]
+  in
+  let right =
+    [ pos (theorem (implication (var "Z") (conjunction (var "Z") (var "Z")))) ]
+  in
+  match Resolution.test_resolve Unrestricted left right with
+  | [ [ Pos actual ] ] ->
+      let expected_inner = implication (var "V0") (possibly (var "V0")) in
+      let expected = theorem (conjunction expected_inner expected_inner) in
+      check string "nested resolvent" (Pretty.string_of_atom expected) (Pretty.string_of_atom actual)
+  | _ -> fail "Nested resolution should generate exactly one unit resolvent"
+
 let c3 = [ pos (atom "p" [var "X"]); pos (atom "p" [const "a"]) ]
 
 let test_factoring_unrestricted () =
@@ -58,6 +84,151 @@ let test_equality_factoring () =
       (* Order might differ, checking exact string for now. Expected output structure depends on implementation. *)
       check string "equality factored" (Pretty.string_of_clause expected) (Pretty.string_of_clause r)
   | _ -> fail "Should generate exactly one equality factor"
+
+let test_indexed_superposition_keeps_target_variable_binding () =
+  Resolution.reset_id_counter ();
+  Clause.reset_fresh_counter ();
+  let axioms =
+    [
+      [ eq (fun_ "f" [ const "a" ]) (const "b") ];
+      [ neg (atom "p" [ fun_ "f" [ var "X" ] ]); pos (atom "q" [ var "X" ]) ];
+      [ pos (atom "p" [ const "b" ]) ];
+      [ neg (atom "q" [ const "c" ]) ];
+      [ neq (const "a") (const "c") ];
+    ]
+  in
+  let res =
+    Resolution.run_resolution_sos
+      ~limits:{ Resolution.default_limits with max_generated_clauses = Some 500 }
+      ~expensive_simplifications:false
+      ~mode:Unrestricted
+      ~axioms
+      ~support:[]
+      ()
+  in
+  match res.stop_reason with
+  | Saturation -> ()
+  | Refutation_found _ ->
+      fail "Indexed superposition must apply the unifier to the renamed target clause"
+  | Time_limit | Clause_limit -> fail "Soundness regression should saturate quickly"
+
+let test_demodulation_standardizes_rule_variables_apart () =
+  Resolution.reset_id_counter ();
+  Clause.reset_fresh_counter ();
+  let sort x y = fun_ "s" [ x; y ] in
+  let bool_sort = const "bool" in
+  let truth = const "true" in
+  let cond p x y = fun_ "cond" [ p; x; y ] in
+  let source =
+    [
+      eq
+        (sort (var "A") (cond (sort bool_sort truth) (sort (var "A") (var "X")) (sort (var "A") (var "Y"))))
+        (sort (var "A") (var "X"));
+    ]
+  in
+  let symmetry =
+    [
+      neq (sort (var "B") (var "U")) (sort (var "B") (var "V"));
+      eq (sort (var "B") (var "V")) (sort (var "B") (var "U"));
+    ]
+  in
+  let bool_distinct =
+    [
+      neq (sort bool_sort (var "Z")) (sort bool_sort (const "false"));
+      neq (sort bool_sort (var "Z")) (sort bool_sort truth);
+    ]
+  in
+  let result =
+    Resolution.run_resolution_sos
+      ~limits:{ Resolution.default_limits with max_generated_clauses = Some 1000 }
+      ~expensive_simplifications:true
+      ~mode:Unrestricted
+      ~axioms:[ source; symmetry; bool_distinct ]
+      ~support:[]
+      ()
+  in
+  match result.stop_reason with
+  | Saturation -> ()
+  | Refutation_found _ ->
+      fail "Demodulator variables must not capture variables in rewritten clauses"
+  | Time_limit | Clause_limit ->
+      fail "Demodulator soundness regression should saturate quickly"
+
+let test_legacy_demodulation_standardizes_rule_variables_apart () =
+  Legacy_resolution.reset_id_counter ();
+  Clause.reset_fresh_counter ();
+  let sort x y = fun_ "s" [ x; y ] in
+  let bool_sort = const "bool" in
+  let truth = const "true" in
+  let source =
+    [
+      eq
+        (sort
+           (var "A")
+           (fun_
+              "cond"
+              [
+                sort bool_sort truth;
+                sort (var "A") (var "X");
+                sort (var "A") (var "Y");
+              ]))
+        (sort (var "A") (var "X"));
+    ]
+  in
+  let symmetry =
+    [
+      neq (sort (var "B") (var "U")) (sort (var "B") (var "V"));
+      eq (sort (var "B") (var "V")) (sort (var "B") (var "U"));
+    ]
+  in
+  let bool_distinct =
+    [
+      neq (sort bool_sort (var "Z")) (sort bool_sort (const "false"));
+      neq (sort bool_sort (var "Z")) (sort bool_sort truth);
+    ]
+  in
+  let result =
+    Legacy_resolution.run_resolution_sos
+      ~limits:
+        { Legacy_resolution.default_limits with max_generated_clauses = Some 100 }
+      ~mode:Legacy_resolution.Unrestricted
+      ~axioms:[ source; symmetry; bool_distinct ]
+      ~support:[]
+      ()
+  in
+  match result.stop_reason with
+  | Legacy_resolution.Saturation | Legacy_resolution.Clause_limit -> ()
+  | Legacy_resolution.Refutation_found _ ->
+      fail "Legacy demodulator variables must not capture rewritten clause variables"
+  | Legacy_resolution.Time_limit ->
+      fail "Legacy demodulator soundness regression should terminate quickly"
+
+let test_legacy_indexed_superposition_keeps_target_variable_binding () =
+  Legacy_resolution.reset_id_counter ();
+  Clause.reset_fresh_counter ();
+  let axioms =
+    [
+      [ eq (fun_ "f" [ const "a" ]) (const "b") ];
+      [ neg (atom "p" [ fun_ "f" [ var "X" ] ]); pos (atom "q" [ var "X" ]) ];
+      [ pos (atom "p" [ const "b" ]) ];
+      [ neg (atom "q" [ const "c" ]) ];
+      [ neq (const "a") (const "c") ];
+    ]
+  in
+  let res =
+    Legacy_resolution.run_resolution_sos
+      ~limits:{ Legacy_resolution.default_limits with max_generated_clauses = Some 500 }
+      ~mode:Legacy_resolution.Unrestricted
+      ~axioms
+      ~support:[]
+      ()
+  in
+  match res.stop_reason with
+  | Legacy_resolution.Saturation -> ()
+  | Legacy_resolution.Refutation_found _ ->
+      fail "Legacy indexed superposition must use consistently renamed terms"
+  | Legacy_resolution.Time_limit | Legacy_resolution.Clause_limit ->
+      fail "Legacy soundness regression should saturate quickly"
 
 let test_polarized_resolution_uses_selected_one_way_literal () =
   Resolution.reset_id_counter ();
@@ -146,18 +317,59 @@ let test_polarized_resolution_without_support_uses_ordinary_axioms () =
   | Refutation_found _ -> ()
   | _ -> fail "Polarized mode should fall back to ordinary axioms without support"
 
+let test_avatar_requires_explicit_experimental_opt_in () =
+  Resolution.reset_id_counter ();
+  Clause.reset_fresh_counter ();
+  Unix.putenv "VIP_AVATAR_SPLITTING" "1";
+  Unix.putenv "VIP_ENABLE_EXPERIMENTAL_AVATAR" "";
+  Fun.protect
+    ~finally:(fun () ->
+      Unix.putenv "VIP_AVATAR_SPLITTING" "";
+      Unix.putenv "VIP_ENABLE_EXPERIMENTAL_AVATAR" "")
+    (fun () ->
+      let res =
+        Resolution.run_resolution_sos
+          ~limits:{ Resolution.default_limits with max_generated_clauses = Some 100 }
+          ~expensive_simplifications:true
+          ~mode:Unrestricted
+          ~axioms:[ [ pos (atom "p" []) ] ]
+          ~support:[ [ neg (atom "p" []) ] ]
+          ()
+      in
+      check bool "AVATAR disabled without production opt-in" false res.stats.avatar_enabled)
+
 let () =
   run "Resolution and Factoring"
     [
       ("resolution",
        [
          test_case "binary resolution unrestricted" `Quick test_binary_resolution_unrestricted;
+         test_case
+           "binary resolution preserves nested argument order"
+           `Quick
+           test_binary_resolution_preserves_nested_argument_order;
          test_case "equality resolution" `Quick test_equality_resolution;
        ]);
       ("factoring",
        [
          test_case "factoring unrestricted" `Quick test_factoring_unrestricted;
          test_case "equality factoring" `Quick test_equality_factoring;
+         test_case
+           "indexed superposition preserves target bindings"
+           `Quick
+           test_indexed_superposition_keeps_target_variable_binding;
+         test_case
+           "demodulation standardizes rule variables apart"
+           `Quick
+           test_demodulation_standardizes_rule_variables_apart;
+         test_case
+           "legacy indexed superposition preserves target bindings"
+           `Quick
+           test_legacy_indexed_superposition_keeps_target_variable_binding;
+         test_case
+           "legacy demodulation standardizes rule variables apart"
+           `Quick
+           test_legacy_demodulation_standardizes_rule_variables_apart;
        ]);
       ("polarized",
        [
@@ -177,5 +389,9 @@ let () =
            "ordinary axioms without support"
            `Quick
            test_polarized_resolution_without_support_uses_ordinary_axioms;
+         test_case
+           "AVATAR requires explicit experimental opt-in"
+           `Quick
+           test_avatar_requires_explicit_experimental_opt_in;
        ])
     ]
