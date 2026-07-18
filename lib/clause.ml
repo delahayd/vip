@@ -291,6 +291,27 @@ let standardize_apart_from c avoid_clause =
   in
   apply_subst_clause subst c
 
+let matches_literal_subset_with_subst subst patterns targets =
+  let remove_nth xs n =
+    xs |> List.filteri (fun i _ -> i <> n)
+  in
+  let rec match_patterns subst remaining_targets = function
+    | [] -> true
+    | pattern :: rest_patterns ->
+        let rec search i = function
+          | [] -> false
+          | target :: rest_targets ->
+              (try
+                 let subst' = Match.match_literals pattern target subst in
+                 let remaining_targets' = remove_nth remaining_targets i in
+                 match_patterns subst' remaining_targets' rest_patterns
+                 || search (i + 1) rest_targets
+               with Match.Not_matchable -> search (i + 1) rest_targets)
+        in
+        search 0 remaining_targets
+  in
+  match_patterns subst targets patterns
+
 let subsumes c1 c2 =
   (* Clauses quantify their variables independently.  Matching them in a
      shared namespace can turn P(X,X) into an apparent match for P(X,Y). *)
@@ -298,26 +319,7 @@ let subsumes c1 c2 =
   let n = List.length c1 in
   let m = List.length c2 in
   if n > m then false
-  else
-    let remove_nth xs n =
-      xs |> List.filteri (fun i _ -> i <> n)
-    in
-    let rec try_match_subset subst remaining_targets = function
-      | [] -> true
-      | l1 :: rest_c1 ->
-          let rec search i = function
-            | [] -> false
-            | l2 :: rest_targets ->
-                (try
-                   let subst' = Match.match_literals l1 l2 subst in
-                   let remaining_targets' = remove_nth remaining_targets i in
-                   try_match_subset subst' remaining_targets' rest_c1
-                   || search (i + 1) rest_targets
-                 with Match.Not_matchable -> search (i + 1) rest_targets)
-          in
-          search 0 remaining_targets
-    in
-    try_match_subset StringMap.empty c2 c1
+  else matches_literal_subset_with_subst StringMap.empty c1 c2
 
 let literal_is_equality = function
   | Pos { pred = "="; _ } | Neg { pred = "="; _ } -> true
@@ -407,7 +409,12 @@ let subsumption_resolution c1 c2 =
                 (try
                   let subst = Match.match_atoms a1 a2 StringMap.empty in
                   let c2_rest = List.filteri (fun k _ -> k <> i2) c2 in
-                  if subsumes (apply_subst_clause subst c1_rest) c2_rest then
+                  (* The substitution chosen for the complementary literals
+                     must remain in force for every remaining source literal.
+                     Re-standardizing the partially instantiated source here
+                     would make target variables flexible and could validate a
+                     strictly stronger, non-entailed target clause. *)
+                  if matches_literal_subset_with_subst subst c1_rest c2_rest then
                     Some c2_rest
                   else
                     find_target_lit (i2 + 1)

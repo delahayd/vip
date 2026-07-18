@@ -132,6 +132,22 @@ let test_subsumption_resolution_keeps_variables_apart () =
   check bool "reject variable-capturing simplification" true
     (Clause.subsumption_resolution c1 c2 = None)
 
+let test_subsumption_resolution_preserves_resolving_substitution () =
+  (* Resolving P(X) against ~P(Y) fixes X to the rigid target variable Y.
+     Q(X) must then match Q(Y), not Q(a).  Deleting ~P(Y) here would derive
+     Q(a) v R(Y), which is not entailed by these two clauses. *)
+  let c1 =
+    [ pos (atom "p" [var "X"]);
+      pos (atom "q" [var "X"]) ]
+  in
+  let c2 =
+    [ neg (atom "p" [var "Y"]);
+      pos (atom "q" [const "a"]);
+      pos (atom "r" [var "Y"]) ]
+  in
+  check bool "keep the resolving substitution across the subset match" true
+    (Clause.subsumption_resolution c1 c2 = None)
+
 let test_fast_condensation_removes_instance_generalization () =
   (* P(X) v P(a) -> P(a), because P(a) is an instance of P(X). *)
   let c = [ pos (atom "p" [var "X"]); pos (atom "p" [const "a"]) ] in
@@ -175,6 +191,97 @@ let test_full_condensation_rejects_cyclic_substitution () =
   | Some res -> check string "unchanged cyclic" (Pretty.string_of_clause (Clause.normalize_clause c)) (Pretty.string_of_clause res)
   | None -> fail "Should keep the non-tautological clause"
 
+let clause_holds_in_two_element_model ~a_value ~b_value ~pred_masks clause =
+  let vars = Clause.vars_of_clause clause |> StringSet.elements in
+  let assignment = Hashtbl.create (List.length vars) in
+  let rec eval_term = function
+    | Var v -> Hashtbl.find assignment v
+    | Fun ("a", []) -> a_value
+    | Fun ("b", []) -> b_value
+    | Fun (name, []) -> failwith ("unexpected audit constant " ^ name)
+    | Fun (name, _) -> failwith ("unexpected audit function " ^ name)
+  in
+  let eval_atom atom =
+    match atom.pred, atom.args with
+    | "=", [ left; right ] -> eval_term left = eval_term right
+    | pred, [ arg ] ->
+        let mask = List.assoc pred pred_masks in
+        mask land (1 lsl eval_term arg) <> 0
+    | pred, _ -> failwith ("unexpected audit predicate " ^ pred)
+  in
+  let eval_literal = function
+    | Pos atom -> eval_atom atom
+    | Neg atom -> not (eval_atom atom)
+  in
+  let clause_holds_for_assignment () = List.exists eval_literal clause in
+  let rec all_assignments = function
+    | [] -> clause_holds_for_assignment ()
+    | v :: rest ->
+        Hashtbl.replace assignment v 0;
+        let at_zero = all_assignments rest in
+        Hashtbl.replace assignment v 1;
+        at_zero && all_assignments rest
+  in
+  all_assignments vars
+
+let consequence_holds_in_all_two_element_models parents conclusion =
+  let exception Countermodel in
+  try
+    for a_value = 0 to 1 do
+      for b_value = 0 to 1 do
+        for p_mask = 0 to 3 do
+          for q_mask = 0 to 3 do
+            for r_mask = 0 to 3 do
+              let pred_masks = [ "p", p_mask; "q", q_mask; "r", r_mask ] in
+              if List.for_all
+                   (clause_holds_in_two_element_model
+                      ~a_value ~b_value ~pred_masks)
+                   parents
+                 && not
+                      (clause_holds_in_two_element_model
+                         ~a_value ~b_value ~pred_masks conclusion)
+              then raise Countermodel
+            done
+          done
+        done
+      done
+    done;
+    true
+  with Countermodel -> false
+
+let test_generated_subsumption_resolutions_have_no_small_countermodel () =
+  let state = Random.State.make [| 0x51A7; 0xC0DE |] in
+  let terms = [| var "X"; var "Y"; const "a"; const "b" |] in
+  let predicates = [| "p"; "q"; "r" |] in
+  let random_literal () =
+    let atom =
+      atom
+        predicates.(Random.State.int state (Array.length predicates))
+        [ terms.(Random.State.int state (Array.length terms)) ]
+    in
+    if Random.State.bool state then pos atom else neg atom
+  in
+  let random_clause max_len =
+    List.init (1 + Random.State.int state max_len) (fun _ -> random_literal ())
+    |> Clause.normalize_clause
+  in
+  for _ = 1 to 2_000 do
+    let source = random_clause 3 in
+    let target = random_clause 4 in
+    match Clause.subsumption_resolution source target with
+    | None -> ()
+    | Some reduced ->
+        if not
+             (consequence_holds_in_all_two_element_models
+                [ source; target ] reduced)
+        then
+          failf
+            "finite countermodel for subsumption resolution: (%s), (%s) => (%s)"
+            (Pretty.string_of_clause source)
+            (Pretty.string_of_clause target)
+            (Pretty.string_of_clause reduced)
+  done
+
 let () =
   run "Match and Subsumption"
     [
@@ -214,5 +321,7 @@ let () =
          test_case "unit subsumption resolution" `Quick test_subsumes_resolution_1;
          test_case "multi-literal subsumption resolution" `Quick test_subsumes_resolution_2;
          test_case "subsumption resolution separates variables" `Quick test_subsumption_resolution_keeps_variables_apart;
+         test_case "subsumption resolution preserves its substitution" `Quick test_subsumption_resolution_preserves_resolving_substitution;
+         test_case "generated results have no two-element countermodel" `Quick test_generated_subsumption_resolutions_have_no_small_countermodel;
        ])
     ]

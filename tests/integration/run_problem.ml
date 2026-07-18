@@ -148,6 +148,8 @@ let () =
             (expect_not_refuted "sat_equality_finite_model.p");
           test_case "subsumption variable capture stays satisfiable" `Quick
             (expect_not_refuted "sat_subsumption_variable_capture.p");
+          test_case "subsumption resolution keeps one substitution" `Quick
+            (expect_not_refuted "sat_subsumption_resolution_substitution.p");
           test_case "set bridge SEU140 shape" `Quick (expect_set_bridge_unsat "set_bridge_seu140_shape.p");
           test_case "stats present" `Quick (check_stats_present "unsat_01.p");
           test_case "derivation present" `Quick (check_derivation_present "unsat_01.p");
