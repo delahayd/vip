@@ -46,6 +46,24 @@ let test_apply_subst_preserves_argument_order () =
     "outer(left(x_value,middle),right(end,y_value))"
     (Pretty.string_of_term actual)
 
+let test_occurs_check_rejects_direct_cycle () =
+  match
+    Unif.unify_terms
+      (Var "X")
+      (Fun ("f", [ Var "X" ]))
+      Subst.empty_subst
+  with
+  | exception Unif.Not_unifiable -> ()
+  | _ -> fail "X = f(X) must fail the occurs-check"
+
+let test_occurs_check_rejects_indirect_cycle () =
+  let subst =
+    Unif.unify_terms (Var "X") (Var "Y") Subst.empty_subst
+  in
+  match Unif.unify_terms (Var "Y") (Fun ("f", [ Var "X" ])) subst with
+  | exception Unif.Not_unifiable -> ()
+  | _ -> fail "X = Y, Y = f(X) must fail the occurs-check"
+
 let () =
   run "unification"
     [
@@ -58,5 +76,9 @@ let () =
            "substitution preserves argument order"
            `Quick
            test_apply_subst_preserves_argument_order;
+         test_case "direct occurs-check" `Quick
+           test_occurs_check_rejects_direct_cycle;
+         test_case "indirect occurs-check" `Quick
+           test_occurs_check_rejects_indirect_cycle;
        ]);
     ]
