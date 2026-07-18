@@ -19,9 +19,56 @@ let default_load_config = {
 
 module StringSet = Set.Make (String)
 
+let validate_user_symbol kind symbol =
+  if String.length symbol > 0 && symbol.[0] = '$' then
+    raise
+      (Error
+         (Printf.sprintf
+            "Symbole TPTP défini non supporté utilisé comme %s: %s"
+            kind symbol))
+
+let rec validate_term = function
+  | Types.Var _ -> ()
+  | Types.Fun (symbol, args) ->
+      validate_user_symbol "fonction" symbol;
+      List.iter validate_term args
+
+let validate_atom atom =
+  if atom.Types.pred <> "=" then
+    validate_user_symbol "prédicat" atom.Types.pred;
+  List.iter validate_term atom.Types.args
+
+let validate_literal = function
+  | Types.Pos atom | Types.Neg atom ->
+      if atom.Types.pred <> "$true" && atom.Types.pred <> "$false" then
+        validate_atom atom
+
+let rec validate_formula = function
+  | FTrue | FFalse -> ()
+  | Atom atom -> validate_atom atom
+  | Not formula -> validate_formula formula
+  | And (left, right)
+  | Or (left, right)
+  | Imp (left, right)
+  | RevImp (left, right)
+  | Iff (left, right)
+  | Xor (left, right) ->
+      validate_formula left;
+      validate_formula right
+  | Forall (_, formula) | Exists (_, formula) -> validate_formula formula
+
+let validate_input = function
+  | Input_cnf { clause; _ } -> List.iter validate_literal clause
+  | Input_fof { formula; _ } -> validate_formula formula
+  | Input_include _ -> ()
+
+let validate_inputs inputs =
+  List.iter validate_input inputs;
+  inputs
+
 let parse_lexbuf lexbuf =
   try
-    Tptp_parser.file Tptp_lexer.token lexbuf
+    Tptp_parser.file Tptp_lexer.token lexbuf |> validate_inputs
   with
   | Tptp_lexer.Lexing_error msg ->
       raise (Error msg)
@@ -163,7 +210,22 @@ let rec expand_file config visited filename =
   expand_entries [] entries
 
 let load_problem ?(config = default_load_config) filename =
+  let inputs = expand_file config StringSet.empty filename in
+  let conjecture_count =
+    List.fold_left
+      (fun count -> function
+        | Input_cnf { role = "conjecture"; _ }
+        | Input_fof { role = "conjecture"; _ } -> count + 1
+        | _ -> count)
+      0 inputs
+  in
+  if conjecture_count > 1 then
+    raise
+      (Error
+         (Printf.sprintf
+            "VIP ne supporte qu'une conjecture par problème (trouvé: %d)"
+            conjecture_count));
   {
     file = Some filename;
-    inputs = expand_file config StringSet.empty filename;
+    inputs;
   }

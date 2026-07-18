@@ -54,6 +54,16 @@ let expect_not_refuted file () =
   | { status = CounterSatisfiable; _ } ->
       ()
 
+let expect_input_rejected file () =
+  match run_file ~config:config (path file) with
+  | exception Tptp_frontend.Error _ -> ()
+  | { status = InputError; _ } -> ()
+  | { status; _ } ->
+      fail
+        (Printf.sprintf
+           "expected InputError for %s, got %s"
+           file (string_of_szs_status status))
+
 let with_env name value f =
   let previous = Sys.getenv_opt name in
   Fun.protect
@@ -152,6 +162,8 @@ let () =
             (expect_not_refuted "sat_subsumption_resolution_substitution.p");
           test_case "implicit universal parameterizes Skolem witness" `Quick
             (expect_not_refuted "sat_free_variable_skolem_dependency.p");
+          test_case "multiple conjectures are rejected" `Quick
+            (expect_input_rejected "unsupported_multiple_conjectures.p");
           test_case "set bridge SEU140 shape" `Quick (expect_set_bridge_unsat "set_bridge_seu140_shape.p");
           test_case "stats present" `Quick (check_stats_present "unsat_01.p");
           test_case "derivation present" `Quick (check_derivation_present "unsat_01.p");
