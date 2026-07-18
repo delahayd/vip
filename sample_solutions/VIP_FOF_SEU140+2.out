@@ -7,7 +7,7 @@ fof(d3_xboole_0,axiom,
           ( in(D,C)
         <=> ( in(D,A)
             & in(D,B) ) ) ) ,file('/home/etudiant/Cours/stage/TPTP-v9.2.1/Problems/SEU/SEU140+2.p',d3_xboole_0)).
-cnf(vip_1,plain,(in(V0,V1) | ~(in(V0,V2)) | V2 != set_intersection2(V1,V3)),inference(cnf_transformation,[status(esa)],[d3_xboole_0])).
+cnf(vip_2,plain,(in(V0,V1) | ~(in(V0,V2)) | V2 != set_intersection2(V3,V1)),inference(cnf_transformation,[status(esa)],[d3_xboole_0])).
 fof(t28_xboole_1,lemma,
     ! [A,B] :
       ( subset(A,B)
@@ -38,13 +38,9 @@ cnf(vip_14,plain,(in(sk2(sk3,sk5),sk3)),inference(resolution,[status(thm)],[vip_
 cnf(vip_15,plain,(in(sk2(sk3,sk5),sk5)),inference(resolution,[status(thm)],[vip_13,vip_9])).
 cnf(vip_16,plain,(set_intersection2(sk3,sk4) = sk3),inference(resolution,[status(thm)],[vip_11,vip_7])).
 cnf(vip_17,plain,(~(in(V0,sk4)) | ~(in(V0,sk5))),inference(resolution,[status(thm)],[vip_12,vip_10])).
-cnf(vip_23,plain,(sk3 != set_intersection2(V0,V1) | in(sk2(sk5,sk3),V0)),inference(resolution,[status(thm)],[vip_14,vip_1])).
-cnf(vip_24,plain,(~(in(sk2(sk3,sk5),sk4))),inference(resolution,[status(thm)],[vip_15,vip_17])).
-cnf(vip_33,plain,(V0 != set_intersection2(sk4,V1) | ~(in(sk2(sk5,sk3),V0))),inference(resolution,[status(thm)],[vip_24,vip_1])).
-cnf(vip_34,plain,(V0 != sk3 | ~(in(sk2(sk5,sk3),V0))),inference(indexed_superposition,[status(thm)],[vip_16,vip_33])).
-cnf(vip_37,plain,(sk3 != sk3 | in(sk2(sk5,sk3),V0)),inference(indexed_superposition,[status(thm)],[vip_16,vip_23])).
-cnf(vip_53,plain,(sk3 = sk3),inference(resolution,[status(thm)],[vip_7,vip_11])).
-cnf(vip_64,plain,(~(in(sk2(sk5,sk3),sk3))),inference(resolution,[status(thm)],[vip_53,vip_34])).
-cnf(vip_66,plain,(in(sk2(sk5,sk3),V0)),inference(resolution,[status(thm)],[vip_53,vip_37])).
-cnf(vip_121,plain,($false),inference(resolution,[status(thm)],[vip_64,vip_66])).
+cnf(vip_18,plain,(sk3 != set_intersection2(V0,V1) | in(sk2(sk3,sk5),V1)),inference(resolution,[status(thm)],[vip_14,vip_2])).
+cnf(vip_27,plain,(~(in(sk2(sk3,sk5),sk4))),inference(resolution,[status(thm)],[vip_15,vip_17])).
+cnf(vip_36,plain,(sk3 != set_intersection2(V0,sk4)),inference(resolution,[status(thm)],[vip_27,vip_18])).
+cnf(vip_52,plain,(sk3 != sk3),inference(indexed_superposition,[status(thm)],[vip_16,vip_36])).
+cnf(vip_93,plain,($false),inference(equality_resolution,[status(thm)],[vip_52])).
 % SZS output end CNFRefutation for /home/etudiant/Cours/stage/TPTP-v9.2.1/Problems/SEU/SEU140+2.p
