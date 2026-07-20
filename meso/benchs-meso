@@ -228,6 +228,13 @@ fi
 cat >> "$SLURM_SCRIPT" <<EOF
 echo "[INFO] Building VIP..."
 make build
+export VIP_BIN="\$DUNE_BUILD_DIR/default/src/main.exe"
+if [[ ! -x "\$VIP_BIN" ]]; then
+  echo "[ERROR] Freshly built VIP binary not found: \$VIP_BIN" >&2
+  exit 1
+fi
+echo "[INFO] VIP_BIN=\$VIP_BIN"
+echo "[INFO] VIP binary SHA256: \$(sha256sum "\$VIP_BIN" | awk '{print \$1}')"
 
 EOF
 

@@ -48,7 +48,12 @@ let vip_binary () =
   try Sys.getenv "VIP_BIN"
   with Not_found ->
     try Sys.getenv "IP_BIN" with Not_found ->
-      if Sys.file_exists "./bin/vip" then "./bin/vip" else "./bin/ip"
+      if Sys.file_exists "./_build/default/src/main.exe" then
+        "./_build/default/src/main.exe"
+      else if Sys.file_exists "./bin/vip" then
+        "./bin/vip"
+      else
+        "./bin/ip"
 
 let provers =
   [
@@ -815,6 +820,13 @@ let stat_scopes =
 let write_metadata oc ~stamp ~config ~versions =
   Printf.fprintf oc "# bench_date,%s\n" (csv_escape stamp);
   Printf.fprintf oc "# problem_dir,%s\n" (csv_escape config.dir);
+  let binary = vip_binary () in
+  let binary_sha256 =
+    safe_command_output
+      (Printf.sprintf "sha256sum %s | awk '{print $1}'" (Filename.quote binary))
+  in
+  Printf.fprintf oc "# vip_binary,%s\n" (csv_escape binary);
+  Printf.fprintf oc "# vip_binary_sha256,%s\n" (csv_escape binary_sha256);
   begin
     match config.home with
     | None -> Printf.fprintf oc "# home,\n"
