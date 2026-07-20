@@ -22,9 +22,10 @@ contextual literal cutting. VIP contains a simple legacy engine and a more
 recent engine with stronger equality handling, indexing, and clause selection;
 the competition portfolio combines both.
 
-The system also includes SInE-style axiom selection, conservative AVATAR-style
-splitting, layered clause selection, and limited deduction-modulo-inspired
-preprocessing for selected definitional equivalences.
+The system also includes SInE-style axiom selection, layered clause selection,
+and limited deduction-modulo-inspired preprocessing for selected definitional
+equivalences. Experimental splitting code is not enabled in the submitted
+configuration.
 
 ## Strategies
 
@@ -42,9 +43,10 @@ problems or their solutions.
 The portfolio includes FEQ-oriented equality stages, FNE recovery stages using
 the legacy engine, SInE axiom-selection stages with different widths,
 legacy-guided modern stages, layered age/weight passive selection, and
-conservative splitting stages. The submitted StarExec script does not hardcode
-the CASC time limit; it accepts the announced wall-clock budget as a wrapper
-argument or environment value. The default generated-clause limit is 75000.
+several fixed age/weight schedules. The submitted StarExec script does not
+hardcode the CASC time limit; it accepts the announced wall-clock budget as a
+wrapper argument or environment value. The default generated-clause limit is
+75000.
 
 ## Implementation
 
@@ -76,10 +78,10 @@ performance on unsatisfiable problems where axiom selection, equality
 simplification, and staged saturation interact well. It is not expected to
 match mature ATP systems such as Vampire, E, or Zipperposition.
 
-On the development CASC-style FOF benchmark used during the project, the
-DMT-based release line solved roughly half of the tested problems at 120
-seconds. The submitted configuration is intended to use the wall-clock limit
-announced by the CASC organizers and the CASC memory environment.
+Development used CASC-style FOF benchmarks to tune general portfolio
+parameters. The submitted configuration includes additional soundness guards
+and is intended to use the wall-clock limit announced by the CASC organizers
+and the CASC memory environment.
 
 ## References
 
@@ -87,5 +89,4 @@ No system paper is available for this first VIP release. The implementation
 follows standard saturation-based ATP techniques used in systems such as E,
 Vampire, Zipperposition, and Drodi: given-clause saturation, resolution,
 superposition-style equality reasoning, demodulation, subsumption, SInE-style
-axiom selection, AVATAR-style splitting, layered clause selection, and
-age/weight scheduling.
+axiom selection, layered clause selection, and age/weight scheduling.
