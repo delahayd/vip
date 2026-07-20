@@ -7,12 +7,17 @@ fof(d2_xboole_0,axiom,
           ( in(D,C)
         <=> ( in(D,A)
             | in(D,B) ) ) ) ,file('/home/etudiant/Cours/stage/TPTP-v9.2.1/Problems/SEU/SEU140+2.p',d2_xboole_0)).
-cnf(vip_5339,plain,(~(in(V0,V1)) | in(V0,V2) | V2 != set_union2(V1,V3)),inference(cnf_transformation,[status(esa)],[d2_xboole_0])).
+cnf(vip_4527,plain,(~(in(V0,V1)) | in(V0,V2) | V2 != set_union2(V1,V3)),inference(cnf_transformation,[status(esa)],[d2_xboole_0])).
+fof(symmetry_r1_xboole_0,axiom,
+    ! [A,B] :
+      ( disjoint(A,B)
+     => disjoint(B,A) ) ,file('/home/etudiant/Cours/stage/TPTP-v9.2.1/Problems/SEU/SEU140+2.p',symmetry_r1_xboole_0)).
+cnf(vip_4563,plain,(~(disjoint(V0,V1)) | disjoint(V1,V0)),inference(cnf_transformation,[status(esa)],[symmetry_r1_xboole_0])).
 fof(t12_xboole_1,lemma,
     ! [A,B] :
       ( subset(A,B)
      => set_union2(A,B) = B ) ,file('/home/etudiant/Cours/stage/TPTP-v9.2.1/Problems/SEU/SEU140+2.p',t12_xboole_1)).
-cnf(vip_5376,plain,(~(subset(V0,V1)) | set_union2(V0,V1) = V1),inference(cnf_transformation,[status(esa)],[t12_xboole_1])).
+cnf(vip_4564,plain,(~(subset(V0,V1)) | set_union2(V0,V1) = V1),inference(cnf_transformation,[status(esa)],[t12_xboole_1])).
 fof(t3_xboole_0,lemma,
     ! [A,B] :
       ( ~ ( ~ disjoint(A,B)
@@ -23,24 +28,25 @@ fof(t3_xboole_0,lemma,
               ( in(C,A)
               & in(C,B) )
           & disjoint(A,B) ) ) ,file('/home/etudiant/Cours/stage/TPTP-v9.2.1/Problems/SEU/SEU140+2.p',t3_xboole_0)).
-cnf(vip_5391,plain,(disjoint(V0,V1) | in(sk9(V0,V1),V0)),inference(cnf_transformation,[status(esa)],[t3_xboole_0])).
-cnf(vip_5392,plain,(disjoint(V0,V1) | in(sk9(V0,V1),V1)),inference(cnf_transformation,[status(esa)],[t3_xboole_0])).
-cnf(vip_5393,plain,(~(disjoint(V0,V1)) | ~(in(V2,V0)) | ~(in(V2,V1))),inference(cnf_transformation,[status(esa)],[t3_xboole_0])).
+cnf(vip_4579,plain,(disjoint(V0,V1) | in(sk9(V0,V1),V0)),inference(cnf_transformation,[status(esa)],[t3_xboole_0])).
+cnf(vip_4580,plain,(disjoint(V0,V1) | in(sk9(V0,V1),V1)),inference(cnf_transformation,[status(esa)],[t3_xboole_0])).
+cnf(vip_4581,plain,(~(disjoint(V0,V1)) | ~(in(V2,V0)) | ~(in(V2,V1))),inference(cnf_transformation,[status(esa)],[t3_xboole_0])).
 fof(t63_xboole_1,conjecture,
     ! [A,B,C] :
       ( ( subset(A,B)
         & disjoint(B,C) )
      => disjoint(A,C) ) ,file('/home/etudiant/Cours/stage/TPTP-v9.2.1/Problems/SEU/SEU140+2.p',t63_xboole_1)).
-cnf(vip_5407,negated_conjecture,(subset(sk11,sk12)),inference(cnf_transformation,[status(cth)],[t63_xboole_1])).
-cnf(vip_5408,negated_conjecture,(disjoint(sk12,sk13)),inference(cnf_transformation,[status(cth)],[t63_xboole_1])).
-cnf(vip_5409,negated_conjecture,(~(disjoint(sk11,sk13))),inference(cnf_transformation,[status(cth)],[t63_xboole_1])).
-cnf(vip_5490,plain,(~(in(V0,V1)) | in(V0,set_union2(V1,V2))),inference(equality_resolution,[status(thm)],[vip_5339])).
-cnf(vip_7127,plain,(set_union2(sk11,sk12) = sk12),inference(resolution,[status(thm)],[vip_5376,vip_5407])).
-cnf(vip_8005,plain,(~(in(V0,sk11)) | in(V0,sk12)),inference(indexed_superposition,[status(thm)],[vip_7127,vip_5490])).
-cnf(vip_8538,plain,(in(sk9(sk11,sk13),sk11)),inference(resolution,[status(thm)],[vip_5391,vip_5409])).
-cnf(vip_8577,plain,(in(sk9(sk11,sk13),sk13)),inference(resolution,[status(thm)],[vip_5392,vip_5409])).
-cnf(vip_8617,plain,(~(in(V0,sk12)) | ~(in(V0,sk13))),inference(resolution,[status(thm)],[vip_5393,vip_5408])).
-cnf(vip_10768,plain,(in(sk9(sk11,sk13),sk12)),inference(resolution,[status(thm)],[vip_8005,vip_8538])).
-cnf(vip_11548,plain,(~(in(sk9(sk11,sk13),sk13))),inference(resolution,[status(thm)],[vip_8617,vip_10768])).
-cnf(vip_11578,plain,($false),inference(resolution,[status(thm)],[vip_11548,vip_8577])).
+cnf(vip_4595,negated_conjecture,(subset(sk11,sk12)),inference(cnf_transformation,[status(cth)],[t63_xboole_1])).
+cnf(vip_4596,negated_conjecture,(disjoint(sk12,sk13)),inference(cnf_transformation,[status(cth)],[t63_xboole_1])).
+cnf(vip_4597,negated_conjecture,(~(disjoint(sk11,sk13))),inference(cnf_transformation,[status(cth)],[t63_xboole_1])).
+cnf(vip_4649,plain,(disjoint(sk13,sk12)),inference(resolution,[status(thm)],[vip_4563,vip_4596])).
+cnf(vip_4678,plain,(~(in(V0,V1)) | in(V0,set_union2(V1,V2))),inference(equality_resolution,[status(thm)],[vip_4527])).
+cnf(vip_6330,plain,(set_union2(sk11,sk12) = sk12),inference(resolution,[status(thm)],[vip_4564,vip_4595])).
+cnf(vip_7194,plain,(~(in(V0,sk11)) | in(V0,sk12)),inference(indexed_superposition,[status(thm)],[vip_6330,vip_4678])).
+cnf(vip_7735,plain,(in(sk9(sk11,sk13),sk11)),inference(resolution,[status(thm)],[vip_4579,vip_4597])).
+cnf(vip_7774,plain,(in(sk9(sk11,sk13),sk13)),inference(resolution,[status(thm)],[vip_4580,vip_4597])).
+cnf(vip_7815,plain,(~(in(V0,sk12)) | ~(in(V0,sk13))),inference(resolution,[status(thm)],[vip_4581,vip_4649])).
+cnf(vip_9917,plain,(in(sk9(sk11,sk13),sk12)),inference(resolution,[status(thm)],[vip_7194,vip_7735])).
+cnf(vip_10731,plain,(~(in(sk9(sk11,sk13),sk12))),inference(resolution,[status(thm)],[vip_7815,vip_7774])).
+cnf(vip_10739,plain,($false),inference(resolution,[status(thm)],[vip_10731,vip_9917])).
 % SZS output end CNFRefutation for /home/etudiant/Cours/stage/TPTP-v9.2.1/Problems/SEU/SEU140+2.p
