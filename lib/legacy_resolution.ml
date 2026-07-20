@@ -318,20 +318,26 @@ let rec match_term env pattern target =
                 ts
       end
 
+type demodulator = {
+  lhs : term;
+  rhs : term;
+  source_id : int;
+}
+
 let rec rewrite_once_term ~check_timeout demods t =
   check_timeout ();
   let rec try_root = function
     | [] -> None
-    | (lhs, rhs) :: rest ->
+    | demod :: rest ->
         check_timeout ();
         begin
-          match match_term StringMap.empty lhs t with
-          | Some env -> Some (apply_subst_term env rhs)
+          match match_term StringMap.empty demod.lhs t with
+          | Some env -> Some (apply_subst_term env demod.rhs, demod.source_id)
           | None -> try_root rest
         end
   in
   match try_root demods with
-  | Some t' -> Some t'
+  | Some rewritten -> Some rewritten
   | None ->
       match t with
       | Var _ -> None
@@ -342,52 +348,54 @@ let rec rewrite_once_term ~check_timeout demods t =
                 check_timeout ();
                 begin
                   match rewrite_once_term ~check_timeout demods a with
-                  | Some a' ->
-                      Some (Fun (f, List.rev_append prefix (a' :: suffix)))
+                  | Some (a', source_id) ->
+                      Some (Fun (f, List.rev_append prefix (a' :: suffix)), source_id)
                   | None ->
                       rewrite_arg (a :: prefix) suffix
                 end
           in
           rewrite_arg [] args
 
-let rec rewrite_fix_term ~check_timeout demods count t =
+let rec rewrite_fix_term ~check_timeout demods count used t =
   check_timeout ();
   if count > max_demodulation_steps_per_term then
     raise Rewrite_limit_hit
   else
     match rewrite_once_term ~check_timeout demods t with
-    | None -> (t, count)
-    | Some t' -> rewrite_fix_term ~check_timeout demods (count + 1) t'
+    | None -> (t, count, used)
+    | Some (t', source_id) ->
+        rewrite_fix_term ~check_timeout demods (count + 1) (source_id :: used) t'
 
-let rewrite_atom ~check_timeout demods count a =
-  let args, count =
+let rewrite_atom ~check_timeout demods count used a =
+  let args, count, used =
     List.fold_left
-      (fun (acc, count) t ->
+      (fun (acc, count, used) t ->
         check_timeout ();
-        let t', count = rewrite_fix_term ~check_timeout demods count t in
-        (t' :: acc, count))
-      ([], count)
+        let t', count, used = rewrite_fix_term ~check_timeout demods count used t in
+        (t' :: acc, count, used))
+      ([], count, used)
       a.args
   in
-  ({ a with args = List.rev args }, count)
+  ({ a with args = List.rev args }, count, used)
 
-let rewrite_literal ~check_timeout demods count = function
+let rewrite_literal ~check_timeout demods count used = function
   | Pos a ->
-      let a', count = rewrite_atom ~check_timeout demods count a in
-      (Pos a', count)
+      let a', count, used = rewrite_atom ~check_timeout demods count used a in
+      (Pos a', count, used)
   | Neg a ->
-      let a', count = rewrite_atom ~check_timeout demods count a in
-      (Neg a', count)
+      let a', count, used = rewrite_atom ~check_timeout demods count used a in
+      (Neg a', count, used)
 
 let rewrite_clause ~check_timeout demods c =
   List.fold_left
-    (fun (acc, count) lit ->
+    (fun (acc, count, used) lit ->
       check_timeout ();
-      let lit', count = rewrite_literal ~check_timeout demods count lit in
-      (lit' :: acc, count))
-    ([], 0)
+      let lit', count, used = rewrite_literal ~check_timeout demods count used lit in
+      (lit' :: acc, count, used))
+    ([], 0, [])
     c
-  |> fun (lits, count) -> (List.rev lits, count)
+  |> fun (lits, count, used) ->
+     (List.rev lits, count, List.sort_uniq Int.compare used)
 
 let oriented_demodulator_of_clause = function
   | [ Pos { pred = "="; args = [ l; r ] } ] ->
@@ -732,7 +740,8 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
   let all_by_id : (int, derived) Hashtbl.t = Hashtbl.create 4099 in
   let agenda : derived list ref = ref [] in
   let all : derived list ref = ref [] in
-  let demodulators : (term * term) list ref = ref [] in
+  let demodulators : demodulator list ref = ref [] in
+  let proof_only_id = ref 0 in
 
   let literal_index = Discrimination_index.create () in
   let term_index = Term_index.create () in
@@ -861,20 +870,21 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
     aux (existing_clauses ())
   in
 
-  let register_demodulator c =
-    match oriented_demodulator_of_clause c with
+  let register_demodulator d =
+    match oriented_demodulator_of_clause d.clause_d with
     | None -> ()
     | Some raw_rule ->
-        let rule = rename_demodulator_apart raw_rule in
-        if not (List.exists (( = ) rule) !demodulators) then
-          demodulators := rule :: !demodulators
+        let lhs, rhs = rename_demodulator_apart raw_rule in
+        if not (List.exists (fun r -> r.lhs = lhs && r.rhs = rhs) !demodulators) then
+          demodulators := { lhs; rhs; source_id = d.id } :: !demodulators
   in
 
   let add_clause ~to_support ~parents ~rule c =
     check_timeout ();
-    let c, rewrites =
+    let raw_clause = c in
+    let c, rewrites, rewrite_parents =
       try rewrite_clause ~check_timeout !demodulators c
-      with Rewrite_limit_hit -> (c, 0)
+      with Rewrite_limit_hit -> (c, 0, [])
     in
     demodulation_rewrites := !demodulation_rewrites + rewrites;
     match simplify_clause c with
@@ -888,11 +898,26 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
           None
         end else begin
           incr generated;
+          let parents, rule =
+            if rewrites = 0 then
+              (parents, rule)
+            else begin
+              decr proof_only_id;
+              let raw = {
+                id = !proof_only_id;
+                parents;
+                rule;
+                clause_d = raw_clause;
+              } in
+              all := raw :: !all;
+              (raw.id :: rewrite_parents, "demodulation")
+            end
+          in
           let d = { id = next_id (); parents; rule; clause_d = c } in
           Hashtbl.add known key d.id;
           Hashtbl.replace all_by_id d.id d;
           all := d :: !all;
-          register_demodulator c;
+          register_demodulator d;
           Discrimination_index.add_clause literal_index ~clause_id:d.id c;
           Term_index.add_clause
             term_index

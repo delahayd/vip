@@ -10,4 +10,5 @@
   unsupported_multiple_conjectures.p
   unsat_01.p
   fof_unsat_01.p
+  legacy_demodulation_proof.p
   set_bridge_seu140_shape.p))

@@ -161,6 +161,30 @@ let check_tstp_derivation file () =
            file
            (string_of_szs_status result.status))
 
+let check_legacy_demodulation_provenance file () =
+  let legacy_config = { config with portfolio_mode = Prover.Legacy_only } in
+  let result = run_file ~config:legacy_config (path file) in
+  match result.status, result.tstp_prelude with
+  | Theorem, Some prelude ->
+      let proof =
+        Resolution.tstp_derivation
+          ~prelude
+          ~skip_initial:true
+          result.derivation
+      in
+      check bool "records demodulation" true
+        (contains_substring proof "inference(demodulation");
+      check bool "keeps raw preprocessing parent" true
+        (contains_substring proof "vip_m");
+      check bool "does not invent axiom leaves" false
+        (contains_substring proof "cnf(vip_1,axiom")
+  | status, _ ->
+      fail
+        (Printf.sprintf
+           "expected legacy theorem with TSTP prelude for %s, got %s"
+           file
+           (string_of_szs_status status))
+
 let () =
   run "integration"
     [
@@ -185,5 +209,7 @@ let () =
           test_case "stats present" `Quick (check_stats_present "unsat_01.p");
           test_case "derivation present" `Quick (check_derivation_present "unsat_01.p");
           test_case "tstp derivation present" `Quick (check_tstp_derivation "unsat_01.p");
+          test_case "legacy demodulation proof provenance" `Quick
+            (check_legacy_demodulation_provenance "legacy_demodulation_proof.p");
         ] );
     ]
