@@ -1502,9 +1502,6 @@ let run_resolution_sos ?(limits = default_limits)
   let legacy_candidate_pool =
     (not emulate_v1) && getenv_bool "VIP_LEGACY_CANDIDATE_POOL" false
   in
-  let resolution_fallback_scan =
-    emulate_v1 || getenv_bool "VIP_RESOLUTION_FALLBACK_SCAN" false
-  in
   let legacy_subsumption =
     (not emulate_v1) && getenv_bool "VIP_LEGACY_SUBSUMPTION" false
   in
@@ -2674,7 +2671,7 @@ let run_resolution_sos ?(limits = default_limits)
         let lit = List.nth given.clause_d i in
         check_timeout ();
         let entries =
-          Discrimination_index.find_complementary literal_index lit
+          Discrimination_index.find_complementary_candidates literal_index lit
         in
         List.iter
           (fun e ->
@@ -2704,25 +2701,7 @@ let run_resolution_sos ?(limits = default_limits)
         []
     in
 
-    if resolution_fallback_scan then
-      let fallback =
-        List.fold_left
-          (fun acc d ->
-            check_timeout ();
-            if d.id <> given.id
-               && (not avatar_enabled || derived_enabled d)
-               && (not is_polarized_mode || polarized_pair_allowed given d)
-               && not (Hashtbl.mem indexed_ids d.id)
-               && first_order_compatible given d then
-              d :: acc
-            else
-              acc)
-          []
-          !active
-      in
-      indexed @ fallback
-    else
-      indexed
+    indexed
   in
 
   let resolve_derived_pair given other =

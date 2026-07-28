@@ -149,5 +149,14 @@ let find_by_sign idx wanted_sign lit =
 let find_complementary idx lit =
   find_by_sign idx (opposite_sign (sign_of_literal lit)) lit
 
+let find_complementary_candidates idx lit =
+  let a = atom_of_literal lit in
+  let key =
+    (opposite_sign (sign_of_literal lit), a.pred, List.length a.args)
+  in
+  match Hashtbl.find_opt idx.buckets key with
+  | None -> []
+  | Some bucket -> !bucket
+
 let find_same_sign_unifiable idx lit =
   find_by_sign idx (sign_of_literal lit) lit

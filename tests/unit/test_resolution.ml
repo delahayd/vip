@@ -17,6 +17,71 @@ let neq l r = neg (atom "=" [l; r])
 let c1 = [ pos (atom "p" [var "X"]); pos (atom "q" [var "X"]) ]
 let c2 = [ neg (atom "p" [const "a"]); pos (atom "r" [var "Y"]) ]
 
+let test_complete_complementary_candidates_cover_nested_terms () =
+  let index = Discrimination_index.create () in
+  let stored =
+    pos (atom "p" [ var "X"; var "Y" ])
+  in
+  let query =
+    neg (atom "p" [ fun_ "f" [ const "a" ]; const "b" ])
+  in
+  Discrimination_index.add_clause index ~clause_id:17 [ stored ];
+  let candidates =
+    Discrimination_index.find_complementary_candidates index query
+  in
+  check int "complete complementary bucket" 1 (List.length candidates);
+  let candidate = List.hd candidates in
+  check int "candidate clause" 17 candidate.Discrimination_index.clause_id
+
+let test_indexed_resolution_handles_nested_variable_match () =
+  Resolution.reset_id_counter ();
+  Clause.reset_fresh_counter ();
+  let positive =
+    [ pos (atom "p" [ var "X"; var "Y" ]) ]
+  in
+  let negative =
+    [ neg (atom "p" [ fun_ "f" [ const "a" ]; const "b" ]) ]
+  in
+  let result =
+    Resolution.run_resolution_sos
+      ~limits:{ Resolution.default_limits with max_generated_clauses = Some 20 }
+      ~expensive_simplifications:false
+      ~mode:Unrestricted
+      ~axioms:[ positive; negative ]
+      ~support:[]
+      ()
+  in
+  match result.stop_reason with
+  | Refutation_found _ -> ()
+  | Saturation | Time_limit | Clause_limit ->
+      fail "Complete candidate selection must retain nested variable matches"
+
+let test_legacy_indexed_resolution_handles_nested_variable_match () =
+  Legacy_resolution.reset_id_counter ();
+  Clause.reset_fresh_counter ();
+  let positive =
+    [ pos (atom "p" [ var "X"; var "Y" ]) ]
+  in
+  let negative =
+    [ neg (atom "p" [ fun_ "f" [ const "a" ]; const "b" ]) ]
+  in
+  let result =
+    Legacy_resolution.run_resolution_sos
+      ~limits:
+        { Legacy_resolution.default_limits with
+          max_generated_clauses = Some 20 }
+      ~mode:Legacy_resolution.Unrestricted
+      ~axioms:[ positive; negative ]
+      ~support:[]
+      ()
+  in
+  match result.stop_reason with
+  | Legacy_resolution.Refutation_found _ -> ()
+  | Legacy_resolution.Saturation
+  | Legacy_resolution.Time_limit
+  | Legacy_resolution.Clause_limit ->
+      fail "Legacy candidate selection must retain nested variable matches"
+
 let test_binary_resolution_unrestricted () =
   let res = Resolution.test_resolve Unrestricted c1 c2 in
   (* Expected: Q(a) v R(V0) because rename_clause_apart renames Y to V0 *)
@@ -516,6 +581,18 @@ let () =
     [
       ("resolution",
        [
+         test_case
+           "complete index covers nested variable terms"
+           `Quick
+           test_complete_complementary_candidates_cover_nested_terms;
+         test_case
+           "indexed resolution covers nested variable terms"
+           `Quick
+           test_indexed_resolution_handles_nested_variable_match;
+         test_case
+           "legacy indexed resolution covers nested variable terms"
+           `Quick
+           test_legacy_indexed_resolution_handles_nested_variable_match;
          test_case "binary resolution unrestricted" `Quick test_binary_resolution_unrestricted;
          test_case
            "binary resolution preserves nested argument order"

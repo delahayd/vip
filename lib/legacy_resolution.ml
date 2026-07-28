@@ -936,7 +936,7 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
       (fun lit ->
         check_timeout ();
         let entries =
-          Discrimination_index.find_complementary literal_index lit
+          Discrimination_index.find_complementary_candidates literal_index lit
         in
         List.iter
           (fun e ->
@@ -956,18 +956,7 @@ let run_resolution_sos ?(limits = default_limits) ~mode ~axioms ~support () =
         []
     in
 
-    let fallback =
-      Hashtbl.fold
-        (fun id d acc ->
-          check_timeout ();
-          if id <> given.id && not (Hashtbl.mem indexed_ids id) then
-            d :: acc
-          else acc)
-        all_by_id
-        []
-    in
-
-    indexed @ fallback
+    indexed
   in
 
   try
