@@ -33,6 +33,24 @@ let test_complete_complementary_candidates_cover_nested_terms () =
   let candidate = List.hd candidates in
   check int "candidate clause" 17 candidate.Discrimination_index.clause_id
 
+let test_standardized_clauses_have_disjoint_variables () =
+  Clause.reset_fresh_counter ();
+  let clause =
+    [
+      pos (atom "p" [ var "X"; fun_ "f" [ var "Y" ] ]);
+      neg (atom "q" [ var "Y" ]);
+    ]
+  in
+  let left = Clause.rename_clause_apart clause in
+  let right = Clause.rename_clause_apart clause in
+  let shared =
+    Types.StringSet.inter
+      (Clause.vars_of_clause left)
+      (Clause.vars_of_clause right)
+  in
+  check bool "standardized namespaces are disjoint" true
+    (Types.StringSet.is_empty shared)
+
 let test_indexed_resolution_handles_nested_variable_match () =
   Resolution.reset_id_counter ();
   Clause.reset_fresh_counter ();
@@ -585,6 +603,10 @@ let () =
            "complete index covers nested variable terms"
            `Quick
            test_complete_complementary_candidates_cover_nested_terms;
+         test_case
+           "standardized clauses have disjoint variables"
+           `Quick
+           test_standardized_clauses_have_disjoint_variables;
          test_case
            "indexed resolution covers nested variable terms"
            `Quick

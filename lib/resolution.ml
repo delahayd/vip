@@ -865,35 +865,6 @@ let replace_literal_arg_at_path lit arg_idx path t' =
   | Pos a -> Pos (replace_atom_arg_at_path a arg_idx path t')
   | Neg a -> Neg (replace_atom_arg_at_path a arg_idx path t')
 
-let rec term_at_path t = function
-  | [] -> Some t
-  | i :: rest ->
-      begin
-        match t with
-        | Var _ -> None
-        | Fun (_, args) ->
-            if i < 0 || i >= List.length args then None
-            else term_at_path (List.nth args i) rest
-      end
-
-let literal_subterm_at lit arg_index path =
-  let atom = atom_of_literal lit in
-  if arg_index < 0 || arg_index >= List.length atom.args then None
-  else term_at_path (List.nth atom.args arg_index) path
-
-let renamed_equality_orientation original renamed entry =
-  match positive_equality original, positive_equality renamed with
-  | Some (original_lhs, original_rhs), Some (renamed_lhs, renamed_rhs) ->
-      if entry.Term_index.lhs = original_lhs
-         && entry.Term_index.rhs = original_rhs then
-        Some (renamed_lhs, renamed_rhs)
-      else if entry.Term_index.lhs = original_rhs
-              && entry.Term_index.rhs = original_lhs then
-        Some (renamed_rhs, renamed_lhs)
-      else
-        None
-  | _ -> None
-
 let superpose_from_into_position
     source
     target
@@ -922,12 +893,22 @@ let superpose_from_into_position
   with Not_unifiable ->
     None
 
-let indexed_superpose_given ~check_timeout ~emulate_v1 ~mode ~term_index ~all_by_id given =
+let indexed_superpose_given
+    ~check_timeout
+    ~emulate_v1
+    ~mode
+    ~term_index
+    ~all_by_id
+    ~inference_clause_by_id
+    given =
   let results = ref [] in
+  let inference_clause d =
+    Hashtbl.find inference_clause_by_id d.id
+  in
 
   (* Direction 1 :
      égalités du given -> sous-termes des clauses indexées *)
-  let given_source_clause = rename_clause_apart given.clause_d in
+  let given_source_clause = inference_clause given in
 
   List.iteri
     (fun eq_index lit ->
@@ -954,44 +935,26 @@ let indexed_superpose_given ~check_timeout ~emulate_v1 ~mode ~term_index ~all_by
                       | None -> ()
                       | Some target_d ->
                           if is_active_literal ~emulate_v1 mode target_d.clause_d te.Term_index.lit_index then
-                            let target_clause =
-                              rename_clause_apart target_d.clause_d
-                            in
-                            let target_lit =
-                              List.nth target_clause te.Term_index.lit_index
-                            in
-                            begin
-                              match
-                                literal_subterm_at
-                                  target_lit
-                                  te.Term_index.arg_index
-                                  te.Term_index.path
-                              with
-                              | None -> ()
-                              | Some renamed_subterm ->
-                                  let renamed_entry =
-                                    { te with Term_index.subterm = renamed_subterm }
-                                  in
-                                  match
-                                    superpose_from_into_position
-                                      given_source_clause
-                                      target_clause
-                                      eq_index
-                                      lhs
-                                      rhs
-                                      renamed_entry
-                                  with
-                                  | Some c ->
-                                      results := (c, [ given.id; target_d.id ]) :: !results
-                                  | None -> ()
-                            end
+                            let target_clause = inference_clause target_d in
+                            match
+                              superpose_from_into_position
+                                given_source_clause
+                                target_clause
+                                eq_index
+                                lhs
+                                rhs
+                                te
+                            with
+                            | Some c ->
+                                results := (c, [ given.id; target_d.id ]) :: !results
+                            | None -> ()
                   ) entries)
               (oriented_sides mode l r))
     given_source_clause;
 
   (* Direction 2 :
      égalités indexées -> sous-termes du given *)
-  let given_target_clause = rename_clause_apart given.clause_d in
+  let given_target_clause = inference_clause given in
 
   List.iteri
     (fun lit_index lit ->
@@ -1025,43 +988,28 @@ let indexed_superpose_given ~check_timeout ~emulate_v1 ~mode ~term_index ~all_by
                       | None -> ()
                       | Some eq_d ->
                           if is_active_literal ~emulate_v1 mode eq_d.clause_d ee.Term_index.lit_index then
-                            let source_clause =
-                              rename_clause_apart eq_d.clause_d
+                            let source_clause = inference_clause eq_d in
+                            let te : Term_index.term_entry =
+                              {
+                                Term_index.clause_id = given.id;
+                                lit_index;
+                                arg_index;
+                                path;
+                                subterm;
+                              }
                             in
-                            let original_eq =
-                              List.nth eq_d.clause_d ee.Term_index.lit_index
-                            in
-                            let renamed_eq =
-                              List.nth source_clause ee.Term_index.lit_index
-                            in
-                            begin
-                              match
-                                renamed_equality_orientation original_eq renamed_eq ee
-                              with
-                              | None -> ()
-                              | Some (renamed_lhs, renamed_rhs) ->
-                                  let te : Term_index.term_entry =
-                                    {
-                                      Term_index.clause_id = given.id;
-                                      lit_index;
-                                      arg_index;
-                                      path;
-                                      subterm;
-                                    }
-                                  in
-                                  match
-                                    superpose_from_into_position
-                                      source_clause
-                                      given_target_clause
-                                      ee.Term_index.lit_index
-                                      renamed_lhs
-                                      renamed_rhs
-                                      te
-                                  with
-                                  | Some c ->
-                                      results := (c, [ eq_d.id; given.id ]) :: !results
-                                  | None -> ()
-                            end
+                            match
+                              superpose_from_into_position
+                                source_clause
+                                given_target_clause
+                                ee.Term_index.lit_index
+                                ee.Term_index.lhs
+                                ee.Term_index.rhs
+                                te
+                            with
+                            | Some c ->
+                                results := (c, [ eq_d.id; given.id ]) :: !results
+                            | None -> ()
                   ) eqs)
               subterms)
           a.args)
@@ -1091,6 +1039,10 @@ let run_resolution_sos ?(limits = default_limits)
 
   let literal_index = Discrimination_index.create () in
   let term_index = Term_index.create () in
+  (* Index entries and their clauses must share one globally fresh namespace. *)
+  let inference_clause_by_id : (int, clause) Hashtbl.t =
+    Hashtbl.create 4099
+  in
   let fv_index = Feature_vector.create () in
   let simpl_fv_index = Feature_vector.create () in
 
@@ -1879,12 +1831,19 @@ let run_resolution_sos ?(limits = default_limits)
   in
 
   let index_clause_for_inference d =
-    Discrimination_index.add_clause literal_index ~clause_id:d.id d.clause_d;
-    Term_index.add_clause
-      term_index
-      ~clause_id:d.id
-      ~orientation_mode:(term_index_orientation_mode mode_for_inference)
-      d.clause_d
+    if not (Hashtbl.mem inference_clause_by_id d.id) then begin
+      let inference_clause = rename_clause_apart d.clause_d in
+      Hashtbl.add inference_clause_by_id d.id inference_clause;
+      Discrimination_index.add_clause
+        literal_index
+        ~clause_id:d.id
+        inference_clause;
+      Term_index.add_clause
+        term_index
+        ~clause_id:d.id
+        ~orientation_mode:(term_index_orientation_mode mode_for_inference)
+        inference_clause
+    end
   in
 
   let delete_derived d =
@@ -2928,6 +2887,7 @@ let run_resolution_sos ?(limits = default_limits)
                          ~mode:mode_for_inference
                          ~term_index
                          ~all_by_id
+                         ~inference_clause_by_id
                          given)
                   end
             end
