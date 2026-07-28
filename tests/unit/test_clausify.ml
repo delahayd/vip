@@ -225,7 +225,12 @@ let test_one_way_definition () =
       fst (Clausify.clauses_of_input_with_report [ input ]))
   in
   check int "baseline clauses" 2 (List.length baseline);
-  check int "one-way clauses" 1 (List.length one_way)
+  check int "one-way mode disabled" (List.length baseline) (List.length one_way);
+  check
+    (list string)
+    "one-way mode preserves standard clausification"
+    (List.map Pretty.string_of_clause baseline)
+    (List.map Pretty.string_of_clause one_way)
 
 let test_one_way_trace_metadata () =
   let def =
@@ -258,12 +263,7 @@ let test_one_way_trace_metadata () =
   let one_way =
     List.filter (fun origin -> origin.Clausify.one_way) traced.trace.origins
   in
-  check int "one-way traced clauses" 1 (List.length one_way);
-  check
-    (list string)
-    "one-way traced clause"
-    [ "~p(V0) | q(V0)" ]
-    (List.map (fun origin -> Pretty.string_of_clause origin.Clausify.clause) one_way)
+  check int "one-way trace disabled" 0 (List.length one_way)
 
 let test_guarded_one_way_definition () =
   Clausify.reset_fresh_state ();
@@ -289,11 +289,11 @@ let test_guarded_one_way_definition () =
       fst (Clausify.clauses_of_input_with_report [ input ]))
   in
   check int "baseline guarded clauses" 2 (List.length baseline);
-  check int "guarded one-way clauses" 1 (List.length one_way);
+  check int "guarded one-way mode disabled" (List.length baseline) (List.length one_way);
   check
     (list string)
-    "guarded one-way clause"
-    [ "~p(V0) | q(V0) | ~r(V0)" ]
+    "guarded definition keeps standard clausification"
+    (List.map Pretty.string_of_clause baseline)
     (List.map Pretty.string_of_clause one_way)
 
 let test_dmt_definition_expansion () =
@@ -328,11 +328,11 @@ let test_dmt_definition_expansion () =
       (fun () -> fst (Clausify.clauses_of_input_with_report [ def; use ]))
   in
   check int "baseline keeps definition" 3 (List.length baseline);
-  check int "expanded removes definition" 1 (List.length expanded);
+  check int "DMT expansion disabled" (List.length baseline) (List.length expanded);
   check
     (list string)
-    "rewritten clause"
-    [ "q(a)" ]
+    "DMT environment preserves standard clausification"
+    (List.map Pretty.string_of_clause baseline)
     (List.map Pretty.string_of_clause expanded)
 
 let test_dmt_collects_conjoined_definitions () =
@@ -373,10 +373,13 @@ let test_dmt_collects_conjoined_definitions () =
       [ ("VIP_DMT_EXPAND_DEFINITIONS", "1"); ("VIP_ONE_WAY_DEFINITIONS", "0") ]
       (fun () -> fst (Clausify.clauses_of_input_with_report [ defs; use ]))
   in
+  let baseline =
+    fst (Clausify.clauses_of_input_with_report [ defs; use ])
+  in
   check
     (list string)
-    "rewritten conjoined definitions"
-    [ "q(a)"; "s(b)" ]
+    "conjoined DMT definitions remain standard clauses"
+    (List.map Pretty.string_of_clause baseline)
     (List.map Pretty.string_of_clause expanded)
 
 let test_definitional_cnf_avoids_existing_auxiliary_predicate () =

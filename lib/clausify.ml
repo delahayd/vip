@@ -539,37 +539,8 @@ let safe_guarded_definition_atom atom guard body =
      <= getenv_int "VIP_ONE_WAY_DEFINITION_MAX_BODY_SIZE" 80
 
 let one_way_definition_formula f =
-  if not (getenv_bool "VIP_ONE_WAY_DEFINITIONS" false) then
-    f
-  else
-    let vars, body = peel_forall f in
-    let orientation =
-      match env_opt "VIP_ONE_WAY_DEFINITION_ORIENTATION" with
-      | Some value when String.lowercase_ascii value = "compress" -> `Compress
-      | _ -> `Expand
-    in
-    let orient ?guard atom rhs =
-      let guard = Option.value guard ~default:FTrue in
-      if safe_guarded_definition_atom atom guard rhs then
-        match orientation with
-        | `Expand -> Some (Imp (conjoin guard (Atom atom), rhs))
-        | `Compress -> Some (Imp (conjoin guard rhs, Atom atom))
-      else
-        None
-    in
-    let body' =
-      match body with
-      | Iff (Atom atom, rhs) -> orient atom rhs
-      | Iff (rhs, Atom atom) -> orient atom rhs
-      | Imp (guard, Iff (Atom atom, rhs)) -> orient ~guard atom rhs
-      | Imp (guard, Iff (rhs, Atom atom)) -> orient ~guard atom rhs
-      | RevImp (Iff (Atom atom, rhs), guard) -> orient ~guard atom rhs
-      | RevImp (Iff (rhs, Atom atom), guard) -> orient ~guard atom rhs
-      | _ -> None
-    in
-    match body' with
-    | None -> f
-    | Some body -> rebuild_forall vars body
+  (* The sound no-DMT baseline always clausifies the original equivalence. *)
+  f
 
 type formula_definition = {
   def_pred : string;
@@ -741,37 +712,8 @@ let input_mentions_definition defs = function
   | Input_include _ -> false
 
 let dmt_expand_inputs inputs =
-  if not (getenv_bool "VIP_DMT_EXPAND_DEFINITIONS" false) then
-    inputs
-  else
-    (* Rewriting may alpha-rename quantifiers inside definition bodies, so all
-       user symbols must already be reserved before the first expansion. *)
-    let () = reserve_function_symbols_inputs inputs in
-    let defs = collect_formula_definitions inputs in
-    if defs = [] then
-      inputs
-    else
-      let defs = definition_index defs in
-      let has_cnf =
-        List.exists
-          (function Input_cnf _ -> true | Input_fof _ | Input_include _ -> false)
-          inputs
-      in
-      let remove_definitions =
-        getenv_bool "VIP_DMT_REMOVE_DEFINITIONS" true && not has_cnf
-      in
-      let is_definition_input name =
-        List.exists (fun d -> d.def_input_name = name) defs.definitions
-      in
-      List.filter_map
-        (function
-          | Input_fof { name; role; formula } when remove_definitions && is_definition_input name ->
-              None
-          | Input_fof ({ formula; _ } as i) ->
-              let formula = rewrite_formula_fixpoint defs formula in
-              Some (Input_fof { i with formula })
-          | input -> Some input)
-        inputs
+  (* Keep formula-level definition expansion unreachable on this branch. *)
+  inputs
 
 let saturated_add limit a b =
   if a >= limit || b >= limit || a > limit - b then limit else a + b

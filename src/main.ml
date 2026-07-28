@@ -85,7 +85,7 @@ let play_timeout_safely () =
 
 let usage () =
   prerr_endline
-    "Usage: vip [--version] [--duke] [--proof] [--proof-format none|internal|tstp] [--proof-tstp] [--competition-output] [--time-limit SECONDS] [--max-clauses N] [--mode unrestricted|ordered|ordered-fallback|polarized] [--portfolio legacy-modern|modern-legacy|legacy-only|modern-only|modern-compat-only|scheduled|feq-modern|experimental-casc|casc-aggressive|casc-240|casc-150|casc-150-lrs|casc-feq-probe] [--tptp DIR] [--sos|--no-sos] FILE";
+    "Usage: vip [--version] [--duke] [--proof] [--proof-format none|internal|tstp] [--proof-tstp] [--competition-output] [--time-limit SECONDS] [--max-clauses N] [--mode unrestricted|ordered|ordered-fallback] [--portfolio legacy-modern|modern-legacy|legacy-only|modern-only|modern-compat-only|scheduled|feq-modern|experimental-casc|casc-aggressive|casc-240|casc-150|casc-150-lrs|casc-feq-probe] [--tptp DIR] [--sos|--no-sos] FILE";
   exit 2
 
 type proof_format =
@@ -97,8 +97,6 @@ let mode_of_string = function
   | "unrestricted" -> Prover_lib.Resolution.Unrestricted
   | "ordered" -> Prover_lib.Resolution.Ordered
   | "ordered-fallback" -> Prover_lib.Resolution.Ordered_with_fallback
-  | "polarized" | "polarized-resolution-modulo" | "prm" ->
-      Prover_lib.Resolution.Polarized
   | s ->
       prerr_endline ("Unknown mode: " ^ s);
       usage ()
